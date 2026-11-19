@@ -25,7 +25,7 @@ async function openPdf(octets) {
     if (cause && /password|encrypt/i.test(String(cause.message))) {
       throw new PdfioError('Ce document est protégé par un mot de passe : il ne peut pas être ouvert.', cause);
     }
-    throw new PdfioError('Ce fichier n'a pas pu être lu comme un PDF (fichier absent, corrompu ou non-PDF).', cause);
+    throw new PdfioError('Ce fichier n\'a pas pu être lu comme un PDF (fichier absent, corrompu ou non-PDF).', cause);
   }
 }
 
@@ -37,7 +37,7 @@ async function savePdf(doc) {
   try {
     return await doc.save();
   } catch (cause) {
-    throw new PdfioError('Le document n'a pas pu être enregistré.', cause);
+    throw new PdfioError('Le document n\'a pas pu être enregistré.', cause);
   }
 }
 
