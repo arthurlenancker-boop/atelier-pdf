@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' app:; script-src 'self' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: data:; font-src 'self' app:; worker-src 'self' app: blob:" />
+  <title>Atelier PDF</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Barre supérieure : fichier, enregistrement, zoom, pages -->
+  <header class="barre">
+    <div class="marque">
+      <span class="logo">Ap</span>
+      <span class="titre">Atelier PDF</span>
+      <span id="nom-fichier" class="nom-fichier">Aucun document ouvert</span>
+      <span id="pastille-modifie" class="pastille-modifie" hidden>modifié</span>
+    </div>
+    <div class="actions-fichier">
+      <button id="btn-ouvrir" class="btn accent">Ouvrir</button>
+      <button id="btn-enregistrer" class="btn" disabled>Enregistrer</button>
+      <button id="btn-copie" class="btn" disabled>Copie horodatée</button>
+    </div>
+    <div class="affichage">
+      <button id="btn-zoom-moins" class="btn carre" title="Zoom arrière (−)">−</button>
+      <span id="etiquette-zoom" class="etiquette-zoom">100 %</span>
+      <button id="btn-zoom-plus" class="btn carre" title="Zoom avant (+)">+</button>
+      <button id="btn-zoom-net" class="btn carre" title="Taille réelle (0)">1:1</button>
+      <span class="separateur"></span>
+      <button id="btn-page-avant" class="btn carre" title="Page précédente (PgUp)">‹</button>
+      <span id="etiquette-page" class="etiquette-page">–</span>
+      <button id="btn-page-apres" class="btn carre" title="Page suivante (PgDn)">›</button>
+    </div>
+  </header>
+
+  <!-- Barre d'outils : les cinq annotations + l'équation -->
+  <nav class="outils">
+    <button data-outil="aucun" class="outil actif" title="Déplacement et sélection (Suppr pour supprimer)">
+      <span class="icone">✥</span><span class="etiquette">Sélection</span>
+    </button>
+    <button data-outil="surligner" class="outil" title="Surligner : glisser sur le texte">
+      <span class="icone">HB</span><span class="etiquette">Surligner</span>
+    </button>
+    <button data-outil="encadrer" class="outil" title="Encadrer : glisser un rectangle">
+      <span class="icone">▢</span><span class="etiquette">Encadrer</span>
+    </button>
+    <button data-outil="encre" class="outil" title="Encre : tracer à main levée">
+      <span class="icone">✎</span><span class="etiquette">Encre</span>
+    </button>
+    <button data-outil="note" class="outil" title="Note : double-clic pour écrire une note">
+      <span class="icone">✐</span><span class="etiquette">Note</span>
+    </button>
+    <button data-outil="fiche" class="outil" title="Fiche : glisser une zone, puis écrire">
+      <span class="icone">T</span><span class="etiquette">Fiche</span>
+    </button>
+    <button data-outil="equation" class="outil" title="Équation : clic sur la page, puis Insérer dans le ruban">
+      <span class="icone">∑</span><span class="etiquette">Équation</span>
+    </button>
+  </nav>
+
+  <div class="corps">
+    <!-- Zone centrale : la visionneuse pdf.js et ses calques -->
+    <main id="zone" class="zone">
+      <div id="accueil" class="accueil">
+        <div class="accueil-carte">
+          <p class="accueil-titre">Ouvrez un PDF pour commencer</p>
+          <p class="accueil-texte">
+            Bouton <strong>Ouvrir</strong>, menu Fichier, ou glissez-déposez
+            un fichier PDF sur cette fenêtre.
+          </p>
+          <p class="accueil-texte faible">
+            Les annotations et équations sont écrites dans le fichier lui-même :
+            elles restent lisibles dans Adobe Acrobat, Edge et LibreOffice.
+          </p>
+        </div>
+      </div>
+      <div id="visionneuse" class="visionneuse" hidden>
+        <div id="conteneur-page" class="conteneur-page">
+          <canvas id="calque-pdf" class="calque-pdf"></canvas>
+          <canvas id="calque-annots" class="calque-annots"></canvas>
+          <canvas id="calque-tampon" class="calque-tampon"></canvas>
+        </div>
+      </div>
+    </main>
+
+    <!-- Panneau Équation, à la manière du ruban OneNote -->
+    <aside id="panneau-equation" class="panneau-equation" hidden>
+      <h2>Équation</h2>
+
+      <div class="bascules">
+        <button id="eq-pro" class="bascule actif">Professionnel</button>
+        <button id="eq-lin" class="bascule">Linéaire</button>
+      </div>
+
+      <label class="champ-libelle" id="eq-libelle">LaTeX</label>
+      <textarea id="eq-saisie" class="eq-saisie" rows="3"
+        placeholder="Ex. : x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}"></textarea>
+
+      <div class="apercu-cadre">
+        <canvas id="eq-apercu" class="eq-apercu" width="320" height="90"></canvas>
+        <p id="eq-erreur" class="eq-erreur" hidden></p>
+      </div>
+
+      <h3>Préréglages</h3>
+      <div id="eq-presets" class="grille-petite"></div>
+
+      <h3>Structures</h3>
+      <div id="eq-structs"></div>
+
+      <h3>Symboles</h3>
+      <div id="eq-symboles"></div>
+
+      <button id="eq-inserer" class="btn accent plein" disabled>Insérer dans la page</button>
+      <p class="note-insertion" id="eq-note">Cliquez d'abord sur la page à l'outil Équation.</p>
+    </aside>
+  </div>
+
+  <!-- Fenêtre de saisie pour notes et fiches -->
+  <div id="saisie-fond" class="saisie-fond" hidden>
+    <div class="saisie-carte" role="dialog" aria-modal="true">
+      <h3 id="saisie-titre">Texte</h3>
+      <textarea id="saisie-texte" class="saisie-texte" rows="4"></textarea>
+      <div class="saisie-actions">
+        <button id="saisie-annuler" class="btn">Annuler</button>
+        <button id="saisie-valider" class="btn accent">Poser</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barre d'état -->
+  <footer class="etat">
+    <span id="message-etat">Prêt.</span>
+    <span id="version-etat" class="faible"></span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

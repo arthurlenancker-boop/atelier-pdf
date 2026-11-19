@@ -1,0 +1,21 @@
+NOTICE — Atelier PDF
+
+Ce produit est distribué sous licence AGPL-3.0 (fichier LICENSE).
+
+Il repose sur les composants suivants, dont les licences s'appliquent :
+
+- pdf-lib 1.17.1 — © 2021 pdf-lib contributors — licence MIT.
+  Écriture des annotations et apparence vectorielle dans le PDF.
+- MathJax / mathjax-full 3.2.2 — © The MathJax Consortium — licence Apache-2.0.
+  Rendu des équations LaTeX en vecteurs PDF.
+- pdf.js / pdfjs-dist 4.x — © Mozilla Foundation — licence Apache-2.0.
+  Affichage des pages du document.
+- Electron — © OpenJS Foundation et contributeurs — licence MIT.
+  Coque applicative de bureau.
+- electron-updater / electron-builder — © contributors electron-builder — licence MIT.
+  Mise à jour automatique et construction de l'installateur Windows.
+- Kit visuel « Glass on Charcoal », dérivé de SpotiKit — licence AGPL-3.0.
+  Thème de l'interface (jetons de couleurs, surfaces translucides).
+
+Le contrôle continu des licences des dépendances directes est assuré par
+scripts/check-licenses.js (exécuté par la CI à chaque poussée).

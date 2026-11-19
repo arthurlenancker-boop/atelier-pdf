@@ -1,0 +1,75 @@
+# Livraison Windows : un tag v* produit l'installateur NSIS et l'exécutable
+# portable, publiés dans la Release GitHub, avec latest.yml sans espaces.
+# leçons du lanceur : npm install (pas npm ci), --publish never puis
+# renommage aligné sur l'URL exacte que latest.yml désigne.
+name: Livraison
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installation des dépendances
+        run: npm install --no-audit --no-fund
+
+      - name: Tests du moteur avant construction
+        run: npm test
+
+      - name: Construction de l'installateur et du portable
+        run: npx electron-builder --win nsis portable --publish never
+        env:
+          # electron-builder télécharge Electron ; pas d'envoi réseau requis ici.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Vérification de latest.yml (mise à jour automatique)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/latest.yml")) {
+            Write-Error "latest.yml absent : electron-builder n'a pas pu générer la configuration de mise à jour."
+            exit 1
+          }
+          Get-Content dist/latest.yml
+
+      # La page Release GitHub remplace les espaces par des points dans les
+      # noms de fichiers : on aligne latest.yml sur ces noms rebelles.
+      - name: Alignement des noms de latest.yml et des artefacts
+        shell: pwsh
+        run: |
+          $yaml = Get-Content dist/latest.yml -Raw
+          $fichiers = Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe','.yml' }
+          foreach ($f in $fichiers) {
+            $cible = $f.Name -replace ' ', '.'
+            if ($cible -ne $f.Name) {
+              Rename-Item $f.FullName $cible
+            }
+          }
+          # Réécrire l'URL pointée par latest.yml vers le nom final.
+          foreach ($f in (Get-ChildItem dist -Filter *.exe)) {
+            $yaml = $yaml -replace [regex]::Escape($f.Name), ($f.Name -replace ' ', '.')
+          }
+          Set-Content dist/latest.yml $yaml
+          Get-ChildItem dist -File
+
+      - name: Publication de la Release GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/*.exe
+            dist/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
