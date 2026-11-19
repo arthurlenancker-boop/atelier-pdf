@@ -1,0 +1,83 @@
+# Atelier PDF — guide d'utilisation
+
+Version 0.1.0 — phase 1 : annotations standard et équations LaTeX.
+
+## 1. Installer
+
+1. Téléchargez le fichier `atelier-pdf-setup-0.1.0.exe` (installateur) ou
+   `atelier-pdf-portable-0.1.0.exe` (exécutable unique, rien à installer)
+   depuis la page Releases du dépôt GitHub.
+2. Ouvrez-le. Au premier lancement, Windows Defender SmartScreen peut
+   afficher un avertissement : l'application n'est pas signée (signature
+   payante hors périmètre). Choisissez « Informations complémentaires »
+   puis « Exécuter quand même ».
+3. Rien d'autre : aucune connexion à un service en ligne, aucun compte,
+   aucune dépendance à installer.
+
+## 2. Ouvrir un document
+
+Trois chemins : bouton Ouvrir, menu Fichier → Ouvrir… (Ctrl+O), ou
+glisser-déposer un fichier PDF sur la fenêtre. Le document s'affiche page
+par page ; la barre d'état indique le nombre de pages.
+
+Un fichier corrompu, chiffré ou non-PDF produit un message explicite :
+rien ne se ferme, rien n'est modifié.
+
+## 3. Les cinq annotations
+
+Toutes les annotations sont écrites dans le fichier PDF, au format standard.
+Elles apparaissent dans Adobe Acrobat, Edge et LibreOffice, et s'impriment
+(drapeau d'impression posé).
+
+| Outil | Geste | Résultat dans le fichier |
+| --- | --- | --- |
+| Surligner | glisser sur une ligne de texte | /Highlight translucide (opacité 0,35), quadrilatère exact du glissement |
+| Encadrer | glisser un rectangle | /Square à bordure rouge |
+| Encre | tracer à main levée | /Ink (polygone) |
+| Note | clic, puis saisir le texte | icône post-it /Text (Comment), texte au survol dans Adobe |
+| Fiche | glisser une zone, puis saisir | /FreeText : texte écrit sur la page |
+
+Sur une page tournée (scan à plat par exemple), l'outil reste aligné : le
+point visé est le point annoté.
+
+## 4. Équations LaTeX
+
+1. Choisissez l'outil Équation : le panneau latéral s'ouvre.
+2. Cliquez sur la page à l'endroit voulu (le point d'insertion est mémorisé).
+3. Composez la formule :
+   - mode Professionnel : saisie LaTeX directe ;
+   - mode Linéaire : saisie à plat, les symboles (±, ×, α, ≤…) sont convertis.
+4. Le ruban aide la composition : préréglages (carré, différence, racines,
+   somme, trigonométrie), structures (fraction, racines, grands opérateurs,
+   crochets, fonctions et limites, accents, matrices) et symboles.
+5. L'aperçu se met à jour au fil de la saisie ; une erreur LaTeX s'affiche
+   en rouge dans le panneau, rien n'est inséré.
+6. Bouton Insérer dans la page : l'équation est rendue en vecteurs et
+   inscrite dans le PDF.
+
+Une équation insérée se sélectionne à l'outil Sélection (clic) et se
+supprime avec la touche Suppr, comme toute annotation.
+
+## 5. Enregistrer
+
+- Enregistrer (Ctrl+S) : réécrit le fichier ouvert avec toutes les
+  annotations. Le contenu original est remplacé : c'est le but (tout est
+  dans le PDF).
+- Copie horodatée (Ctrl+Maj+S) : crée `nom-AAAA-MM-JJ-HHmmss.pdf` à côté
+  de l'original, qui n'est pas touché.
+
+La pastille « modifié » signale un document non enregistré.
+
+## 6. Questions fréquentes
+
+- Mes annotations disparaissent dans un autre logiciel ? Elles y sont :
+  surlignage, cadre, encre, note et fiche suivent le format standard des
+  annotations PDF. Si un lecteur n'affiche pas les annotations, vérifiez
+  que son affichage des annotations/commentaires est actif.
+- Puis-je modifier une annotation posée par un autre logiciel ? Non :
+  elle s'affiche en lecture seule (rectangle pointillé). L'édition de ces
+  annotations est prévue en phase 2.
+- L'application se met à jour seule ? Oui, silencieusement, depuis les
+  releases GitHub ; en cas d'échec (hors ligne), rien n'est affiché.
+- Comment vérifier que tout est bien dans le fichier ? Ouvrez la copie
+  horodatée dans Adobe Acrobat ou LibreOffice, imprimez-la : tout y est.
