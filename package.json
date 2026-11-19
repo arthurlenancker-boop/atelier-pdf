@@ -1,0 +1,63 @@
+{
+  "name": "atelier-pdf",
+  "version": "0.1.0",
+  "description": "Atelier PDF — éditeur PDF de bureau : annotations standard et équations LaTeX écrites dans le fichier.",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "electron ."
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "build": {
+    "appId": "boop.atelier.pdf",
+    "productName": "Atelier PDF",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "engine/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/pdfjs-dist",
+        "to": "node_modules/pdfjs-dist"
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "artifactName": "atelier-pdf-setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "atelier-pdf-portable-${version}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "arthurlenancker-boop",
+      "repo": "atelier-pdf"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "mathjax-full": "3.2.2",
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "^4.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

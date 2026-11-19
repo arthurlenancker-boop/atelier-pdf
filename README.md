@@ -48,7 +48,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Encadrer | outil Encadrer : glisser un rectangle |
 | Écrire à main levée | outil Encre : tracer |
 | Poser une note post-it | outil Note : clic, puis saisir le texte (le texte apparaît au survol dans Adobe Acrobat) |
-|Écrire une fiche sur la page | outil Fiche : glisser la zone, puis saisir le texte |
+| Écrire une fiche sur la page | outil Fiche : glisser la zone, puis saisir le texte |
 | Insérer une équation | outil Équation : clic sur la page, formule dans le panneau, bouton Insérer dans la page |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette, boutons + / −, ou touches + - 0 |

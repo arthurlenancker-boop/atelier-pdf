@@ -1,0 +1,29 @@
+# CI d'Atelier PDF : le moteur doit rester vert sous Node sur Windows,
+# la plateforme de livraison, avant toute fusion.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # npm install (et non npm ci) : le package-lock généré hors Windows
+      # omet des paquets optionnels win32 — leçon du lanceur (PR #9).
+      - name: Installation des dépendances
+        run: npm install --no-audit --no-fund
+
+      - name: Tests du moteur (node --test)
+        run: npm test
+
+      - name: Contrôle des licences des dépendances
+        run: node scripts/check-licenses.js
