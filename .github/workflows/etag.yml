@@ -1,0 +1,90 @@
+# Livraison automatique de v0.1.0 : ce fichier, poussé sur main, déclenche la
+# pose de l'étiquette v0.1.0 puis la construction et la publication de la
+# Release en une seule exécution. Nécessaire car ni le connecteur GitHub ni
+# l'application mobile ne savent créer une étiquette, et l'ordinateur
+# d'Arthur n'a pas npm : les étiquettes posées par GITHUB_TOKEN ne
+# déclenchent pas les flux, d'où un flux unique autonome.
+# Pour les versions suivantes : créer l'étiquette vX.Y.Z sur le site GitHub,
+# le flux release.yml s'occupe alors de tout.
+name: Livraison v0.1.0
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/etag.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installation des dépendances
+        run: npm install --no-audit --no-fund
+
+      - name: Tests du moteur avant construction
+        run: npm test
+
+      - name: Construction de l'installateur et du portable
+        run: npx electron-builder --win nsis portable --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Vérification de latest.yml (mise à jour automatique)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/latest.yml")) {
+            Write-Error "latest.yml absent : electron-builder n'a pas pu générer la configuration de mise à jour."
+            exit 1
+          }
+          Get-Content dist/latest.yml
+
+      # La page Release GitHub remplace les espaces par des points dans les
+      # noms de fichiers : on aligne latest.yml sur ces noms rebelles.
+      - name: Alignement des noms de latest.yml et des artefacts
+        shell: pwsh
+        run: |
+          $yaml = Get-Content dist/latest.yml -Raw
+          $fichiers = Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe','.yml' }
+          foreach ($f in $fichiers) {
+            $cible = $f.Name -replace ' ', '.'
+            if ($cible -ne $f.Name) {
+              Rename-Item $f.FullName $cible
+            }
+          }
+          foreach ($f in (Get-ChildItem dist -Filter *.exe)) {
+            $yaml = $yaml -replace [regex]::Escape($f.Name), ($f.Name -replace ' ', '.')
+          }
+          Set-Content dist/latest.yml $yaml
+          Get-ChildItem dist -File
+
+      - name: Pose de l'étiquette v0.1.0 sur le sommet de main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/v0.1.0" >/dev/null 2>&1; then
+            echo "Étiquette v0.1.0 déjà posée : on publie la version existante."
+          else
+            git tag -a v0.1.0 -m "Atelier PDF 0.1.0 : moteur d'annotations et d'équations LaTeX"
+            git push origin v0.1.0
+          fi
+
+      - name: Publication de la Release GitHub v0.1.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/*.exe
+            dist/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -66,7 +66,9 @@ jobs:
       - name: Publication de la Release GitHub
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          # Publication directe : Arthur n'a pas d'action manuelle à mener,
+          # et electron-updater n'installe que les versions publiées.
+          draft: false
           generate_release_notes: true
           files: |
             dist/*.exe
