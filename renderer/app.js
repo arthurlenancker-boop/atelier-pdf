@@ -265,7 +265,15 @@ async function ouvrirDocument(chemin) {
   els.panneauPages.hidden = false;
   $('#btn-pages').classList.add('actif');
   construireVignettes();
-  message(`Document ouvert : ${rep.resume.pageCount} page(s).`, 'reussite');
+  // v0.1.16 (leçon de la capture d'Arthur) : le message d'ouverture
+  // écrasait aussitôt un éventuel échec de rendu de la page, qui
+  // restait invisible pour l'utilisateur alors que tout semblait aller.
+  if (erreurRendu) {
+    message(`Document ouvert, mais l'affichage de la page a échoué : ${erreurRendu}. `
+      + 'Menu Aide → Diagnostics de l’application.', 'erreur');
+  } else {
+    message(`Document ouvert : ${rep.resume.pageCount} page(s).`, 'reussite');
+  }
 }
 
 /* ============================================================

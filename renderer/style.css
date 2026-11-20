@@ -163,8 +163,14 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
 }
 
 /* ————— Corps : visionneuse + panneau ————— */
-.corps { display: grid; grid-template-columns: 1fr auto; min-height: 0; }
-.zone { position: relative; min-width: 0; }
+/* v0.1.16 : la rangée était une GRILLE figée à deux pistes (vue + panneau
+   Équation). La colonne de vignettes de la v0.1.15, posée en premier
+   enfant, y prenait la piste souple et repliait la vue de document dans
+   la piste « auto » : largeur zéro, page invisible (capture d'Arthur).
+   Désormais la rangée est une boîte souple : tout panneau présent garde
+   sa largeur, et la vue de document prend TOUT le reste. */
+.corps { display: flex; flex-direction: row; min-height: 0; }
+.zone { position: relative; flex: 1 1 auto; min-width: 0; }
 
 /* Écran d'accueil : grande carte de verre au centre. */
 .accueil {
@@ -301,6 +307,7 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
 
 /* ————— Panneau Équation : colonne de verre ————— */
 .panneau-equation {
+  flex: 0 0 auto;
   width: 336px;
   overflow-y: auto;
   padding: 14px 16px 20px;
@@ -599,3 +606,11 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
 }
 .vignette:hover { border-color: rgba(76, 111, 255, 0.5); }
 .vignette.actif { border-color: #4C6FFF; }
+
+/* v0.1.16 : le bouton Pages en position active (colonne de vignettes
+   visible), meme style actif que les boutons d'outil. */
+.btn.actif {
+  background: var(--accent-doux);
+  border-color: rgba(76, 111, 255, 0.5);
+  color: var(--ink);
+}
