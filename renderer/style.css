@@ -208,6 +208,15 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
 .calque-annots { z-index: 2; }
 .calque-tampon { z-index: 3; }
 
+/* v0.1.6 : zoom fluide — pendant le geste Ctrl+molette (ou les boutons),
+   la page est mise à l'échelle par transformation CSS (pivot au pointeur)
+   et un seul rendu net a lieu après le dernier cran. */
+.conteneur-page.zoom-fluide {
+  transition: transform 90ms var(--pause);
+  will-change: transform;
+}
+.conteneur-page.zoom-fluide .calque-tampon { pointer-events: none; }
+
 /* Curseurs selon l'outil */
 .corps[data-curseur="texte"] .calque-tampon { cursor: text; }
 .corps[data-curseur="crayon"] .calque-tampon { cursor: crosshair; }

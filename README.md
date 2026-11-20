@@ -47,12 +47,12 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Surligner | outil Surligner : glisser sur une ligne de texte |
 | Encadrer | outil Encadrer : glisser un rectangle |
 | Écrire à main levée | outil Encre : tracer |
-| Poser une note post-it | outil Note : clic, puis saisir le texte (le texte apparaît au survol dans Adobe Acrobat) |
+| Poser une note post-it | outil Note : clic, puis saisir le texte — le texte s'affiche à côté de l'icône dans l'application et reste au survol dans Adobe Acrobat |
 | Écrire une fiche sur la page | outil Fiche : glisser la zone, puis saisir le texte |
 | Insérer une équation | outil Équation : clic sur la page, formule dans le panneau, bouton Insérer dans la page |
 | Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : cases en clair, bande Insérer, aperçu en direct, bouton Écrire |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
-| Zoom | Ctrl+molette, boutons + / −, ou touches + - 0 |
+| Zoom | Ctrl+molette : zoom fluide centré sur le pointeur, ou touches + - 0 et boutons + / − / 1:1 ; le défilement garde le point visé sous le curseur |
 | Changer de page | PgSuiv / PgPréc, touches Début / Fin, boutons ‹ › |
 | Sélectionner une annotation | outil Sélection : clic sur l'annotation (liseret bleu) |
 | Supprimer l'annotation sélectionnée | touche Suppr |

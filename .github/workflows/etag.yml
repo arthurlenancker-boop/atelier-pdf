@@ -5,9 +5,13 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.5 : fenêtres guidées « à la Dmaths » (quotient,
-# racine, limite, intégrale/somme/produit, vecteur, angle de vecteurs,
-# mesure, système d'équations) — saisie en clair, sans LaTeX.
+# Declencheur de la v0.1.6 : zoom fluide (transformation CSS pendant le
+# geste, pivot au pointeur, un seul rendu net — plus de rendus pdf.js
+# concurrents, cause de la page vide et des annotations disparues),
+# texte des commentaires affiché dans l'application, et garde-fou
+# nouveau : syntaxe du code empaqueté vérifiée (asar extrait + node
+# --check, portable comparé à l'installateur octet par octet) après
+# l'erreur au démarrage du portable v0.1.5.
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison
@@ -87,6 +91,61 @@ jobs:
             }
             Write-Host "OK : $f"
           }
+
+      # v0.1.6 : garde-fou renforcé après l'erreur au démarrage du PORTABLE
+      # v0.1.5 chez Arthur (« SyntaxError: Invalid or unexpected token »
+      # dans un .js du paquet). On ne publie plus un exécutable non
+      # vérifié : l'archive app.asar est extraite, la syntaxe de CHACUN de
+      # nos fichiers JavaScript est contrôlée (CommonJS ou module selon le
+      # fichier), et la charge du portable est comparée octet par octet à
+      # celle de l'installateur. Les versions des dépendances sont
+      # journalisées pour dépister une dérive entre deux constructions.
+      - name: Verification du code empaquete (asar + portable)
+        if: steps.version.outputs.existe == 'false'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          Write-Host "=== Dependances retenues pour ce build ==="
+          npm ls --depth=0
+          if ($LASTEXITCODE -ne 0) { Write-Error "Arbre de dependances incomplet."; exit 1 }
+          Write-Host "=== Extraction de app.asar ==="
+          npx --yes @electron/asar extract dist/win-unpacked/resources/app.asar app-extrait
+          if ($LASTEXITCODE -ne 0) { Write-Error "app.asar illisible."; exit 1 }
+          $cjs = @(
+            "main.js", "preload.js",
+            "engine/annotcore.js", "engine/annots.js", "engine/coords.js",
+            "engine/equation.js", "engine/guides.js", "engine/mjrender.js",
+            "engine/pdfio.js", "engine/reread.js", "engine/session.js"
+          )
+          foreach ($f in $cjs) {
+            if (-not (Test-Path "app-extrait/$f")) { Write-Error "Absent du paquet : $f"; exit 1 }
+            node --check "app-extrait/$f"
+            if ($LASTEXITCODE -ne 0) { Write-Error "Syntaxe invalide dans $f"; exit 1 }
+            Write-Host "OK (CommonJS) : $f"
+          }
+          # Le rendu est un module ES : node --check exige .mjs.
+          Copy-Item app-extrait/renderer/app.js app-extrait/renderer/app.mjs -Force
+          node --check app-extrait/renderer/app.mjs
+          if ($LASTEXITCODE -ne 0) { Write-Error "Syntaxe invalide dans renderer/app.js"; exit 1 }
+          Write-Host "OK (module ES) : renderer/app.js"
+          Remove-Item app-extrait/renderer/app.mjs
+          foreach ($f in @("renderer/index.html", "renderer/style.css")) {
+            if (-not (Test-Path "app-extrait/$f")) { Write-Error "Absent du paquet : $f"; exit 1 }
+            Write-Host "OK : $f"
+          }
+          Write-Host "=== Contenu du portable ==="
+          7z x "dist/atelier-pdf-portable-$env:VERSION.exe" -oportable-extrait -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { Write-Error "Portable illisible."; exit 1 }
+          $shaInstallateur = (Get-FileHash dist/win-unpacked/resources/app.asar -Algorithm SHA512).Hash
+          $asarPortable = Get-ChildItem portable-extrait -Recurse -Filter app.asar | Select-Object -First 1
+          if (-not $asarPortable) { Write-Error "app.asar introuvable dans le portable."; exit 1 }
+          $shaPortable = (Get-FileHash $asarPortable.FullName -Algorithm SHA512).Hash
+          if ($shaInstallateur -ne $shaPortable) {
+            Write-Error "Le paquet portable differe de l'installateur (app.asar)."
+            exit 1
+          }
+          Write-Host "OK : portable et installateur portent le meme app.asar."
 
       # La page Release GitHub remplace les espaces par des points dans les
       # noms de fichiers : on aligne latest.yml sur ces noms rebelles.

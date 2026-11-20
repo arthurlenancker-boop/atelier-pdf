@@ -213,6 +213,7 @@ async function ouvrirDocument(chemin) {
   etat.cacheOps.clear();
   etat.chemin = rep.resume.chemin;
   etat.page = 1;
+  resoudreZoom();
   if (etat.pdfjs) { await etat.pdfjs.destroy(); etat.pdfjs = null; }
   // pdf.js détache le tampon qu'on lui donne : une copie protège l'original.
   etat.pdfjs = await pdfjsLib.getDocument({ data: Uint8Array.from(rep.octets) }).promise;
@@ -223,9 +224,27 @@ async function ouvrirDocument(chemin) {
   message(`Document ouvert : ${rep.resume.pageCount} page(s).`, 'reussite');
 }
 
+/* v0.1.6 : (1) un seul rendu pdf.js à la fois — le RenderTask précédent est
+   annulé avant d'en commencer un autre, sinon pdf.js lève
+   « Cannot use the same canvas during multiple render() operations », la
+   page reste vide et les annotations ne sont plus jamais redessinées
+   (cause de « il n'affiche pas le document » et « les modifications ne
+   s'affichent pas » après un zoom) ; (2) un numéro de génération ignore
+   tout rendu devenu obsolète ; (3) l'échec éventuel est AFFICHÉ (barre
+   d'état + Diagnostics) au lieu de rester une promesse rejetée muette. */
+let tacheRendu = null;    // RenderTask pdf.js en cours (annulable)
+let generationRendu = 0;   // numéro du rendu demandé le plus récent
+let erreurRendu = null;    // dernier échec d'affichage (Diagnostics)
+let renduNetEnCours = false; // v0.1.6 : la page se prépare ; pas de geste
+                            // de zoom pendant ce temps (ancrage faux)
+
 async function rendPage() {
   if (!etat.pdfjs || !etat.resume) return;
+  const ma = generationRendu + 1;
+  generationRendu = ma;
+  renduNetEnCours = true;
   const page = await etat.pdfjs.getPage(etat.page);
+  if (ma !== generationRendu) return; // un rendu plus récent a été demandé
   const viewport = page.getViewport({ scale: etat.zoom });
   const { width, height, rotation } = viewport;
   for (const c of [els.calquePdf, els.calqueAnnots, els.calqueTampon]) {
@@ -237,7 +256,26 @@ async function rendPage() {
   els.conteneur.style.width = `${Math.round(width)}px`;
   els.conteneur.style.height = `${Math.round(height)}px`;
   etat.viewport = { scale: etat.zoom, rotation: rotation % 360, pageW: page.view[2], pageH: page.view[3] };
-  await page.render({ canvasContext: els.calquePdf.getContext('2d'), viewport }).promise;
+  if (tacheRendu) {
+    try { await tacheRendu.cancel(); } catch (e) { /* déjà terminée */ }
+    tacheRendu = null;
+    if (ma !== generationRendu) return;
+  }
+  try {
+    tacheRendu = page.render({ canvasContext: els.calquePdf.getContext('2d'), viewport });
+    await tacheRendu.promise;
+    tacheRendu = null;
+    erreurRendu = null;
+  } catch (err) {
+    tacheRendu = null;
+    renduNetEnCours = false;
+    if (err && (err.name === 'RenderingCancelledException' || /cancel/i.test(String(err && err.message)))) return;
+    erreurRendu = (err && err.message) ? err.message : String(err);
+    message(`Échec de l'affichage de la page : ${erreurRendu}. Menu Aide → Diagnostics de l'application.`, 'erreur');
+    return;
+  }
+  if (ma !== generationRendu) { renduNetEnCours = false; return; }
+  renduNetEnCours = false;
   dessinerAnnots();
   $('#etiquette-page').textContent = `${etat.page} / ${etat.resume.pageCount}`;
   $('#etiquette-zoom').textContent = `${Math.round(etat.zoom * 100)} %`;
@@ -295,6 +333,51 @@ function tracceEquation(ctx, apercu, rect) {
   ctx.restore();
 }
 
+/* v0.1.6 : le TEXTE des commentaires doit être lisible dans l'application,
+   pas seulement au survol dans les autres lecteurs. */
+function enveloppeTexte(ctx, texte, largeur, maxLignes) {
+  const mots = String(texte || '').trim().split(/\s+/);
+  const lignes = [];
+  let courante = '';
+  for (const mot of mots) {
+    if (lignes.length >= maxLignes) break;
+    const essai = courante ? `${courante} ${mot}` : mot;
+    if (ctx.measureText(essai).width > largeur && courante) {
+      lignes.push(courante);
+      courante = mot;
+    } else {
+      courante = essai;
+    }
+  }
+  if (courante && lignes.length < maxLignes) lignes.push(courante);
+  return lignes;
+}
+
+function ecrireCarteCommentaire(ctx, texte, x, y, zoom) {
+  if (!texte) return;
+  const interligne = 15 * zoom;
+  const largeurCarte = 210 * zoom;
+  const lignes = enveloppeTexte(ctx, texte, largeurCarte - 12 * zoom, 14);
+  if (lignes.length === 0) return;
+  const hCarte = lignes.length * interligne + 8 * zoom;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 246, 220, 0.96)';
+  ctx.strokeStyle = 'rgba(160, 118, 20, 0.9)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, largeurCarte, hCarte, 6 * zoom);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#3E2E05';
+  ctx.textBaseline = 'top';
+  lignes.forEach((ligne, i) => {
+    const derniere = i === 13 && lignes.length > 14;
+    const affichee = derniere ? `${String(ligne).slice(0, 10)}…` : String(ligne);
+    ctx.fillText(affichee, x + 6 * zoom, y + 4 * zoom + i * interligne);
+  });
+  ctx.restore();
+}
+
 async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
@@ -319,9 +402,16 @@ async function dessinerAnnots() {
         if (enCache) {
           tracceEquation(ctx, enCache, a.rect);
         } else {
+          // v0.1.6 : après réouverture, tant que pdf.js expose le dessin
+          // de l'apparence, montrer au moins la source lisible de la formule.
           ctx.setLineDash([3, 3]);
           ctx.strokeStyle = 'rgba(167, 175, 192, 0.35)';
           ctx.strokeRect(x, y, w, h);
+          const latex = String(a.contents || '').replace(/^Équation LaTeX\s*:\s*/, '');
+          if (latex) {
+            ctx.font = `${11 * etat.zoom}px sans-serif`;
+            ecrireCarteCommentaire(ctx, latex, x + w + 8 * etat.zoom, y, etat.zoom);
+          }
         }
       } else {
         ctx.strokeStyle = '#c0392b';
@@ -337,12 +427,25 @@ async function dessinerAnnots() {
       ctx.fillRect(x, y, Math.max(w, 14), Math.max(h, 14));
       ctx.strokeStyle = '#8a6a10';
       ctx.strokeRect(x, y, Math.max(w, 14), Math.max(h, 14));
+      // v0.1.6 : le texte du commentaire est affiché à côté de l'icône.
+      if (a.contents) {
+        ctx.font = `${11 * etat.zoom}px sans-serif`;
+        ecrireCarteCommentaire(ctx, a.contents, x + Math.max(w, 14) + 8 * etat.zoom, y, etat.zoom);
+      }
     } else if (a.subtype === 'FreeText') {
       ctx.fillStyle = 'rgba(37, 51, 125, 0.85)';
       ctx.fillRect(x, y, w, h);
       ctx.fillStyle = '#fff';
       ctx.font = `${11 * etat.zoom}px sans-serif`;
-      ctx.fillText(String(a.contents || '').slice(0, 40), x + 3, y + 14 * etat.zoom);
+      ctx.textBaseline = 'top';
+      // v0.1.6 : texte intégral avec retour à la ligne dans la zone (les
+      // 40 premiers caractères suffisaient rarement).
+      const lignes = enveloppeTexte(ctx, a.contents, Math.max(w - 6 * etat.zoom, 10), 30);
+      lignes.forEach((ligne, i) => {
+        if (i * 13 * etat.zoom < h) {
+          ctx.fillText(String(ligne), x + 3 * etat.zoom, y + 2 * etat.zoom + i * 13 * etat.zoom);
+        }
+      });
     }
     // Annotation sans /AP (autrui) : rectangle pointillé gris, lecture seule.
     if (a.hasAP === false) {
@@ -382,6 +485,9 @@ function ecouterSouris() {
   let geste = null; // { outil, depart, point, points[] }
 
   els.calqueTampon.addEventListener('pointerdown', (ev) => {
+    // v0.1.6 : pendant le zoom fluide, la page est transformée en CSS :
+    // ses coordonnées ne correspondraient pas au calque rendu.
+    if (gesteZoomActif()) return;
     ev.preventDefault();
     els.calqueTampon.setPointerCapture(ev.pointerId);
     const point = pointPdf(ev);
@@ -1026,37 +1132,118 @@ document.querySelectorAll('.outil').forEach((b) => {
   b.addEventListener('click', () => choisirOutil(b.dataset.outil));
 });
 
-function fixerZoom(z) {
-  etat.zoom = Math.min(4, Math.max(0.25, z));
-  rendPage();
+/* ————— Zoom fluide (v0.1.6) —————
+   Avant : chaque cran de molette relançait un rendu pdf.js complet, d'où
+   des saccades puis un écran vide (rendus concurrents). Désormais :
+   - pendant le geste, la page est mise à l'échelle par une transformation
+     CSS dont le pivot est LE POINTEUR (le point sous la souris ne bouge
+     pas, comme dans les visionneuses habituelles) ;
+   - un SEUL rendu net a lieu, 180 ms après le dernier cran ;
+   - à l'arrivée, le défilement est réajusté pour garder le point
+     désigné sous le curseur. */
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 4;
+let zoomDepart = null;      // zoom du rendu affiché au début du geste
+let zoomCible = null;       // zoom demandé par le geste en cours
+let ancrageGeste = null;    // { px, py } point du conteneur sous le curseur
+let curseurGeste = null;    // { x, y } position écran du dernier cran
+let zoomMinuteur = null;    // reports du rendu net
+
+function gesteZoomActif() {
+  return zoomDepart !== null;
 }
 
-$('#btn-zoom-plus').addEventListener('click', () => fixerZoom(etat.zoom * 1.25));
-$('#btn-zoom-moins').addEventListener('click', () => fixerZoom(etat.zoom / 1.25));
-$('#btn-zoom-net').addEventListener('click', () => fixerZoom(1));
+function zoomer(facteur, clientX, clientY) {
+  if (!etat.resume) return;
+  if (renduNetEnCours) return; // le rendu net arrive ; ancrage impossible
+  if (zoomDepart === null) {
+    const rect = els.conteneur.getBoundingClientRect();
+    zoomDepart = etat.zoom;
+    ancrageGeste = { px: clientX - rect.left, py: clientY - rect.top };
+    els.conteneur.classList.add('zoom-fluide');
+  }
+  curseurGeste = { x: clientX, y: clientY };
+  zoomCible = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (zoomCible ?? zoomDepart) * facteur));
+  els.conteneur.style.transformOrigin = `${Math.round(ancrageGeste.px)}px ${Math.round(ancrageGeste.py)}px`;
+  els.conteneur.style.transform = `scale(${zoomCible / zoomDepart})`;
+  $('#etiquette-zoom').textContent = `${Math.round(zoomCible * 100)} %`;
+  if (zoomCible === zoomDepart) {
+    // Retour au zoom du rendu actuel : ne rien recalculer, juste démêler.
+    finirZoom();
+    return;
+  }
+  if (zoomMinuteur) clearTimeout(zoomMinuteur);
+  zoomMinuteur = setTimeout(finirZoom, 180);
+}
+
+async function finirZoom() {
+  if (zoomMinuteur) { clearTimeout(zoomMinuteur); zoomMinuteur = null; }
+  if (zoomDepart === null) return;
+  const k = (zoomCible ?? zoomDepart) / zoomDepart; // facteur total du geste
+  const memoAncrage = ancrageGeste;
+  const memoCurseur = curseurGeste;
+  etat.zoom = zoomCible ?? zoomDepart;
+  zoomDepart = zoomCible = ancrageGeste = curseurGeste = null;
+  await rendPage();
+  els.conteneur.classList.remove('zoom-fluide');
+  els.conteneur.style.transform = '';
+  els.conteneur.style.transformOrigin = '';
+  if (memoAncrage && memoCurseur && k !== 1) {
+    // Garder le point désigné sous le curseur une fois le rendu net posé.
+    const rect = els.conteneur.getBoundingClientRect();
+    els.visionneuse.scrollLeft += Math.round((rect.left + memoAncrage.px * k) - memoCurseur.x);
+    els.visionneuse.scrollTop += Math.round((rect.top + memoAncrage.py * k) - memoCurseur.y);
+  }
+}
+
+function resoudreZoom() {
+  // Applique aussitôt le zoom demandé, sans re-rendre : avant un changement
+  // de page ou l'ouverture d'un autre document (le rendu suit de toute façon).
+  if (zoomMinuteur) { clearTimeout(zoomMinuteur); zoomMinuteur = null; }
+  if (zoomDepart !== null) {
+    etat.zoom = zoomCible ?? zoomDepart;
+    zoomDepart = zoomCible = ancrageGeste = curseurGeste = null;
+    els.conteneur.classList.remove('zoom-fluide');
+    els.conteneur.style.transform = '';
+    els.conteneur.style.transformOrigin = '';
+    $('#etiquette-zoom').textContent = `${Math.round(etat.zoom * 100)} %`;
+  }
+}
+
+function zoomVersCentre(facteur) {
+  const r = els.visionneuse.getBoundingClientRect();
+  zoomer(facteur, r.left + r.width / 2, r.top + r.height / 2);
+}
+
+$('#btn-zoom-plus').addEventListener('click', () => zoomVersCentre(1.25));
+$('#btn-zoom-moins').addEventListener('click', () => zoomVersCentre(1 / 1.25));
+$('#btn-zoom-net').addEventListener('click', () => {
+  zoomVersCentre(1 / (zoomCible ?? etat.zoom));
+});
 $('#btn-page-avant').addEventListener('click', () => changerPage(etat.page - 1));
 $('#btn-page-apres').addEventListener('click', () => changerPage(etat.page + 1));
 
 async function changerPage(n) {
   if (!etat.resume) return;
+  resoudreZoom();
   const cible = Math.min(etat.resume.pageCount, Math.max(1, n));
   if (cible === etat.page) return;
   etat.page = cible;
   await rendPage();
 }
 
+/* Ctrl + molette : zoom fluide sur le point sous le curseur. */
 els.visionneuse.addEventListener('wheel', (ev) => {
-  if (ev.ctrlKey) {
-    ev.preventDefault();
-    fixerZoom(etat.zoom * (ev.deltaY < 0 ? 1.12 : 0.9));
-  }
-});
+  if (!ev.ctrlKey) return;
+  ev.preventDefault();
+  zoomer(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY);
+}, { passive: false });
 
 window.addEventListener('keydown', (ev) => {
   if (ev.target.tagName === 'TEXTAREA' || ev.target.tagName === 'INPUT') return;
-  if (ev.key === '+' || ev.key === '=') fixerZoom(etat.zoom * 1.25);
-  else if (ev.key === '-') fixerZoom(etat.zoom / 1.25);
-  else if (ev.key === '0') fixerZoom(1);
+  if (ev.key === '+' || ev.key === '=') zoomVersCentre(1.25);
+  else if (ev.key === '-') zoomVersCentre(1 / 1.25);
+  else if (ev.key === '0') zoomVersCentre(1 / (zoomCible ?? etat.zoom));
   else if (ev.key === 'Home') changerPage(1);
   else if (ev.key === 'End') { if (etat.resume) changerPage(etat.resume.pageCount); }
   else if (ev.key === 'PageUp') changerPage(etat.page - 1);
@@ -1112,6 +1299,8 @@ globalThis.__atelierDiagnostics = () => [
     : 'Emplacement du worker : indisponible (moteur non chargé)',
   `Fichier ouvert : ${etat.chemin || 'aucun'}`,
   `Page affichée : ${etat.resume ? `${etat.page} / ${etat.resume.pageCount}` : '–'}`,
+  `Zoom : ${Math.round(etat.zoom * 100)} % (rendu en cours : ${gesteZoomActif() ? 'transformation CSS en attendant le rendu net' : 'posé'})`,
+  `Dernier échec d'affichage : ${erreurRendu || 'aucun'}`,
   `Annotations connues : ${etat.resume ? etat.resume.annots.length : 0}`,
 ].join('\n');
 
