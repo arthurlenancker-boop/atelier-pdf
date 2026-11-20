@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.13 (relance 1, assertion du journal du rejeu corrigée) : confort d'usage — outil Main (defilement direct), selection de texte reelle (calque pdf.js, surlignage exact par lignes + Copier), annulation et retablissement geste par geste (rejeu deterministe depuis les octets d'origine).
+# Declencheur de la v0.1.14 : barre simplifiee a huit outils d'une fonction claire chacun ; la machine a ecrire demandee par Arthur fusionne les anciens outils Note et Fiche (clic = texte nu a l'endroit exact, glissement = zone a la mesure, formules conservees), info-bulles reecrites d'une ligne.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;

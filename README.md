@@ -10,10 +10,10 @@ Deux sortes d'équations : un mode Professionnel (saisie LaTeX directe) et un mo
 Fonctionnalités de la phase 1 :
 
 - Ouvrir tout PDF (bouton, menu Fichier ou glisser-déposer sur la fenêtre).
-- Cinq annotations standard : surlignage translucide (opacité 0,35), encadré rouge, encre à main levée, note post-it (icône Comment, texte au survol dans Adobe) et fiche de texte sur la page, y compris sur les pages tournées (/Rotate 90/180/270).
+- Cinq annotations standard : surlignage translucide (opacité 0,35), encadré rouge, encre à main levée et écriture sur la page (machine à écrire : texte nu au clic exact ou zone tracée au glissement, formules mêlées au texte), y compris sur les pages tournées (/Rotate 90/180/270) ; depuis la v0.1.14, la barre compte huit outils d'une fonction claire chacun.
 - Équations LaTeX rendues en vecteurs PDF par MathJax, insérées en un clic, déplacées d'un glissement, supprimées d'une pression de Suppr.
 - Sélection d'une annotation sur la page (liseret) et suppression.
-- Confort à la PDF-XChange (v0.1.13) : outil Main pour faire défiler la page à la main, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste, raccourcis affichés au menu sans capter la saisie des champs.
+- Confort à la PDF-XChange : barre à huit outils d'une fonction claire chacun, dont la machine à écrire (v0.1.14) ; outil Main pour faire défiler la page, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste (v0.1.13) outil Main pour faire défiler la page à la main, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste, raccourcis affichés au menu sans capter la saisie des champs.
 - Enregistrement : réécriture complète du fichier (bouton Enregistrer) ou copie horodatée à côté de l'original (nom-AAAA-MM-JJ-HHmmss.pdf) ; jamais d'écrasement silencieux du fichier source en dehors de l'action explicite.
 - Lectures des annotations d'autres logiciels (sans apparence /AP) en lecture seul : affichées mais non éditables.
 - Mise à jour automatique silencieuse (releases GitHub, via electron-updater).
@@ -51,11 +51,9 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Surligner | outil Surligner : glisser sur une ligne de texte |
 | Encadrer | outil Encadrer : glisser un rectangle |
 | Écrire à main levée | outil Encre : tracer |
-| Poser une note post-it | outil Note : clic exactement où écrire, saisir le texte dans la petite zone posée sur la page (Ctrl+Entrée pour poser) ; depuis la v0.1.12 le texte s'écrit nu sur la page, sans icône, là où vous avez cliqué |
-| Écrire une fiche sur la page | outil Fiche : clic (fiche standard posée à l'endroit cliqué, v0.1.12) ou glisser la zone, puis écrire directement dans la zone posée sur la page |
-| Mêler des formules au texte d'une fiche | dans la fiche : bouton « ƒ Insérer une formule » ou Ctrl+M, la formule (panneau Équation ou fenêtre guidée) se glisse à la position du curseur, aperçu rendu en direct sous la saisie ; Ctrl+Entrée pose le texte et les formules ensemble (v0.1.11) |
-| Corriger une fiche à formules | double-clic dessus (outil Sélection ou Équation), tout rouvre : texte et formules |
-| Modifier une note ou une fiche | double-clic dessus (outil Sélection ou Équation), corriger, Ctrl+Entrée |
+| Écrire sur la page | outil Écrire (machine à écrire) : un simple clic écrit le texte nu exactement là où vous avez cliqué ; un glissement trace d'abord la zone à votre mesure ; Ctrl+Entrée pose (v0.1.14, fusion des anciens outils Note et Fiche) |
+| Mêler des formules au texte écrit | dans la zone tracée à l'outil Écrire : bouton « ƒ Insérer une formule » ou Ctrl+M, la formule se glisse à la position du curseur, aperçu rendu en direct sous la saisie ; Ctrl+Entrée pose le texte et les formules ensemble (v0.1.11) |
+| Corriger un texte ou une zone posés | double-clic dessus (outil Sélection ou Équation) : tout rouvre, texte comme formules (v0.1.14) |
 | Insérer une équation | outil Équation : clic sur la page (la formule pose sa ligne de base à cet endroit), formule dans le panneau, bouton Insérer dans la page |
 | Voir les équations posées | affichées à l'écran, calées exactement sur leur rectangle enregistré (depuis la v0.1.10, tracées par l'application depuis le LaTeX embarqué, identiques aux autres lecteurs) |
 | Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : 16 fenêtres (dont dérivée, primitive, binôme, matrice, intervalle, ensemble, nombre complexe, pourcentage), cases en clair, bande Insérer, bouton Écrire (pas de zone d'aperçu) |

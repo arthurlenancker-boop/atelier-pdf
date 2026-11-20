@@ -1123,12 +1123,10 @@ function ecouterSouris() {
       }
       return;
     }
-    if (etat.outil === 'surligner' || etat.outil === 'encadrer' || etat.outil === 'fiche') {
+    if (etat.outil === 'surligner' || etat.outil === 'encadrer' || etat.outil === 'ecrire') {
       geste = { outil: etat.outil, depart: point };
     } else if (etat.outil === 'encre') {
       geste = { outil: 'encre', points: [point] };
-    } else if (etat.outil === 'note') {
-      ouvrirEditeur('note', point);
     } else if (etat.outil === 'equation') {
       // v0.1.11 : cliquer une FICHE MIXTE l'ouvre pour correction ; la
       // v0.1.7 : cliquer une équation EXISTANTE l'ouvre pour correction.
@@ -1280,15 +1278,22 @@ function ecouterSouris() {
         } else if (geste.outil === 'encadrer') {
           await appliquer({ kind: 'square', pageIndex, args: { rect } });
           message('Encadré posé.', 'reussite');
-        } else if (geste.outil === 'fiche') {
-          ouvrirEditeur('fiche', rect.slice());
+        } else if (geste.outil === 'ecrire') {
+          // v0.1.14 : machine à écrire. Un VRAI glissement (plus de 5 pt
+          // en largeur et en hauteur) trace une zone ; un micro-glissement
+          // de clic tremblé reste un clic, texte nu à l'endroit cliqué.
+          const dx = Math.abs(geste.point.x - geste.depart.x);
+          const dy = Math.abs(geste.point.y - geste.depart.y);
+          if (dx > 5 && dy > 5) {
+            ouvrirEditeur('fiche', rect.slice());
+          } else {
+            ouvrirEditeur('note', geste.depart);
+          }
         }
-      } else if (geste.outil === 'fiche') {
-        // v0.1.12 : un SIMPLE CLIC à l'outil Fiche pose une fiche standard
-        // (260 × 60 pt) dont le coin supérieur gauche est le point cliqué ;
-        // le glisser-déposer garde son rôle : dessiner sa propre zone.
-        const A = geste.depart;
-        ouvrirEditeur('fiche', [A.x, A.y - 60, A.x + 260, A.y]);
+      } else if (geste.outil === 'ecrire') {
+        // v0.1.14 : un SIMPLE CLIC à la machine à écrire ouvre la saisie
+        // du texte nu, exactement à l'endroit cliqué (ancien outil Note).
+        ouvrirEditeur('note', geste.depart);
       }
     } finally {
       geste = null;
@@ -2129,7 +2134,7 @@ function choisirOutil(outil) {
   });
   const corps = document.body;
   const curseur = outil === 'encre' ? 'crayon'
-    : (outil === 'surligner' || outil === 'encadrer' || outil === 'fiche') ? 'texte'
+    : (outil === 'surligner' || outil === 'encadrer' || outil === 'ecrire') ? 'texte'
       : outil === 'equation' ? 'viseur'
         : outil === 'main' ? 'main'
           : outil === 'texte' ? 'texte'
@@ -2148,8 +2153,7 @@ function choisirOutil(outil) {
     surligner: 'Glissez sur une ligne de texte.',
     encadrer: 'Glissez pour tracer un cadre.',
     encre: 'Tracez à main levée.',
-    note: 'Cliquez exactement où écrire la note sur la page.',
-    fiche: 'Cliquez pour poser une fiche, ou glissez pour dessiner sa zone, puis écrivez.',
+    ecrire: 'Machine à écrire : cliquez pour écrire à cet endroit, ou glissez pour tracer une zone ; Ctrl+Entrée pose.',
     equation: 'Cliquez le point d\'insertion sur la page.',
   };
   message(notes[outil] || 'Prêt.');

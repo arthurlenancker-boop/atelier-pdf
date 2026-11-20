@@ -36,31 +36,31 @@
 
   <!-- Barre d'outils : Main, les cinq annotations + l'équation -->
   <nav class="outils">
-    <button data-outil="main" class="outil" title="Main : faire glisser la page">
+    <button data-outil="main" class="outil" title="Main : faire défiler la page à la main">
       <span class="icone">✋</span><span class="etiquette">Main</span>
     </button>
-    <button data-outil="aucun" class="outil actif" title="Déplacement et sélection (Suppr pour supprimer)">
+    <button data-outil="aucun" class="outil actif" title="Sélection : attraper, déplacer ou redimensionner une annotation posée (Suppr pour retirer)">
       <span class="icone">✥</span><span class="etiquette">Sélection</span>
     </button>
-    <button data-outil="texte" class="outil" title="Sélectionner le texte : glisser sur le texte, puis Surligner ou Copier">
+    <button data-outil="texte" class="outil" title="Texte : sélectionner le vrai texte du document, pour le surligner ou le copier">
       <span class="icone">I</span><span class="etiquette">Texte</span>
     </button>
-    <button data-outil="surligner" class="outil" title="Surligner : glisser sur le texte">
+    <button data-outil="surligner" class="outil" title="Surligner : tracer un rectangle de surlignage (pages scannées sans texte)">
       <span class="icone">HB</span><span class="etiquette">Surligner</span>
     </button>
-    <button data-outil="encadrer" class="outil" title="Encadrer : glisser un rectangle">
+    <button data-outil="encadrer" class="outil" title="Encadrer : tracer un cadre">
       <span class="icone">▢</span><span class="etiquette">Encadrer</span>
     </button>
-    <button data-outil="encre" class="outil" title="Encre : tracer à main levée">
+    <button data-outil="encre" class="outil" title="Encre : écrire à main levée">
       <span class="icone">✎</span><span class="etiquette">Encre</span>
     </button>
-    <button data-outil="note" class="outil" title="Note : double-clic pour écrire une note">
-      <span class="icone">✐</span><span class="etiquette">Note</span>
+    <!-- v0.1.14 : la machine à écrire demande par Arthur, fusion des anciens
+         outils Note et Fiche : un clic ecrit a cet endroit, un glissement
+         trace une zone a la mesure ; les formules s'y insèrent -->
+    <button data-outil="ecrire" class="outil" title="Écrire (machine à écrire) : cliquer pour écrire à cet endroit, ou glisser pour tracer la zone ; les formules s'y insèrent">
+      <span class="icone">⌨</span><span class="etiquette">Écrire</span>
     </button>
-    <button data-outil="fiche" class="outil" title="Fiche : glisser une zone, puis écrire">
-      <span class="icone">T</span><span class="etiquette">Fiche</span>
-    </button>
-    <button data-outil="equation" class="outil" title="Équation : clic sur la page, puis Insérer dans le ruban">
+    <button data-outil="equation" class="outil" title="Équation : cliquer le point d'insertion, composer la formule, puis Insérer dans la page">
       <span class="icone">∑</span><span class="etiquette">Équation</span>
     </button>
   </nav>
