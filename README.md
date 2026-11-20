@@ -49,11 +49,13 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Écrire à main levée | outil Encre : tracer |
 | Poser une note post-it | outil Note : clic, puis saisir le texte dans la petite zone posée sur la page (Ctrl+Entrée pour poser) ; le texte s'affiche à côté de l'icône |
 | Écrire une fiche sur la page | outil Fiche : glisser la zone, puis écrire directement dans la zone posée sur la page |
+| Mêler des formules au texte d'une fiche | dans la fiche : bouton « ƒ Insérer une formule » ou Ctrl+M, la formule (panneau Équation ou fenêtre guidée) se glisse à la position du curseur, aperçu rendu en direct sous la saisie ; Ctrl+Entrée pose le texte et les formules ensemble (v0.1.11) |
+| Corriger une fiche à formules | double-clic dessus (outil Sélection ou Équation), tout rouvre : texte et formules |
 | Modifier une note ou une fiche | double-clic dessus (outil Sélection ou Équation), corriger, Ctrl+Entrée |
 | Insérer une équation | outil Équation : clic sur la page (la formule pose sa ligne de base à cet endroit), formule dans le panneau, bouton Insérer dans la page |
 | Voir les équations posées | affichées à l'écran, calées exactement sur leur rectangle enregistré (depuis la v0.1.10, tracées par l'application depuis le LaTeX embarqué, identiques aux autres lecteurs) |
 | Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : 16 fenêtres (dont dérivée, primitive, binôme, matrice, intervalle, ensemble, nombre complexe, pourcentage), cases en clair, bande Insérer, bouton Écrire (pas de zone d'aperçu) |
-| Corriger une équation posée | clic sur l'équation (outil Équation) ou double-clic (outil Sélection), corriger, bouton Remplacer la formule |
+| Corriger une équation posée | clic sur l'équation (outil Équation) ou double-clic (outil Sélection), corriger, bouton Remplacer la formule ; fenêtres guidées et préréglages s'insèrent au curseur dans le champ (v0.1.11) |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette : zoom fluide centré sur le pointeur, ou touches + - 0 et boutons + / − / 1:1 ; le défilement garde le point visé sous le curseur |
 | Changer de page | PgSuiv / PgPréc, touches Début / Fin, boutons ‹ › |

@@ -4,8 +4,9 @@
 'use strict';
 
 import '../engine/coords.js'; // expose globalThis.AtelierCoords
-import '../engine/guides.js';
-import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10) // expose globalThis.AtelierGuides (v0.1.5)
+import '../engine/guides.js'; // expose globalThis.AtelierGuides (v0.1.5)
+import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10)
+import '../engine/texte.js'; // expose globalThis.AtelierTexte (v0.1.11)
 
 const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
 
@@ -150,6 +151,9 @@ const etat = {
   eqMode: 'pro',
   eqApercu: null, // dernier aperçu { widthPt, heightPt, depthPt, ops }
   opsEquation: new Map(), // v0.1.10 : ops de tracé par équation « page:objet »
+  opsFiche: new Map(),      // v0.1.11 : ops des formules par fiche mixte « page:objet »
+  apercuEditeur: new Map(), // v0.1.11 : aperçus des formules de la fiche en cours d'édition
+  formuleFiche: false,      // v0.1.11 : le panneau Équation insère dans la fiche ouverte
   eqPoint: null,  // dernier clic Équation : { pageIndex, point }
   eqExPt: 4.5,
   selection: null,
@@ -361,6 +365,20 @@ function cleEquation(a) {
 
 const opsEnVol = new Set(); // clés en cours de calcul, contre les requêtes en double
 
+/* v0.1.11 : la fiche « texte + formules ». Mêmes valeurs numériques que
+   engine/melange.js : l'écran et le fichier doivent composer pareil. */
+const FS_FICHE = 11;            // taille du texte de la fiche
+const MARGE_FICHE = 2;          // marge horizontale
+const MARGE_V_FICHE = 3;        // marge verticale haut/bas
+const INTERBASE_FICHE = 0.45;   // × FS entre deux lignes
+
+const mesureCtx = document.createElement('canvas').getContext('2d');
+/** Largeur approximative d'un texte de fiche, en points (≈ px à la taille du corps). */
+function mesurerFicheTexte(t) {
+  mesureCtx.font = `${FS_FICHE}px sans-serif`;
+  return mesureCtx.measureText(String(t)).width;
+}
+
 async function chargerOpsEquations() {
   if (!etat.resume) return;
   const annots = (etat.resume.annots || []).filter((x) => x.page === etat.page - 1
@@ -429,6 +447,272 @@ function tracceEquation(ctx, apercu, rect) {
   ctx.restore();
 }
 
+/* ============================================================
+   v0.1.11 : la fiche « texte + formules » — affichage et édition.
+   Comme pour les équations (v0.1.10), pdf.js ne dessine PAS
+   l'apparence : NOTRE calque trace texte et formules, calés sur le
+   /Rect enregistré, même rendu que les autres lecteurs. Les ops des
+   formules sont recalculées depuis la source EMBARQUÉE (/Contents).
+   ============================================================ */
+
+/** Trace les opérateurs d'une formule avec la LIGNE DE BASE posée en
+ * (xPx, basePx) à l'échelle k (l'apparence fichier fait pareil :
+ * translation (penX, base − depthPt) puis XObject). */
+function tracerOpsPlacé(ctx, apercu, xPx, basePx, k) {
+  if (!apercu || !apercu.ops) return;
+  const px = (v) => xPx + v * k;
+  const py = (v) => basePx + (apercu.heightPt - v) * k - apercu.depthPt * k;
+  ctx.save();
+  ctx.fillStyle = '#111319';
+  ctx.strokeStyle = '#111319';
+  ctx.lineWidth = Math.max(0.6, 0.9 * k);
+  ctx.setLineDash([]);
+  let p = new Path2D();
+  const mots = String(apercu.ops).split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < mots.length) {
+    const t = mots[i];
+    const attendus = { m: 2, l: 2, c: 6, re: 4 }[t];
+    if (attendus !== undefined) {
+      const v = [];
+      for (let j = 0; j < attendus; j += 1) v.push(Number(mots[i - attendus + j]));
+      if (t === 'm') p.moveTo(px(v[0]), py(v[1]));
+      else if (t === 'l') p.lineTo(px(v[0]), py(v[1]));
+      else if (t === 'c') p.bezierCurveTo(px(v[0]), py(v[1]), px(v[2]), py(v[3]), px(v[4]), py(v[5]));
+      else if (t === 're') p.rect(px(v[0]), py(v[1] + v[3]), v[2] * k, v[3] * k);
+      i += 1;
+    } else if (t === 'f') { ctx.fill(p); p = new Path2D(); i += 1; }
+    else if (t === 'S') { ctx.stroke(p); p = new Path2D(); i += 1; }
+    else { i += 1; }
+  }
+  ctx.fill(p);
+  ctx.stroke(p);
+  ctx.restore();
+}
+
+/** Carte claire de la fiche mixte (croquis validé). */
+function fondFiche(ctx, x, y, w, h) {
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(253, 253, 255, 0.94)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(103, 122, 168, 0.45)';
+  ctx.lineWidth = Math.max(1, etat.zoom);
+  ctx.strokeRect(x, y, w, h);
+}
+
+/** Trace une fiche mixte posée : la source embarquée est recomposée
+ * (texte + formules) dans le rectangle enregistré. */
+function dessinerFicheMixte(ctx, a, x, y, w, h) {
+  const source = extraireSourceFiche(a.contents);
+  fondFiche(ctx, x, y, w, h);
+  if (!source) return;
+  const segments = decouperMelange(source);
+  const formules = segments.filter((sg) => sg.type === 'formule');
+  const carte = etat.opsFiche.get(cleEquation(a));
+  const pret = !!(carte && formules.every((sg) => carte.has(sg.valeur)));
+  if (!pret) {
+    // Ops pas encore chargées (ou formule illisible) : la source reste
+    // lisible en attendant, et le calcul se fait au fond.
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = 'rgba(167, 175, 192, 0.35)';
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.font = `${11 * etat.zoom}px sans-serif`;
+    ecrireCarteCommentaire(ctx, source, x + w + 8 * etat.zoom, y, etat.zoom);
+    chargerOpsFiches();
+    return;
+  }
+  const dims = (latex) => {
+    const ap = carte.get(latex);
+    return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
+      : { widthPt: 0, heightPt: 0, depthPt: 0 };
+  };
+  const layout = composerLignes(segments, {
+    mesurerTexte: mesurerFicheTexte,
+    dimsFormule: dims,
+    largeurMax: (a.rect[2] - a.rect[0]) - 2 * MARGE_FICHE,
+    fontSize: FS_FICHE,
+  });
+  const interbase = INTERBASE_FICHE * FS_FICHE;
+  ctx.font = `${FS_FICHE * etat.zoom}px sans-serif`;
+  ctx.fillStyle = '#14161c';
+  ctx.textBaseline = 'alphabetic';
+  let curseur = a.rect[3] - MARGE_V_FICHE; // haut du rectangle, en points PDF
+  for (const ligne of layout.lignes) {
+    const base = curseur - ligne.hDessus;
+    let penX = a.rect[0] + MARGE_FICHE;
+    for (const m of ligne.morceaux) {
+      const ecran = pdfVersEcran({ x: penX, y: base });
+      if (m.type === 'texte') {
+        const affiche = translitterMathWinAnsi(m.valeur);
+        if (affiche) ctx.fillText(affiche, ecran.x, ecran.y);
+      } else {
+        tracerOpsPlacé(ctx, carte.get(m.valeur), ecran.x, ecran.y, etat.zoom);
+      }
+      penX += m.largeur;
+    }
+    curseur = base - ligne.hDes - interbase;
+  }
+}
+
+const opsFicheEnVol = new Set(); // « cle|latex » en cours de calcul
+
+/** Charge les ops des formules des fiches mixtes de la page courante,
+ * depuis le LaTeX embarqué (aucun cache lié à la pose). */
+async function chargerOpsFiches() {
+  if (!etat.resume) return;
+  const cibles = (etat.resume.annots || []).filter((x) => x.page === etat.page - 1
+    && x.ref && (x.contents || '').startsWith(PREFIXE_FICHE_MIXTE));
+  const exPt = exPourCorps(FS_FICHE);
+  let change = false;
+  for (const x of cibles) {
+    const cle = cleEquation(x);
+    let carte = etat.opsFiche.get(cle);
+    if (!carte) { carte = new Map(); etat.opsFiche.set(cle, carte); }
+    for (const seg of decouperMelange(extraireSourceFiche(x.contents))) {
+      if (seg.type !== 'formule' || carte.has(seg.valeur)) continue;
+      const cleVol = `${cle}|${seg.valeur}`;
+      if (opsFicheEnVol.has(cleVol)) continue;
+      opsFicheEnVol.add(cleVol);
+      try {
+        const rep = await window.atelier.previewEquation(seg.valeur, exPt);
+        carte.set(seg.valeur, rep.erreur ? null : rep.apercu);
+        change = true;
+      } catch (e) {
+        carte.set(seg.valeur, null); // échec nettoyé : la fiche reste lisible
+        change = true;
+      }
+      opsFicheEnVol.delete(cleVol);
+    }
+  }
+  // Nettoyage des fiches disparues de la page courante.
+  const cles = new Set(cibles.map(cleEquation));
+  for (const cle of etat.opsFiche.keys()) {
+    if (cle.split(':')[0] === String(etat.page - 1) && !cles.has(cle)) {
+      etat.opsFiche.delete(cle);
+    }
+  }
+  if (change) dessinerAnnots();
+}
+
+/** Bouton « ƒ Insérer une formule » de la fiche (ou Ctrl+M) : le panneau
+ * Équation passe en mode insertion-dans-la-fiche. */
+function ouvrirInsertionFormule() {
+  const attente = etat.saisieAttente;
+  if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) return;
+  etat.formuleFiche = true;
+  $('#panneau-equation').hidden = false;
+  const b = $('#eq-inserer');
+  b.textContent = 'Insérer dans la fiche';
+  b.disabled = false;
+  const note = $('#eq-note');
+  note.textContent = 'La formule s\u2019insérera à la position du curseur dans la fiche.';
+  note.classList.remove('ok');
+  $('#eq-saisie').focus();
+}
+
+/** Rétablit le panneau Équation en mode pose-sur-la-page. */
+function retablirBoutonEquation() {
+  etat.formuleFiche = false;
+  const b = $('#eq-inserer');
+  if (b.textContent === 'Insérer dans la fiche') {
+    b.textContent = etat.remplacement ? 'Remplacer la formule' : 'Insérer dans la page';
+    b.disabled = !etat.remplacement && !etat.eqPoint;
+    const note = $('#eq-note');
+    note.textContent = "Cliquez d'abord sur la page à l'outil Équation.";
+    note.classList.remove('ok');
+  }
+}
+
+/** Aperçu RENDU en direct de la fiche en cours d'édition (sous le champ). */
+let sablierFiche = null;
+function rafraichirApercuFiche() {
+  if (sablierFiche) clearTimeout(sablierFiche);
+  sablierFiche = setTimeout(async () => {
+    sablierFiche = null;
+    const attente = etat.saisieAttente;
+    if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) {
+      $('#editeur-apercu').hidden = true;
+      return;
+    }
+    const source = $('#editeur-texte').value;
+    if (!contientFormule(source)) {
+      $('#editeur-apercu').hidden = true;
+      return;
+    }
+    const manquantes = [];
+    for (const sg of decouperMelange(source)) {
+      if (sg.type === 'formule' && !etat.apercuEditeur.has(sg.valeur)) manquantes.push(sg.valeur);
+    }
+    if (manquantes.length) {
+      for (const latex of manquantes) {
+        etat.apercuEditeur.set(latex, null);
+        try {
+          const rep = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
+          etat.apercuEditeur.set(latex, rep.erreur ? null : rep.apercu);
+        } catch (e) { /* reste null */ }
+      }
+    }
+    dessinerApercuFiche(source);
+  }, 250);
+}
+
+function dessinerApercuFiche(source) {
+  const canvas = $('#editeur-apercu');
+  const c = canvas.getContext('2d');
+  const FS = 12;                      // taille d'affichage de l'aperçu
+  const k = FS / FS_FICHE;            // échelle des formules
+  const segments = decouperMelange(source);
+  const apercuDe = (latex) => etat.apercuEditeur.get(latex);
+  const dims = (latex) => {
+    const ap = apercuDe(latex);
+    return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
+      : { widthPt: mesurerFicheTexte(`$${latex}$`), heightPt: FS_FICHE * 0.75, depthPt: 0 };
+  };
+  const mesurer = (t) => {
+    c.font = `${FS}px sans-serif`;
+    return c.measureText(String(t)).width / k;
+  };
+  const layout = composerLignes(segments, {
+    mesurerTexte: mesurer,
+    dimsFormule: dims,
+    largeurMax: (canvas.width - 12) / k,
+    fontSize: FS_FICHE,
+  });
+  const interbase = INTERBASE_FICHE * FS_FICHE;
+  let hauteur = 16;
+  for (let li = 0; li < layout.lignes.length; li += 1) {
+    hauteur += (layout.lignes[li].hDessus + layout.lignes[li].hDes
+      + (li ? interbase : 0)) * k;
+  }
+  canvas.height = Math.max(24, Math.round(hauteur));
+  canvas.hidden = false;
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  c.font = `${FS}px sans-serif`;
+  c.textBaseline = 'alphabetic';
+  let basePx = 9 + layout.lignes[0].hDessus * k;
+  for (const ligne of layout.lignes) {
+    basePx += ligne.hDessus * k - (layout.lignes[0] === ligne ? layout.lignes[0].hDessus * k : 0);
+    let penX = 6;
+    for (const m of ligne.morceaux) {
+      if (m.type === 'texte') {
+        c.fillStyle = '#14161c';
+        c.fillText(translitterMathWinAnsi(m.valeur), penX, basePx);
+      } else {
+        const ap = apercuDe(m.valeur);
+        if (ap) {
+          tracerOpsPlacé(c, ap, penX, basePx, k);
+        } else {
+          c.fillStyle = '#b04a2e';
+          c.fillText(translitterMathWinAnsi(`$${m.valeur}$`), penX, basePx);
+        }
+      }
+      penX += m.largeur * k;
+    }
+    basePx += (ligne.hDes + interbase) * k;
+  }
+}
+
 async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
@@ -461,7 +745,9 @@ async function dessinerAnnots() {
          même chose que les autres lecteurs. La « correction » de la
          v0.1.7 (suppression du tracé) rendait les équations posées
          totalement invisibles à l'écran. */
-      if (!(a.contents || '').startsWith(PREFIXE_EQUATION)) {
+      if ((a.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
+        dessinerFicheMixte(ctx, a, x, y, w, h);
+      } else if (!(a.contents || '').startsWith(PREFIXE_EQUATION)) {
         ctx.strokeStyle = '#c0392b';
         ctx.lineWidth = 1.5 * etat.zoom;
         ctx.strokeRect(x, y, w, h);
@@ -568,13 +854,19 @@ function ecouterSouris() {
     } else if (etat.outil === 'note') {
       ouvrirEditeur('note', point);
     } else if (etat.outil === 'equation') {
+      // v0.1.11 : cliquer une FICHE MIXTE l'ouvre pour correction ; la
       // v0.1.7 : cliquer une équation EXISTANTE l'ouvre pour correction.
       const cible = annotationSous(point);
+      if (cible && (cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
+        ouvrirEditeur('fiche', null, cible);
+        return;
+      }
       if (cible && (cible.contents || '').startsWith(PREFIXE_EQUATION)) {
         ouvrirRemplacement(cible);
         return;
       }
       annulerRemplacement();
+      if (etat.formuleFiche) retablirBoutonEquation();
       etat.eqPoint = { pageIndex: etat.page - 1, point };
       $('#eq-inserer').disabled = false;
       const note = $('#eq-note');
@@ -595,6 +887,8 @@ function ecouterSouris() {
     } else if (cible.subtype === 'Text') {
       ouvrirEditeur('note', null, cible);
     } else if (cible.subtype === 'FreeText') {
+      ouvrirEditeur('fiche', null, cible);
+    } else if (cible.subtype === 'Square' && (cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
       ouvrirEditeur('fiche', null, cible);
     }
   });
@@ -713,7 +1007,7 @@ function positionnerEditeur(rectPdf) {
 function editeurCaler(attente) {
   const geom = positionnerEditeur(attente.rect);
   const carte = $('#editeur-page');
-  if (attente.kind === 'freeText') {
+  if (attente.kind === 'freeText' || attente.kind === 'ficheMelangee') {
     // La fiche s'édite DANS sa zone : la carte épouse le rectangle glissé.
     carte.style.width = `${Math.max(160, Math.round(geom.largeur))}px`;
     carte.style.height = `${Math.max(56, Math.round(geom.hauteur))}px`;
@@ -728,14 +1022,16 @@ function editeurCaler(attente) {
 function ouvrirEditeur(genre, pointOuRect, cible) {
   if (!etat.resume) return;
   let attente;
-  if (cible && (cible.subtype === 'Text' || cible.subtype === 'FreeText')) {
+  const mixte = !!(cible && cible.subtype === 'Square'
+    && (cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE));
+  if (cible && (cible.subtype === 'Text' || cible.subtype === 'FreeText' || mixte)) {
     // Modification d'une annotation existante : retirer puis reposer.
     attente = {
-      kind: cible.subtype === 'Text' ? 'textNote' : 'freeText',
+      kind: cible.subtype === 'Text' ? 'textNote' : (mixte ? 'ficheMelangee' : 'freeText'),
       pageIndex: cible.page,
       ref: cible.ref,
       rect: cible.rect.slice(),
-      contenu: String(cible.contents || ''),
+      contenu: mixte ? extraireSourceFiche(cible.contents) : String(cible.contents || ''),
     };
   } else if (genre === 'note' && pointOuRect) {
     const p = pointOuRect;
@@ -758,7 +1054,8 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   etat.saisieAttente = attente;
   const carte = $('#editeur-page');
   const zone = $('#editeur-texte');
-  zone.classList.toggle('fiche', attente.kind === 'freeText');
+  const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
+  zone.classList.toggle('fiche', estFiche);
   editeurCaler(attente);
   const titre = $('#editeur-titre');
   titre.textContent = attente.kind === 'textNote'
@@ -766,13 +1063,20 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
     : (attente.ref ? 'Modifier la fiche' : 'Fiche : texte écrit sur la page');
   zone.value = attente.contenu;
   carte.hidden = false;
+  $('#editeur-barre').hidden = !estFiche;
+  $('#editeur-apercu').hidden = !contientFormule(attente.contenu);
+  if (estFiche && contientFormule(attente.contenu)) rafraichirApercuFiche();
   zone.focus();
   zone.setSelectionRange(zone.value.length, zone.value.length);
 }
 
 function fermerEditeur() {
   $('#editeur-page').hidden = true;
+  $('#editeur-barre').hidden = true;
+  $('#editeur-apercu').hidden = true;
   etat.saisieAttente = null;
+  etat.apercuEditeur.clear();
+  if (etat.formuleFiche) retablirBoutonEquation();
 }
 
 async function validerEditeur() {
@@ -789,9 +1093,20 @@ async function validerEditeur() {
     edits.push({ kind: 'remove', pageIndex: attente.pageIndex, args: { ref: attente.ref } });
   }
   const args = { rect: attente.rect.slice() };
-  if (attente.kind === 'textNote') args.contents = texte;
-  if (attente.kind === 'freeText') args.text = texte;
-  edits.push({ kind: attente.kind, pageIndex: attente.pageIndex, args });
+  let kind = attente.kind;
+  const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
+  if (estFiche && contientFormule(texte)) {
+    // v0.1.11 : une fiche qui contient des formules $...$ devient une
+    // fiche mixte : texte et équations rendus ensemble, une seule annotation.
+    kind = 'ficheMelangee';
+    args.source = texte;
+    args.fontSize = FS_FICHE;
+  } else if (attente.kind === 'textNote') {
+    args.contents = texte;
+  } else {
+    args.text = texte; // fiche (ou ex-mixte redevenue texte seul)
+  }
+  edits.push({ kind, pageIndex: attente.pageIndex, args });
   const rep = await window.atelier.applyEdits(edits);
   if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
   majResume(rep.resume);
@@ -804,11 +1119,17 @@ $('#editeur-texte').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
     ev.preventDefault();
     validerEditeur();
+  } else if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'm' || ev.key === 'M')) {
+    // v0.1.11 : insertion d'une formule à la position du curseur.
+    ev.preventDefault();
+    ouvrirInsertionFormule();
   } else if (ev.key === 'Escape') {
     ev.stopPropagation();
     fermerEditeur();
   }
 });
+$('#editeur-formule').addEventListener('click', ouvrirInsertionFormule);
+$('#editeur-texte').addEventListener('input', rafraichirApercuFiche);
 $('#editeur-page').addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') fermerEditeur();
 });
@@ -827,7 +1148,7 @@ function construirePanneauEquation() {
     const b = document.createElement('button');
     b.className = 'puce';
     b.textContent = p.label;
-    b.addEventListener('click', () => { $('#eq-saisie').value = p.src; rafraichirApercu(); });
+    b.addEventListener('click', () => { insererAuChamp(p.src); rafraichirApercu(); }); // v0.1.11 : au curseur
     presets.appendChild(b);
   }
   const structs = $('#eq-structs');
@@ -923,7 +1244,7 @@ async function rafraichirApercu() {
       return;
     }
     etat.eqApercu = rep.apercu;
-    $('#eq-inserer').disabled = !etat.eqPoint;
+    $('#eq-inserer').disabled = etat.formuleFiche ? false : !etat.eqPoint;
     dessinerOpsCanvas(canvas, rep.apercu);
   }, 250);
 }
@@ -982,6 +1303,32 @@ function dessinerOpsCanvas(canvas, apercu) {
 async function insererEquation() {
   const latex = latexCourant();
   if (!latex) return;
+  // v0.1.11 : mode « insertion dans la fiche » : la formule VALIDÉE se
+  // glisse à la position exacte du curseur de la fiche, entre $...$ ; la
+  // frappe continue juste après. Rien ne se pose sur la page ici.
+  if (etat.formuleFiche) {
+    const attente = etat.saisieAttente;
+    if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) {
+      retablirBoutonEquation();
+      message('La fiche n\u2019est plus ouverte : la formule n\u2019a pas été insérée.');
+      return;
+    }
+    const repF = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
+    if (repF.erreur || !repF.apercu) {
+      message(repF.erreur || 'La formule n\u2019a pas pu être calculée.');
+      return;
+    }
+    const zone = $('#editeur-texte');
+    const debut = zone.selectionStart ?? zone.value.length;
+    const fin = zone.selectionEnd ?? debut;
+    zone.value = `${zone.value.slice(0, debut)}$${latex}$${zone.value.slice(fin)}`;
+    const apres = debut + latex.length + 2;
+    zone.focus();
+    zone.setSelectionRange(apres, apres);
+    rafraichirApercuFiche();
+    message('Formule insérée dans la fiche.', 'reussite');
+    return;
+  }
   const remplacer = etat.remplacement;
   if (!remplacer && !etat.eqPoint) return;
   // v0.1.10 : aperçu TOUJOURS recalculé. Celui du panneau peut être périmé
@@ -1089,6 +1436,8 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
    Gabarits et composition : engine/guides.js (testé sous Node).
    ============================================================ */
 const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
+const { PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
+  decouperMelange, contientFormule, exPourCorps, composerLignes } = globalThis.AtelierTexte;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;
 
 const GUIDE_SYSTEME = { titre: 'Écrire une (in)équation du système' };
@@ -1343,8 +1692,14 @@ async function ecrireGuide() {
   // Le champ principal reçoit le LaTeX composé : mode Professionnel requis
   // pour éviter tout transcodage linéaire.
   if (etat.eqMode !== 'pro') $('#eq-pro').click();
-  $('#eq-saisie').value = comp.latex;
+  // v0.1.11 : le gabarit composé s'insère à la position du curseur du champ
+  // (comme la boîte de formule de Dmaths) au lieu d'écraser la saisie.
+  insererAuChamp(comp.latex);
   rafraichirApercu();
+  if (etat.formuleFiche) {
+    await insererEquation();
+    return;
+  }
   if (etat.eqPoint) {
     await insererEquation();
   } else {

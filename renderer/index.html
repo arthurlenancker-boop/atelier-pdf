@@ -82,6 +82,12 @@
           <div id="editeur-page" class="editeur-page" hidden>
             <p id="editeur-titre" class="editeur-titre">Note</p>
             <textarea id="editeur-texte" class="editeur-texte" rows="3" spellcheck="false"></textarea>
+            <!-- v0.1.11 : formules dans le fil du texte de la fiche -->
+            <div class="editeur-barre" id="editeur-barre" hidden>
+              <button id="editeur-formule" class="btn">ƒ Insérer une formule</button>
+              <span class="editeur-rac">ou Ctrl+M, à la position du curseur</span>
+            </div>
+            <canvas id="editeur-apercu" class="editeur-apercu" width="320" height="24" hidden></canvas>
             <div class="editeur-actions">
               <button id="editeur-annuler" class="btn">Annuler</button>
               <button id="editeur-valider" class="btn accent">Poser</button>

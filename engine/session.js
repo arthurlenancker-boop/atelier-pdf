@@ -8,6 +8,7 @@ const { PDFName, PDFRef } = require('pdf-lib');
 
 const { addHighlight, addSquare, addInk, addTextNote, addFreeText } = require('./annots.js');
 const { addEquation } = require('./equation.js');
+const { addMixedFiche } = require('./melange.js');
 const { listAnnots } = require('./reread.js');
 
 // Aiguillage sorte d'édition → fonction d'édition. Chaque fonction reçoit (doc, page, args).
@@ -18,6 +19,7 @@ const REGISTRE = {
   textNote: addTextNote,
   freeText: addFreeText,
   equation: addEquation,
+  ficheMelangee: addMixedFiche,
 };
 
 /**

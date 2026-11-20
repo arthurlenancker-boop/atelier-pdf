@@ -1,0 +1,126 @@
+// v0.1.11 : moteur PUR de la fiche « texte + formules ». Découpage du balisage
+// $...$, translittération WinAnsi du texte courant, composition des lignes avec
+// formules insécables calées sur la ligne de base.
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+
+const {
+  PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
+  decouperMelange, exPourCorps, composerLignes, contientFormule,
+} = require('../engine/texte.js');
+
+// Mesure déterministe pour les tests : 2 pt par caractère.
+const mes2 = (t) => t.length * 2;
+const dimsFrac = (latex) => (latex === 'frac' ? { widthPt: 40, heightPt: 16, depthPt: 5 } : { widthPt: 10, heightPt: 8, depthPt: 2 });
+
+test('PREFIXE_FICHE_MIXTE est le marqueur canonique', () => {
+  assert.strictEqual(PREFIXE_FICHE_MIXTE, 'Fiche mixte');
+});
+
+test('decouperMelange : texte pur sans dollar', () => {
+  assert.deepStrictEqual(decouperMelange('Bonjour la page'), [
+    { type: 'texte', valeur: 'Bonjour la page' },
+  ]);
+});
+
+test('decouperMelange : mélange texte puis formule puis texte', () => {
+  assert.deepStrictEqual(decouperMelange('Pour tout $x+1$ issu de ceci.'), [
+    { type: 'texte', valeur: 'Pour tout ' },
+    { type: 'formule', valeur: 'x+1' },
+    { type: 'texte', valeur: ' issu de ceci.' },
+  ]);
+});
+
+test('decouperMelange : deux formules adjacentes', () => {
+  assert.deepStrictEqual(decouperMelange('$a$$b$'), [
+    { type: 'formule', valeur: 'a' },
+    { type: 'formule', valeur: 'b' },
+  ]);
+});
+
+test('decouperMelange : dollar IMPAIR reste du texte ', () => {
+  assert.deepStrictEqual(decouperMelange('Le prix est 5$ et l\\u2019autre'), [
+    { type: 'texte', valeur: 'Le prix est 5$ et l\\u2019autre' },
+  ]);
+});
+
+test('decouperMelange : formule VIDE ($ $) reste du texte', () => {
+  assert.deepStrictEqual(decouperMelange('Il a dit $ $ vraiment'), [
+    { type: 'texte', valeur: 'Il a dit $ $ vraiment' },
+  ]);
+});
+
+test('decouperMelange : non-chaîne et chaîne vide', () => {
+  assert.deepStrictEqual(decouperMelange(''), []);
+  assert.deepStrictEqual(decouperMelange(undefined), []);
+});
+
+test('extraireSourceFiche : retire le marqueur une seule fois', () => {
+  assert.strictEqual(extraireSourceFiche('Fiche mixte : Bonjour $x$'), 'Bonjour $x$');
+  assert.strictEqual(extraireSourceFiche('Fiche mixte:Fiche mixte'), 'Fiche mixte');
+  assert.strictEqual(extraireSourceFiche('Un commentaire'), '');
+  assert.strictEqual(extraireSourceFiche(null), '');
+});
+
+test('translitterMathWinAnsi : symboles courants vers WinAnsi, accents conservés', () => {
+  assert.strictEqual(translitterMathWinAnsi('x ≠ 2, y ≤ z, t ≥ u, w ≈ v, −3, é à ü'), 'x != 2, y <= z, t >= u, w ~ v, -3, é à ü');
+});
+
+test('exPourCorps : 0,52 fois la taille du corps', () => {
+  assert.strictEqual(exPourCorps(11), 5.72);
+  assert.strictEqual(exPourCorps(0), 0);
+});
+
+test('contientFormule : vrai seulement si des dollars appariés délimitent une formule', () => {
+  assert.strictEqual(contientFormule('Il faut $x+1$ ici'), true);
+  assert.strictEqual(contientFormule('Prix 5$ seulement'), false);
+  assert.strictEqual(contientFormule(''), false);
+});
+
+test('composerLignes : une seule ligne quand tout tient', () => {
+  const rep = composerLignes(decouperMelange('ab cd'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 100, fontSize: 11 });
+  assert.strictEqual(rep.lignes.length, 1);
+  assert.strictEqual(rep.lignes[0].morceaux.length, 1);
+  assert.strictEqual(rep.largeur(rep.lignes[0]), 10);
+});
+
+test('composerLignes : coupe aux ESPACES quand la ligne déborde', () => {
+  const rep = composerLignes(decouperMelange('aa bb cc dd'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 20, fontSize: 11 });
+  // chaque mot fait 4 pt (+ espace 2 pt) ; 'aa bb cc' = 16 pt, 'dd' passe à 22 : coupé.
+  assert.strictEqual(rep.lignes.length, 2);
+  assert.deepStrictEqual(rep.lignes.map((l) => l.morceaux.map((m) => m.valeur).join('')), ['aa bb cc', 'dd']);
+});
+
+test('composerLignes : mot plus large que la largeur coupé caractère par caractère', () => {
+  const rep = composerLignes(decouperMelange('abcdefghij kl'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 10, fontSize: 11 });
+  assert.strictEqual(rep.largeur(rep.lignes[0]), 10); // 5 caractères exactement
+});
+
+test('composerLignes : la formule est INSÉCABLE, jamais coupée', () => {
+  const rep = composerLignes(decouperMelange('ab $frac$ cd'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 20, fontSize: 11 });
+  const formules = rep.lignes.flatMap((l) => l.morceaux).filter((m) => m.type === 'formule');
+  assert.strictEqual(formules.length, 1);
+  assert.strictEqual(formules[0].valeur, 'frac');
+  assert.strictEqual(formules[0].largeur, 40); // jamais réduite ni divisée
+});
+
+test('composerLignes : la formule trop large part SEULE sur sa ligne', () => {
+  const rep = composerLignes(decouperMelange('ab $frac$ cd'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 12, fontSize: 11 });
+  assert.strictEqual(rep.lignes.length, 3);
+  assert.strictEqual(rep.lignes[1].morceaux.filter((m) => m.type === 'formule').length, 1);
+});
+
+test('composerLignes : hauteur de ligne étendue par une formule à profondeur', () => {
+  const rep = composerLignes(decouperMelange('ab $frac$'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 200, fontSize: 10 });
+  const ligne = rep.lignes.find((l) => l.morceaux.some((m) => m.type === 'formule'));
+  assert.strictEqual(ligne.hDessus, 11); // max(0.75*10, 16-5)
+  assert.strictEqual(ligne.hDes, 5); // max(0.25*10, 5)
+});
+
+test('composerLignes : ligne texte seul garde les hauteurs du corps seul', () => {
+  const rep = composerLignes(decouperMelange('ab cd'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 200, fontSize: 10 });
+  assert.strictEqual(rep.lignes[0].hDessus, 7.5);
+  assert.strictEqual(rep.lignes[0].hDes, 2.5);
+});
