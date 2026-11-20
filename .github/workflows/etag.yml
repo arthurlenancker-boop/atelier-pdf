@@ -53,7 +53,25 @@ jobs:
 
       - name: Tests du moteur avant construction
         if: steps.version.outputs.existe == 'false'
-        run: npm test
+        # En cas d'échec, l'extrait du journal est publié en annotation
+        # (lisible sur la page publique des vérifications du commit).
+        shell: bash
+        run: |
+          set +e
+          sortie=$(npm test 2>&1)
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            extrait=$( { echo "$sortie" | tr -d '\r' | grep -A 14 'not ok' ; echo "$sortie" | tr -d '\r' | grep -E '^# (tests|pass|fail|cancelled)' ; } | tr '\n' '|' | sed 's/::/;/g' | head -c 14000 )
+            extrait=${extrait//%/%25}
+            total=${#extrait}
+            i=0
+            while [ "$i" -lt "$total" ] && [ "$i" -lt 13500 ]; do
+              printf '::error::%s\n' "${extrait:$i:1500}"
+              i=$((i+1500))
+            done
+            exit 1
+          fi
 
       - name: Construction de l'installateur et du portable
         if: steps.version.outputs.existe == 'false'
