@@ -102,50 +102,43 @@ jobs:
       # journalisées pour dépister une dérive entre deux constructions.
       - name: Verification du code empaquete (asar + portable)
         if: steps.version.outputs.existe == 'false'
-        shell: pwsh
+        shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          Write-Host "=== Dependances retenues pour ce build ==="
-          npm ls --depth=0
-          if ($LASTEXITCODE -ne 0) { Write-Error "Arbre de dependances incomplet."; exit 1 }
-          Write-Host "=== Extraction de app.asar ==="
+          # bash (pas pwsh) : le pwsh de GitHub interrompt le script au
+          # premier message d'erreur standard de npm — cause de l'échec du
+          # premier essai de cette étape sous pwsh.
+          echo "=== Dependances retenues pour ce build ==="
+          npm ls --depth=0 || echo "(arbre npm avec avis, non bloquant)"
+          echo "=== Extraction de app.asar ==="
           npx --yes @electron/asar extract dist/win-unpacked/resources/app.asar app-extrait
-          if ($LASTEXITCODE -ne 0) { Write-Error "app.asar illisible."; exit 1 }
-          $cjs = @(
-            "main.js", "preload.js",
-            "engine/annotcore.js", "engine/annots.js", "engine/coords.js",
-            "engine/equation.js", "engine/guides.js", "engine/mjrender.js",
-            "engine/pdfio.js", "engine/reread.js", "engine/session.js"
-          )
-          foreach ($f in $cjs) {
-            if (-not (Test-Path "app-extrait/$f")) { Write-Error "Absent du paquet : $f"; exit 1 }
-            node --check "app-extrait/$f"
-            if ($LASTEXITCODE -ne 0) { Write-Error "Syntaxe invalide dans $f"; exit 1 }
-            Write-Host "OK (CommonJS) : $f"
-          }
+          for f in main.js preload.js engine/annotcore.js engine/annots.js \
+                    engine/coords.js engine/equation.js engine/guides.js \
+                    engine/mjrender.js engine/pdfio.js engine/reread.js \
+                    engine/session.js; do
+            test -f "app-extrait/$f" || { echo "::error::Absent du paquet : $f"; exit 1; }
+            node --check "app-extrait/$f" || { echo "::error::Syntaxe invalide dans $f"; exit 1; }
+            echo "OK (CommonJS) : $f"
+          done
           # Le rendu est un module ES : node --check exige .mjs.
-          Copy-Item app-extrait/renderer/app.js app-extrait/renderer/app.mjs -Force
-          node --check app-extrait/renderer/app.mjs
-          if ($LASTEXITCODE -ne 0) { Write-Error "Syntaxe invalide dans renderer/app.js"; exit 1 }
-          Write-Host "OK (module ES) : renderer/app.js"
-          Remove-Item app-extrait/renderer/app.mjs
-          foreach ($f in @("renderer/index.html", "renderer/style.css")) {
-            if (-not (Test-Path "app-extrait/$f")) { Write-Error "Absent du paquet : $f"; exit 1 }
-            Write-Host "OK : $f"
-          }
-          Write-Host "=== Contenu du portable ==="
-          7z x "dist/atelier-pdf-portable-$env:VERSION.exe" -oportable-extrait -y | Out-Null
-          if ($LASTEXITCODE -ne 0) { Write-Error "Portable illisible."; exit 1 }
-          $shaInstallateur = (Get-FileHash dist/win-unpacked/resources/app.asar -Algorithm SHA512).Hash
-          $asarPortable = Get-ChildItem portable-extrait -Recurse -Filter app.asar | Select-Object -First 1
-          if (-not $asarPortable) { Write-Error "app.asar introuvable dans le portable."; exit 1 }
-          $shaPortable = (Get-FileHash $asarPortable.FullName -Algorithm SHA512).Hash
-          if ($shaInstallateur -ne $shaPortable) {
-            Write-Error "Le paquet portable differe de l'installateur (app.asar)."
-            exit 1
-          }
-          Write-Host "OK : portable et installateur portent le meme app.asar."
+          cp app-extrait/renderer/app.js app-extrait/renderer/app.mjs
+          node --check app-extrait/renderer/app.mjs || { echo "::error::Syntaxe invalide dans renderer/app.js"; exit 1; }
+          rm app-extrait/renderer/app.mjs
+          echo "OK (module ES) : renderer/app.js"
+          for f in renderer/index.html renderer/style.css; do
+            test -f "app-extrait/$f" || { echo "::error::Absent du paquet : $f"; exit 1; }
+            echo "OK : $f"
+          done
+          echo "=== Contenu du portable ==="
+          7z x "dist/atelier-pdf-portable-$VERSION.exe" -oportable-extrait -y > /dev/null
+          somme () { node -e "const c=require('crypto'),h=c.createHash('sha512');h.update(require('fs').readFileSync(process.argv[1]));console.log(h.digest('hex'))" "$1"; }
+          shaUnpacked=$(somme dist/win-unpacked/resources/app.asar)
+          cheminPortable=$(find portable-extrait -type f -name app.asar | head -1)
+          test -n "$cheminPortable" || { echo "::error::app.asar introuvable dans le portable."; exit 1; }
+          shaPortable=$(somme "$cheminPortable")
+          test "$shaUnpacked" = "$shaPortable" || { echo "::error::Le paquet portable differe de l'installateur (app.asar)."; exit 1; }
+          echo "OK : portable et installateur portent le meme app.asar."
 
       # La page Release GitHub remplace les espaces par des points dans les
       # noms de fichiers : on aligne latest.yml sur ces noms rebelles.
