@@ -78,7 +78,10 @@ test('rejouer : six gestes variés reproduisent la session au complet', async ()
   const rejouees = r1.session.listAnnots().map(signature);
   assert.deepStrictEqual(rejouees, directes,
     'le rejeu complet reproduit la session EXACTEMENT (ordre, contenus, rects)');
-  assert.strictEqual(r1.session.edits().length, 6, 'le journal du rejeu compte les six gestes');
+  // Le journal compte une entrée par ÉDITION : les six gestes en comptent
+  // sept, la correction du geste 5 étant un lot « retrait + repose ».
+  assert.strictEqual(r1.session.edits().length, 7,
+    'le journal du rejeu compte chaque édition des six gestes');
 
   // Annuler le déplacement : la fiche revient à son rectangle d'origine.
   const r2 = await rejouer(octets, gestes.slice(0, 5));
