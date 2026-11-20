@@ -157,7 +157,7 @@ function addTextNote(doc, page, { rect, contents, name = 'Comment', color = [0.9
 }
 
 /** Zone de texte : /DA par défaut + apparence texte WinAnsi. */
-function addFreeText(doc, page, { rect, text, fontSize = 11, color = [0.13, 0.29, 0.53], contents = null }) {
+function addFreeText(doc, page, { rect, text, fontSize = 11, color = [0.13, 0.29, 0.53], contents = null, subject = 'Fiche' }) {
   const [x0, y0, x1, y1] = normalizeRect(rect);
   const propre = sanitizeWinAnsi(text ?? contents ?? '');
   const hexTexte = Array.from(octetsWinAnsi(propre), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -188,6 +188,9 @@ function addFreeText(doc, page, { rect, text, fontSize = 11, color = [0.13, 0.29
     DA: da,
     C: color,
     Contents: contents ?? propre,
+    // v0.1.12 : « Note » (texte nu) ou « Fiche » (carte) ; les fiches des
+    // versions antérieures, sans sujet, restent des cartes.
+    Subject: subject,
     AP: { N: formRef },
   });
 }

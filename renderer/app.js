@@ -7,6 +7,7 @@ import '../engine/coords.js'; // expose globalThis.AtelierCoords
 import '../engine/guides.js'; // expose globalThis.AtelierGuides (v0.1.5)
 import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10)
 import '../engine/texte.js'; // expose globalThis.AtelierTexte (v0.1.11)
+import '../engine/geom.js'; // expose globalThis.AtelierGeom (v0.1.12)
 
 const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
 
@@ -600,6 +601,12 @@ async function chargerOpsFiches() {
 function ouvrirInsertionFormule() {
   const attente = etat.saisieAttente;
   if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) return;
+  // v0.1.12 : les formules appartiennent aux fiches ; la note nue reste du
+  // texte simple (ses $...$ ne seraient jamais rendus dans le fichier).
+  if (attente.kind === 'freeText' && attente.sujet === 'Note') {
+    message('Les formules s\u2019écrivent dans une fiche : reprenez l\u2019outil Fiche pour mêler texte et calculs.');
+    return;
+  }
   etat.formuleFiche = true;
   $('#panneau-equation').hidden = false;
   const b = $('#eq-inserer');
@@ -785,19 +792,35 @@ async function dessinerAnnots() {
         ecrireCarteCommentaire(ctx, a.contents, x + Math.max(w, 14) + 8 * etat.zoom, y, etat.zoom);
       }
     } else if (a.subtype === 'FreeText') {
-      ctx.fillStyle = 'rgba(37, 51, 125, 0.85)';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#fff';
-      ctx.font = `${11 * etat.zoom}px sans-serif`;
-      ctx.textBaseline = 'top';
-      // v0.1.6 : texte intégral avec retour à la ligne dans la zone (les
-      // 40 premiers caractères suffisaient rarement).
-      const lignes = enveloppeTexte(ctx, a.contents, Math.max(w - 6 * etat.zoom, 10), 30);
-      lignes.forEach((ligne, i) => {
-        if (i * 13 * etat.zoom < h) {
-          ctx.fillText(String(ligne), x + 3 * etat.zoom, y + 2 * etat.zoom + i * 13 * etat.zoom);
-        }
-      });
+      // v0.1.12 : une note nue (Subject « Note », posée par un clic de
+      // l'outil Note) s'écrit DIRECTEMENT sur la page — texte sombre, sans
+      // fond ni icône, comme demandé (« texte écrit directement sur la
+      // page, partout où je clique »). Les autres /FreeText restent des
+      // fiches-cartes. Le texte n'est jamais coupé : la hauteur du /Rect
+      // n'oblige pas la note à tenir dedans (elle se redimensionne).
+      if (a.subject === 'Note') {
+        ctx.fillStyle = '#14161c';
+        ctx.font = `${11 * etat.zoom}px sans-serif`;
+        ctx.textBaseline = 'top';
+        const lignes = enveloppeTexte(ctx, a.contents, Math.max(w - 2 * etat.zoom, 10), 60);
+        lignes.forEach((ligne, i) => {
+          ctx.fillText(String(ligne), x + etat.zoom, y + i * 13 * etat.zoom);
+        });
+      } else {
+        ctx.fillStyle = 'rgba(37, 51, 125, 0.85)';
+        ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = '#fff';
+        ctx.font = `${11 * etat.zoom}px sans-serif`;
+        ctx.textBaseline = 'top';
+        // v0.1.6 : texte intégral avec retour à la ligne dans la zone (les
+        // 40 premiers caractères suffisaient rarement).
+        const lignes = enveloppeTexte(ctx, a.contents, Math.max(w - 6 * etat.zoom, 10), 30);
+        lignes.forEach((ligne, i) => {
+          if (i * 13 * etat.zoom < h) {
+            ctx.fillText(String(ligne), x + 3 * etat.zoom, y + 2 * etat.zoom + i * 13 * etat.zoom);
+          }
+        });
+      }
     }
     // Annotation sans /AP (autrui) : rectangle pointillé gris, lecture seule.
     if (a.hasAP === false) {
@@ -813,6 +836,19 @@ async function dessinerAnnots() {
       ctx.strokeStyle = '#4C6FFF';
       ctx.lineWidth = 2;
       ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
+      // v0.1.12 : poignées de redimensionnement (croquis validé) — petits
+      // carrés blancs liserés d'accent sur le pourtour du rectangle.
+      if (redimensionnable(a)) {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#4C6FFF';
+        ctx.lineWidth = 1.25;
+        for (const p of poigneesRect(a.rect)) {
+          const e = pdfVersEcran(p);
+          const c = 3.5;
+          ctx.fillRect(e.x - c, e.y - c, c * 2, c * 2);
+          ctx.strokeRect(e.x - c, e.y - c, c * 2, c * 2);
+        }
+      }
     }
     ctx.restore();
   }
@@ -844,7 +880,43 @@ function ecouterSouris() {
     els.calqueTampon.setPointerCapture(ev.pointerId);
     const point = pointPdf(ev);
     if (etat.outil === 'aucun') {
-      selectionner(point);
+      // v0.1.12 (croquis validé) : l'outil Sélection saisit l'annotation.
+      // Une POIGNÉE (si l'annotation s'y prête et que le clic tombe dessus)
+      // entame un redimensionnement ; sinon, un clic sur une annotation la
+      // sélectionne ET permet de la faire glisser sur place ; un clic dans
+      // le vide désélectionne.
+      const sel = etat.selection;
+      if (sel && sel.ref && sel.rect && redimensionnable(sel)) {
+        const poignee = poigneeSousPoint(sel.rect, point, 6 / etat.zoom);
+        if (poignee) {
+          geste = { outil: 'poignee', id: poignee, ref: sel.ref, page: sel.page,
+            rect0: sel.rect.slice(), depart: point };
+          return;
+        }
+      }
+      const cible = annotationSous(point);
+      if (cible) {
+        etat.selection = cible;
+        dessinerAnnots();
+        if (redimensionnable(cible)) {
+          const poignee = poigneeSousPoint(cible.rect, point, 6 / etat.zoom);
+          if (poignee) {
+            geste = { outil: 'poignee', id: poignee, ref: cible.ref, page: cible.page,
+              rect0: cible.rect.slice(), depart: point };
+            return;
+          }
+        }
+        geste = { outil: 'deplacement', ref: cible.ref, page: cible.page, depart: point };
+        message(`Annotation ${cible.subtype} sélectionnée : glissez pour la déplacer`
+          + `${redimensionnable(cible) ? ', tirez une poignée pour la redimensionner' : ''}`
+          + ', Suppr pour retirer.');
+      } else {
+        if (etat.selection) {
+          etat.selection = null;
+          dessinerAnnots();
+        }
+        message('Aucune annotation sous le curseur.');
+      }
       return;
     }
     if (etat.outil === 'surligner' || etat.outil === 'encadrer' || etat.outil === 'fiche') {
@@ -900,7 +972,38 @@ function ecouterSouris() {
     ctx.clearRect(0, 0, els.calqueTampon.width, els.calqueTampon.height);
     const a = pdfVersEcran(geste.depart);
     const b = pdfVersEcran(point);
-    if (geste.outil === 'encre') {
+    // v0.1.12 : aperçus du déplacement et du redimensionnement.
+    if (geste.outil === 'poignee') {
+      geste.point = point;
+      const rect = rectDepuisPoignee(geste.rect0, geste.id, point);
+      const r0 = pdfVersEcran({ x: rect[0], y: rect[1] });
+      const r1 = pdfVersEcran({ x: rect[2], y: rect[3] });
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#4C6FFF';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(Math.min(r0.x, r1.x), Math.min(r0.y, r1.y),
+        Math.abs(r1.x - r0.x), Math.abs(r1.y - r0.y));
+      ctx.setLineDash([]);
+    } else if (geste.outil === 'deplacement') {
+      geste.point = point;
+      const sel = etat.selection;
+      if (!sel) return;
+      const dx = point.x - geste.depart.x;
+      const dy = point.y - geste.depart.y;
+      const r = sel.rect;
+      const rectPdf = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
+      const r0 = pdfVersEcran({ x: rectPdf[0], y: rectPdf[1] });
+      const r1 = pdfVersEcran({ x: rectPdf[2], y: rectPdf[3] });
+      ctx.fillStyle = 'rgba(76, 111, 255, 0.12)';
+      ctx.strokeStyle = 'rgba(76, 111, 255, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.fillRect(Math.min(r0.x, r1.x), Math.min(r0.y, r1.y),
+        Math.abs(r1.x - r0.x), Math.abs(r1.y - r0.y));
+      ctx.strokeRect(Math.min(r0.x, r1.x), Math.min(r0.y, r1.y),
+        Math.abs(r1.x - r0.x), Math.abs(r1.y - r0.y));
+      ctx.setLineDash([]);
+    } else if (geste.outil === 'encre') {
       geste.points.push(point);
       ctx.strokeStyle = '#56A8FF';
       ctx.lineWidth = 2;
@@ -924,7 +1027,35 @@ function ecouterSouris() {
     if (!geste) return;
     const pageIndex = etat.page - 1;
     try {
-      if (geste.outil === 'encre') {
+      if (geste.outil === 'poignee') {
+        // v0.1.12 : redimensionner = UN SEUL edit final avec le rectangle
+        // total, appliqué au relâchement (le moteur régénère l'apparence).
+        const rect = rectDepuisPoignee(geste.rect0, geste.id, geste.point || geste.depart);
+        const rep = await appliquer({
+          kind: 'redimensionner', pageIndex: geste.page,
+          args: { ref: geste.ref, rect: rect.map((v) => Math.round(v * 100) / 100) },
+        });
+        if (rep) {
+          recollerSelection(rep);
+          message('Annotation redimensionnée.', 'reussite');
+        }
+      } else if (geste.outil === 'deplacement') {
+        // v0.1.12 : déplacement = UN SEUL edit final (dx, dy totaux), le
+        // journal d'annulation n'enregistre pas chaque intermédiaire.
+        const fin = geste.point || geste.depart;
+        const dx = Math.round((fin.x - geste.depart.x) * 100) / 100;
+        const dy = Math.round((fin.y - geste.depart.y) * 100) / 100;
+        if (dx !== 0 || dy !== 0) {
+          const rep = await appliquer({
+            kind: 'deplacer', pageIndex: geste.page,
+            args: { ref: geste.ref, dx, dy },
+          });
+          if (rep) {
+            recollerSelection(rep);
+            message('Annotation déplacée.', 'reussite');
+          }
+        }
+      } else if (geste.outil === 'encre') {
         if (geste.points.length >= 2) {
           await appliquer({ kind: 'ink', pageIndex, args: { points: geste.points } });
           message('Trait d\'encre posé.', 'reussite');
@@ -942,6 +1073,12 @@ function ecouterSouris() {
         } else if (geste.outil === 'fiche') {
           ouvrirEditeur('fiche', rect.slice());
         }
+      } else if (geste.outil === 'fiche') {
+        // v0.1.12 : un SIMPLE CLIC à l'outil Fiche pose une fiche standard
+        // (260 × 60 pt) dont le coin supérieur gauche est le point cliqué ;
+        // le glisser-déposer garde son rôle : dessiner sa propre zone.
+        const A = geste.depart;
+        ouvrirEditeur('fiche', [A.x, A.y - 60, A.x + 260, A.y]);
       }
     } finally {
       geste = null;
@@ -960,15 +1097,24 @@ function annotationSous(point) {
     && point.y >= a.rect[1] && point.y <= a.rect[3]) || null;
 }
 
-function selectionner(point) {
-  const cible = annotationSous(point);
-  etat.selection = cible || null;
-  dessinerAnnots();
-  if (cible) {
-    message(`Annotation ${cible.subtype} sélectionnée. Touche Suppr pour retirer.`);
-  } else {
-    message('Aucune annotation sous le curseur.');
-  }
+/** Une annotation peut-elle être redimensionnée à la poignée ?
+ * Textes (notes et fiches), cadres et équations oui ; surlignage, trait
+ * et icône-note non (le moteur les refuse) ; une annotation d'origine
+ * externe (sans /AP) n'est pas retouchée : elle reste ce qu'elle est. */
+function redimensionnable(a) {
+  if (!a || !a.ref || a.hasAP === false) return false;
+  return a.subtype === 'FreeText' || a.subtype === 'Square';
+}
+
+/** Recolle la sélection sur l'annotation FRAÎCHE après un déplacement ou
+ * un redimensionnement : le résumé doit fournir le nouveau /Rect, et une
+ * fiche mixte redimensionnée change de référence (elle est reposée). */
+function recollerSelection(rep) {
+  const fait = rep && rep.faits && rep.faits[0];
+  const num = fait && fait.ref ? fait.ref.objectNumber : null;
+  if (!Number.isInteger(num)) { etat.selection = null; return; }
+  etat.selection = (rep.resume.annots || []).find((a) => a.ref
+    && a.ref.objectNumber === num && a.page === etat.page - 1) || null;
 }
 
 async function supprimerSelection() {
@@ -1028,6 +1174,10 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
     // Modification d'une annotation existante : retirer puis reposer.
     attente = {
       kind: cible.subtype === 'Text' ? 'textNote' : (mixte ? 'ficheMelangee' : 'freeText'),
+      // v0.1.12 : une note nue (Subject « Note ») se réédite comme une note,
+      // une fiche carte reste une fiche ; les fiches des versions
+      // antérieures, sans /Subject, restent des cartes.
+      sujet: cible.subject === 'Note' ? 'Note' : 'Fiche',
       pageIndex: cible.page,
       ref: cible.ref,
       rect: cible.rect.slice(),
@@ -1035,15 +1185,20 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
     };
   } else if (genre === 'note' && pointOuRect) {
     const p = pointOuRect;
+    // v0.1.12 : la note s'écrit À L'ENDROIT CLIQUÉ (croquis validé), texte
+    // nu sur la page, sans icône post-it : le clic marque le coin
+    // supérieur gauche de la zone de texte (240 × 24 pt par défaut).
     attente = {
-      kind: 'textNote',
+      kind: 'freeText',
+      sujet: 'Note',
       pageIndex: etat.page - 1,
-      rect: [p.x, p.y, p.x + 18, p.y + 18],
+      rect: [p.x, p.y - 24, p.x + 240, p.y],
       contenu: '',
     };
   } else if (genre === 'fiche' && pointOuRect) {
     attente = {
       kind: 'freeText',
+      sujet: 'Fiche',
       pageIndex: etat.page - 1,
       rect: pointOuRect.slice(),
       contenu: '',
@@ -1055,17 +1210,20 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   const carte = $('#editeur-page');
   const zone = $('#editeur-texte');
   const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
-  zone.classList.toggle('fiche', estFiche);
+  // v0.1.12 : une note nue s'édite comme une note : pas de barre à formules
+  // (les formules $...$ appartiennent aux fiches), titre et style à elle.
+  const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
+  zone.classList.toggle('fiche', estFiche && !estNoteNue);
   editeurCaler(attente);
   const titre = $('#editeur-titre');
-  titre.textContent = attente.kind === 'textNote'
+  titre.textContent = attente.kind === 'textNote' || estNoteNue
     ? (attente.ref ? 'Modifier la note' : 'Note')
     : (attente.ref ? 'Modifier la fiche' : 'Fiche : texte écrit sur la page');
   zone.value = attente.contenu;
   carte.hidden = false;
-  $('#editeur-barre').hidden = !estFiche;
+  $('#editeur-barre').hidden = !estFiche || estNoteNue;
   $('#editeur-apercu').hidden = !contientFormule(attente.contenu);
-  if (estFiche && contientFormule(attente.contenu)) rafraichirApercuFiche();
+  if (estFiche && !estNoteNue && contientFormule(attente.contenu)) rafraichirApercuFiche();
   zone.focus();
   zone.setSelectionRange(zone.value.length, zone.value.length);
 }
@@ -1095,7 +1253,10 @@ async function validerEditeur() {
   const args = { rect: attente.rect.slice() };
   let kind = attente.kind;
   const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
-  if (estFiche && contientFormule(texte)) {
+  // v0.1.12 : une note nue n'absorbe jamais les $...$ : elle reste du texte
+  // simple posé (les formules se mêlent aux FICHES seulement).
+  const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
+  if (estFiche && !estNoteNue && contientFormule(texte)) {
     // v0.1.11 : une fiche qui contient des formules $...$ devient une
     // fiche mixte : texte et équations rendus ensemble, une seule annotation.
     kind = 'ficheMelangee';
@@ -1104,13 +1265,17 @@ async function validerEditeur() {
   } else if (attente.kind === 'textNote') {
     args.contents = texte;
   } else {
-    args.text = texte; // fiche (ou ex-mixte redevenue texte seul)
+    args.text = texte; // note nue ou fiche (ou ex-mixte redevenue texte seul)
+    // v0.1.12 : « Note » (texte nu) ou « Fiche » (carte), relu dans le
+    // /Subject par l'écran, les tests et le moteur de déplacement.
+    args.subject = attente.sujet || 'Fiche';
   }
   edits.push({ kind, pageIndex: attente.pageIndex, args });
   const rep = await window.atelier.applyEdits(edits);
   if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
   majResume(rep.resume);
-  message(attente.ref ? 'Texte modifié.' : 'Texte posé.', 'reussite');
+  message(attente.ref ? 'Texte modifié.'
+    : (estNoteNue ? 'Note posée sur la page.' : 'Texte posé.'), 'reussite');
 }
 
 $('#editeur-annuler').addEventListener('click', fermerEditeur);
@@ -1438,6 +1603,7 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
 const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
 const { PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
   decouperMelange, contientFormule, exPourCorps, composerLignes } = globalThis.AtelierTexte;
+const { poigneesRect, poigneeSousPoint, rectDepuisPoignee } = globalThis.AtelierGeom;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;
 
 const GUIDE_SYSTEME = { titre: 'Écrire une (in)équation du système' };
@@ -1757,12 +1923,12 @@ function choisirOutil(outil) {
   corps.dataset.curseur = curseur;
   $('#panneau-equation').hidden = outil !== 'equation';
   const notes = {
-    aucun: 'Cliquez une annotation pour la sélectionner (Suppr pour retirer).',
+    aucun: 'Cliquez une annotation : glissez-la pour la déplacer, tirez une poignée pour la redimensionner (Suppr pour retirer).',
     surligner: 'Glissez sur une ligne de texte.',
     encadrer: 'Glissez pour tracer un cadre.',
     encre: 'Tracez à main levée.',
-    note: 'Cliquez où poser la note.',
-    fiche: 'Glissez la zone de texte, puis écrivez.',
+    note: 'Cliquez exactement où écrire la note sur la page.',
+    fiche: 'Cliquez pour poser une fiche, ou glissez pour dessiner sa zone, puis écrivez.',
     equation: 'Cliquez le point d\'insertion sur la page.',
   };
   message(notes[outil] || 'Prêt.');

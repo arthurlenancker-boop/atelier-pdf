@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const {
-  PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
+  PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
   decouperMelange, exPourCorps, composerLignes, contientFormule,
 } = require('../engine/texte.js');
 
@@ -123,4 +123,25 @@ test('composerLignes : ligne texte seul garde les hauteurs du corps seul', () =>
   const rep = composerLignes(decouperMelange('ab cd'), { mesurerTexte: mes2, dimsFormule: dimsFrac, largeurMax: 200, fontSize: 10 });
   assert.strictEqual(rep.lignes[0].hDessus, 7.5);
   assert.strictEqual(rep.lignes[0].hDes, 2.5);
+});
+
+// v0.1.12 : le marqueur porte la taille du corps (« Fiche mixte 11 : … »)
+// pour redimensionner une fiche sans perdre sa composition. L'ancien
+// format « Fiche mixte : … » (v0.1.11) reste relu, taille par défaut 11.
+test('extraireSourceFiche : le marqueur À TAILLE est relu pareil', () => {
+  assert.strictEqual(extraireSourceFiche('Fiche mixte 11 : Bonjour $x$'), 'Bonjour $x$');
+  assert.strictEqual(extraireSourceFiche('Fiche mixte 8.5 : $x$ et du texte'), '$x$ et du texte');
+});
+
+test('extraireTailleFiche : la taille du corps, ou null pour l\u2019ancien format', () => {
+  assert.strictEqual(extraireTailleFiche('Fiche mixte 11 : Bonjour $x$'), 11);
+  assert.strictEqual(extraireTailleFiche('Fiche mixte 8.5 : x'), 8.5);
+  assert.strictEqual(extraireTailleFiche('Fiche mixte : Bonjour $x$'), null);
+  assert.strictEqual(extraireTailleFiche('Un commentaire'), null);
+  assert.strictEqual(extraireTailleFiche(null), null);
+});
+
+test('le marqueur à taille commence toujours par PREFIXE_FICHE_MIXTE', () => {
+  assert.ok('Fiche mixte 11 : x'.startsWith(PREFIXE_FICHE_MIXTE));
+  assert.ok('Fiche mixte : x'.startsWith(PREFIXE_FICHE_MIXTE));
 });

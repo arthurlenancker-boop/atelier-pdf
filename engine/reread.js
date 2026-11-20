@@ -65,7 +65,12 @@ function listAnnots(doc) {
       let contents = '';
       try { contents = decoderContenu(a.get(PDFName.of('Contents')), ctx); } catch { contents = ''; }
 
-      sortie.push({ page: pageIndex, subtype, rect, hasAP, contents, ref });
+      // v0.1.12 : /Subject distingue la note nue (Subject « Note ») de la
+      // fiche carte (Subject « Fiche ») à l'écran.
+      let subject = '';
+      try { subject = decoderContenu(a.get(PDFName.of('Subject')), ctx); } catch { subject = ''; }
+
+      sortie.push({ page: pageIndex, subtype, rect, hasAP, contents, subject, ref });
     }
   });
   return sortie;

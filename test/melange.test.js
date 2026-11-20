@@ -5,11 +5,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { PDFDocument } = require('pdf-lib');
-const { PDFDocument: Doc } = require('pdf-lib');
 
 const { addMixedFiche } = require('../engine/melange.js');
 const { createSession } = require('../engine/session.js');
-const { extraireSourceFiche, PREFIXE_FICHE_MIXTE } = require('../engine/texte.js');
+const { extraireSourceFiche, extraireTailleFiche, PREFIXE_FICHE_MIXTE } = require('../engine/texte.js');
 const { listAnnots } = require('../engine/reread.js');
 
 const SOURCE = 'Pour tout $x \\ne 2$, $\\frac{x^2+1}{x-2} = 3$ fin.';
@@ -29,12 +28,13 @@ test('addMixedFiche : pose une fiche mixte lisible et relisible', async () => {
   assert.strictEqual(annots.length, 1);
   const a = annots[0];
   assert.strictEqual(a.subtype, 'Square');
-  assert.ok((a.contents || '').startsWith(`${PREFIXE_FICHE_MIXTE} : `), 'le marqueur voyage dans /Contents');
+  assert.ok((a.contents || '').startsWith(`${PREFIXE_FICHE_MIXTE} 11 : `), 'le marqueur (avec taille) voyage dans /Contents');
   assert.strictEqual(extraireSourceFiche(a.contents), SOURCE, 'la source relue est EXACTEMENT la source saisie');
+  assert.strictEqual(extraireTailleFiche(a.contents), 11, 'v0.1.12 : la taille du corps voyage dans le marqueur');
 });
 
 test('addMixedFiche : sans formule $...$, la pose est refusée sans rien écrire', async () => {
-  const doc = await Doc.create();
+  const doc = await PDFDocument.create();
   const page = doc.addPage([595, 842]);
   assert.throws(() => addMixedFiche(doc, page, { rect: [10, 10, 60, 60], source: 'texte ordinaire', fontSize: 11 }));
   assert.strictEqual(listAnnots(doc).length, 0);

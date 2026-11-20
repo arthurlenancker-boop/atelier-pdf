@@ -47,8 +47,8 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Surligner | outil Surligner : glisser sur une ligne de texte |
 | Encadrer | outil Encadrer : glisser un rectangle |
 | Écrire à main levée | outil Encre : tracer |
-| Poser une note post-it | outil Note : clic, puis saisir le texte dans la petite zone posée sur la page (Ctrl+Entrée pour poser) ; le texte s'affiche à côté de l'icône |
-| Écrire une fiche sur la page | outil Fiche : glisser la zone, puis écrire directement dans la zone posée sur la page |
+| Poser une note post-it | outil Note : clic exactement où écrire, saisir le texte dans la petite zone posée sur la page (Ctrl+Entrée pour poser) ; depuis la v0.1.12 le texte s'écrit nu sur la page, sans icône, là où vous avez cliqué |
+| Écrire une fiche sur la page | outil Fiche : clic (fiche standard posée à l'endroit cliqué, v0.1.12) ou glisser la zone, puis écrire directement dans la zone posée sur la page |
 | Mêler des formules au texte d'une fiche | dans la fiche : bouton « ƒ Insérer une formule » ou Ctrl+M, la formule (panneau Équation ou fenêtre guidée) se glisse à la position du curseur, aperçu rendu en direct sous la saisie ; Ctrl+Entrée pose le texte et les formules ensemble (v0.1.11) |
 | Corriger une fiche à formules | double-clic dessus (outil Sélection ou Équation), tout rouvre : texte et formules |
 | Modifier une note ou une fiche | double-clic dessus (outil Sélection ou Équation), corriger, Ctrl+Entrée |
@@ -59,7 +59,9 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette : zoom fluide centré sur le pointeur, ou touches + - 0 et boutons + / − / 1:1 ; le défilement garde le point visé sous le curseur |
 | Changer de page | PgSuiv / PgPréc, touches Début / Fin, boutons ‹ › |
-| Sélectionner une annotation | outil Sélection : clic sur l'annotation (liseret bleu) |
+| Sélectionner une annotation | outil Sélection : clic sur l'annotation (liseret bleu, poignées de redimensionnement si elle s'y prête) |
+| Déplacer une annotation | outil Sélection : cliquer dessus puis la faire glisser ; notes, fiches, cadres, équations et annotations d'origine suivent (une seule entrée dans le journal d'annulation) (v0.1.12) |
+| Redimensionner une annotation | outil Sélection : tirer l'une des huit poignées du liseret ; texte, fiche (recomposée depuis sa source), cadre et équation ; surlignage, trait et icône-note ne se redimensionnent pas (v0.1.12) |
 | Supprimer l'annotation sélectionnée | touche Suppr |
 | Enregistrer | Ctrl+S |
 | Enregistrer une copie horodatée | Ctrl+Maj+S (jamais d'écrasement du fichier source) |

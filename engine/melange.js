@@ -144,7 +144,9 @@ async function poserFiche(doc, page, { rect, source, fontSize }) {
     C: [0, 0, 0],
     BS: { W: 0 },
     AP: { N: formRef },
-    Contents: `${PREFIXE_FICHE_MIXTE} : ${source}`,
+    // v0.1.12 : la taille du corps voyage dans le marqueur, pour
+    // redimensionner sans perdre la composition de la fiche.
+    Contents: `${PREFIXE_FICHE_MIXTE} ${fontSize} : ${source}`,
   });
   return { ref, rect: [x0, yBas, x1, y1] };
 }

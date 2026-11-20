@@ -5,7 +5,10 @@
 'use strict';
 
 const PREFIXE_FICHE_MIXTE = 'Fiche mixte';
-const MARQUEUR_FICHE = /^Fiche mixte\s*:\s*/;
+// v0.1.12 : le marqueur porte la taille du corps (« Fiche mixte 11 : … »),
+// nécessaire au redimensionnement ; l'ancien format (v0.1.11, toujours 11)
+// reste relu.
+const MARQUEUR_FICHE = /^Fiche mixte(?: ([0-9]+(?:[.,][0-9]+)?)?)?\s*:\s*/;
 const MARQUEUR_FORMULE = /\$\$/; // (documentatif : voir decouperMelange)
 
 /** Symboles hors WinAnsi remplacés dans le TEXTE COURANT. Les symboles
@@ -41,12 +44,23 @@ function translitterMathWinAnsi(texte) {
 }
 
 /** Relit la source d'une fiche mixte stockée dans /Contents.
- * Format canonique : « Fiche mixte : <source> ». */
+ * Format canonique : « Fiche mixte [taille] : <source> ». */
 function extraireSourceFiche(contenu) {
   if (typeof contenu !== 'string') return '';
   const m = contenu.match(MARQUEUR_FICHE);
   if (!m) return '';
   return contenu.slice(m[0].length);
+}
+
+/** Taille du corps embarquée dans le marqueur (v0.1.12), ou null si le
+ * marqueur est l'ancien format (v0.1.11) : l'appelant sait alors que toutes
+ * les fiches de cette époque ont été posées à 11 pt. */
+function extraireTailleFiche(contenu) {
+  if (typeof contenu !== 'string') return null;
+  const m = contenu.match(MARQUEUR_FICHE);
+  if (!m || m[1] === undefined) return null;
+  const t = Number(String(m[1]).replace(',', '.'));
+  return Number.isFinite(t) && t > 0 ? t : null;
 }
 
 /** Découpe une source en segments texte / formule.
@@ -183,12 +197,12 @@ function composerLignes(segments, { mesurerTexte, dimsFormule, largeurMax, fontS
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
+    PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
   };
 } else {
   globalThis.AtelierTexte = {
-    PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
+    PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
   };
 }

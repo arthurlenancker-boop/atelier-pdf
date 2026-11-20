@@ -9,6 +9,7 @@ const { PDFName, PDFRef } = require('pdf-lib');
 const { addHighlight, addSquare, addInk, addTextNote, addFreeText } = require('./annots.js');
 const { addEquation } = require('./equation.js');
 const { addMixedFiche } = require('./melange.js');
+const { deplacerAnnot, redimensionnerAnnot } = require('./bouger.js');
 const { listAnnots } = require('./reread.js');
 
 // Aiguillage sorte d'édition → fonction d'édition. Chaque fonction reçoit (doc, page, args).
@@ -20,6 +21,9 @@ const REGISTRE = {
   freeText: addFreeText,
   equation: addEquation,
   ficheMelangee: addMixedFiche,
+  // v0.1.12 : la fiche mixte n'est plus seule à être asynchrone.
+  deplacer: deplacerAnnot,
+  redimensionner: redimensionnerAnnot,
 };
 
 /**
@@ -61,7 +65,8 @@ function removeAnnot(doc, pageIndex, refBrut) {
  * Crée une session d'édition sur un document déjà ouvert (résultat de openPdf).
  *
  * session.apply(edit) applique une modification :
- *   edit = { kind: 'highlight'|'square'|'ink'|'textNote'|'freeText'|'equation'|'remove',
+ *   edit = { kind: 'highlight'|'square'|'ink'|'textNote'|'freeText'|'equation'
+ *            |'ficheMelangee'|'deplacer'|'redimensionner'|'remove',
  *            pageIndex: entier 0-par-défaut,
  *            args: objet transmis à la fonction d'édition }
  *
