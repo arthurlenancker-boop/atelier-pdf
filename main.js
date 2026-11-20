@@ -31,6 +31,7 @@ protocol.registerSchemesAsPrivileged([
 
 let fenetre = null;
 let etat = null; // { chemin, session, doc, modifie }
+const derniersMessages = []; // journal console du rendu, pour les diagnostics
 
 // ---------------------------------------------------------------------------
 // Instance unique : un deuxième lancement ramène la fenêtre existante.
@@ -62,6 +63,13 @@ async function servirFichier(cheminAbsolu, mime) {
 const MIMES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  // v0.1.3 : sans cette ligne, les modules .mjs (pdf.min.mjs, pdf.worker.min.mjs)
+  // etaient servis en application/octet-stream. Chromium applique une
+  // verification stricte du type MIME des modules de script (import y compris)
+  // : l'import dynamique de pdf.js echouait depuis la v0.1.0. C'est la cause
+  // racine de l'impossibilite d'ouvrir un document.
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -110,6 +118,12 @@ function creerFenetre() {
   fenetre.once('ready-to-show', () => fenetre.show());
   fenetre.loadURL('app://local/renderer/index.html');
   fenetre.on('closed', () => { fenetre = null; });
+  // v0.1.3 : les erreurs du processus de rendu sont silencieuses pour
+  // l'utilisateur (pas de console ouverte) ; on les garde pour les diagnostics.
+  fenetre.webContents.on('console-message', (_e, niveau, texte) => {
+    derniersMessages.push(`[${niveau}] ${texte}`);
+    if (derniersMessages.length > 25) derniersMessages.shift();
+  });
 }
 
 function menuApplication() {
@@ -151,6 +165,34 @@ function menuApplication() {
     {
       label: 'Aide',
       submenu: [
+        {
+          // v0.1.3 : capture instantanee de l'etat, a photographier ou recopier
+          // en cas de probleme, sans console technique ni raccourci cache.
+          label: 'Diagnostics de l\'application…',
+          click: async () => {
+            try {
+              const rendu = await fenetre.webContents.executeJavaScript(
+                "(globalThis.__atelierDiagnostics ? globalThis.__atelierDiagnostics() : 'rendu non initialise')",
+              );
+              const journal = derniersMessages.length
+                ? derniersMessages.join('\n')
+                : '(aucun message console)';
+              dialog.showMessageBox(fenetre, {
+                type: 'info',
+                title: 'Diagnostics',
+                message: 'État de l\'application',
+                detail: `${rendu}\n\nJournal de la console du rendu :\n${journal}`,
+              });
+            } catch (err) {
+              dialog.showMessageBox(fenetre, {
+                type: 'warning',
+                title: 'Diagnostics',
+                message: 'Diagnostics indisponibles.',
+                detail: String((err && err.message) || err),
+              });
+            }
+          },
+        },
         {
           label: 'À propos d\'Atelier PDF',
           click: () => {

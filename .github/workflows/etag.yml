@@ -5,7 +5,8 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.2 (ouverture des PDF corrigee).
+# Declencheur de la v0.1.3 (type MIME des modules .mjs corrigé, ouverture
+# des PDF rétablie, menu Diagnostics ajouté).
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison
@@ -66,6 +67,25 @@ jobs:
             exit 1
           }
           Get-Content dist/latest.yml
+
+      # v0.1.3 : garde-fou de livraison. pdf.js est servi par le protocole
+      # app:// depuis les ressources ; un fichier absent rend l'ouverture des
+      # PDF impossible (v0.1.2). On refuse de publier sans ces fichiers.
+      - name: Verification des ressources empaquetees (pdf.js)
+        if: steps.version.outputs.existe == 'false'
+        shell: pwsh
+        run: |
+          foreach ($f in @(
+            "dist/win-unpacked/resources/app.asar",
+            "dist/win-unpacked/resources/node_modules/pdfjs-dist/build/pdf.min.mjs",
+            "dist/win-unpacked/resources/node_modules/pdfjs-dist/build/pdf.worker.min.mjs"
+          )) {
+            if (-not (Test-Path $f)) {
+              Write-Error "Ressource absente du paquet Windows : $f"
+              exit 1
+            }
+            Write-Host "OK : $f"
+          }
 
       # La page Release GitHub remplace les espaces par des points dans les
       # noms de fichiers : on aligne latest.yml sur ces noms rebelles.

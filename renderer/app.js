@@ -11,6 +11,7 @@ const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
 // (fichier absent) tuait silencieusement tout le module : plus aucun bouton
 // n'etait branche. Ici, l'echec s'affiche dans la barre d'etat.
 let pdfjsLib = null;
+let erreurPdfjs = null; // dernier message d'echec du chargement (diagnostics)
 
 async function chargerPdfjs() {
   pdfjsLib = await import('app://local/libs/pdfjs-dist/build/pdf.min.mjs');
@@ -191,13 +192,19 @@ window.atelier.onChanged((infos) => {
    Ouverture et rendu pdf.js
    ============================================================ */
 async function ouvrirDocument(chemin) {
-  if (!pdfjsLib) {
-    message("Le moteur d'affichage du PDF n'est pas chargé. Redémarrez l'application ; si le problème persiste, signalez-le.", 'erreur');
-    return;
-  }
+  // v0.1.3 : le fichier est demandé d'abord au processus principal (boîte de
+  // dialogue ou chemin déposé) ; le moteur d'affichage n'est requis qu'après.
+  // Avant, l'absence de pdf.js bloquait même la boîte de dialogue : impossible
+  // de distinguer « rien ne se passe » d'un échec de chargement du moteur.
   const rep = await window.atelier.open(chemin);
   if (rep.annule) return;
   if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  if (!pdfjsLib) {
+    etat.chemin = rep.resume.chemin;
+    message(`« ${rep.resume.chemin} » est ouvert, mais l'afficheur pdf.js n'a pas pu être chargé`
+      + `${erreurPdfjs ? ` : ${erreurPdfjs}` : ''}. Menu Aide → Diagnostics de l'application.`, 'erreur');
+    return;
+  }
   etat.resume = null;
   etat.annotsPdf = [];
   etat.selection = null;
@@ -822,11 +829,25 @@ async function enregistrer(mode) {
 /* ============================================================
    Démarrage
    ============================================================ */
+// v0.1.3 : texte de diagnostic assemblé pour le menu Aide → Diagnostics
+// (récupéré par le processus principal via executeJavaScript).
+globalThis.__atelierDiagnostics = () => [
+  `Version : ${$('#version-etat').textContent || 'inconnue'}`,
+  `Moteur d'affichage pdf.js : ${pdfjsLib ? 'chargé' : `NON chargé${erreurPdfjs ? ` (${erreurPdfjs})` : ''}`}`,
+  (pdfjsLib && typeof pdfjsLib.GlobalWorkerOptions !== 'undefined')
+    ? `Emplacement du worker : ${pdfjsLib.GlobalWorkerOptions.workerSrc || '(non défini)'}`
+    : 'Emplacement du worker : indisponible (moteur non chargé)',
+  `Fichier ouvert : ${etat.chemin || 'aucun'}`,
+  `Page affichée : ${etat.resume ? `${etat.page} / ${etat.resume.pageCount}` : '–'}`,
+  `Annotations connues : ${etat.resume ? etat.resume.annots.length : 0}`,
+].join('\n');
+
 (async function init() {
   try {
     await chargerPdfjs();
   } catch (err) {
-    message("Impossible de charger le moteur d'affichage (pdf.js) : " + (err && err.message ? err.message : err), 'erreur');
+    erreurPdfjs = (err && err.message) ? err.message : String(err);
+    message(`Impossible de charger le moteur d'affichage pdf.js : ${erreurPdfjs}. Menu Aide → Diagnostics de l'application.`, 'erreur');
   }
   construirePanneauEquation();
   ecouterSouris();
