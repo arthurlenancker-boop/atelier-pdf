@@ -5,8 +5,9 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.3 (type MIME des modules .mjs corrigé, ouverture
-# des PDF rétablie, menu Diagnostics ajouté).
+# Declencheur de la v0.1.4 (exportation CommonJS inconditionnelle supprimée
+# de engine/coords.js : elle tuait le module du rendu « module is not
+# defined », aucune interface n'a jamais démarré depuis la v0.1.0).
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison

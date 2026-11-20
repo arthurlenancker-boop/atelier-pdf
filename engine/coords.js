@@ -51,12 +51,14 @@ function quadPointsForRange(pointA, pointB) {
   return [[x0, yc + h, x1, yc + h, x0, yc - h, x1, yc - h]];
 }
 
-module.exports = { deviceToPdf, quadPointsForRange };
-
 // Double en-tête : sous Node (tests, processus principal), CommonJS habituel ;
 // dans le navigateur du processus de rendu (module ESM sans « module »),
 // les fonctions sont exposées sur globalThis.AtelierCoords — le rendu emploie
 // ainsi exactement le même code de conversion que les tests qui le garantissent.
+// v0.1.4 : la version inconditionnelle de cette exportation (« module.exports »
+// hors garde) tuait le module du rendu dès son import — « module is not
+// defined » — et donc TOUTE l'interface (aucun bouton branché) depuis la
+// v0.1.0. Seule la forme gardée doit exister.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { deviceToPdf, quadPointsForRange };
 } else {
