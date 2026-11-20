@@ -58,7 +58,7 @@ async function poserFiche(doc, page, { rect, source, fontSize }) {
     return { widthPt: r.widthPt, heightPt: r.heightPt, depthPt: r.depthPt };
   };
 
-  const layout = composerLignes(decouperMelange(src), {
+  const layout = composerLignes(decouperMelange(source), {
     mesurerTexte, dimsFormule,
     largeurMax: (x1 - x0) - 2 * MARGE,
     fontSize,
@@ -144,7 +144,7 @@ async function poserFiche(doc, page, { rect, source, fontSize }) {
     C: [0, 0, 0],
     BS: { W: 0 },
     AP: { N: formRef },
-    Contents: `${PREFIXE_FICHE_MIXTE} : ${src}`,
+    Contents: `${PREFIXE_FICHE_MIXTE} : ${source}`,
   });
   return { ref, rect: [x0, yBas, x1, y1] };
 }

@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.11 (relance) : correction de l'echec CI — pdf-lib 1.17.1 expose embedFont de façon asynchrone, la pose d'une fiche mixte attend la police (refus sans formule toujours immédiat), session et livreur attendent chaque pose avant d'en déduire le résumé.
+# Declencheur de la v0.1.11 (relance 2) : embedFont de pdf-lib 1.17.1 est asynchrone — la pose d'une fiche mixte attend la police, le refus sans formule reste immédiat ; session et livreur attendent chaque pose avant le résumé ; les flux publient le journal d'échec des tests en annotation publique.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;
