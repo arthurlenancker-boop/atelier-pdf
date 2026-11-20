@@ -1,6 +1,6 @@
 {
   "name": "atelier-pdf",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Atelier PDF — éditeur PDF de bureau : annotations standard et équations LaTeX écrites dans le fichier.",
   "license": "AGPL-3.0-only",
   "type": "commonjs",
@@ -33,8 +33,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {

@@ -3,13 +3,20 @@
 // tout passe par window.atelier (pont preload) vers le processus principal.
 'use strict';
 
-import * as pdfjsLib from 'app://local/libs/pdfjs-dist/build/pdf.min.mjs';
 import '../engine/coords.js'; // expose globalThis.AtelierCoords
 
 const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'app://local/libs/pdfjs-dist/build/pdf.worker.min.mjs';
+// v0.1.2 : chargement dynamique de pdf.js. Un import statique qui echoue
+// (fichier absent) tuait silencieusement tout le module : plus aucun bouton
+// n'etait branche. Ici, l'echec s'affiche dans la barre d'etat.
+let pdfjsLib = null;
+
+async function chargerPdfjs() {
+  pdfjsLib = await import('app://local/libs/pdfjs-dist/build/pdf.min.mjs');
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'app://local/libs/pdfjs-dist/build/pdf.worker.min.mjs';
+}
 
 /* ============================================================
    Ruban Équation — données de la maquette (structures OneNote)
@@ -184,6 +191,10 @@ window.atelier.onChanged((infos) => {
    Ouverture et rendu pdf.js
    ============================================================ */
 async function ouvrirDocument(chemin) {
+  if (!pdfjsLib) {
+    message("Le moteur d'affichage du PDF n'est pas chargé. Redémarrez l'application ; si le problème persiste, signalez-le.", 'erreur');
+    return;
+  }
   const rep = await window.atelier.open(chemin);
   if (rep.annule) return;
   if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
@@ -812,6 +823,11 @@ async function enregistrer(mode) {
    Démarrage
    ============================================================ */
 (async function init() {
+  try {
+    await chargerPdfjs();
+  } catch (err) {
+    message("Impossible de charger le moteur d'affichage (pdf.js) : " + (err && err.message ? err.message : err), 'erreur');
+  }
   construirePanneauEquation();
   ecouterSouris();
   choisirOutil('aucun');

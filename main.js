@@ -49,8 +49,14 @@ if (!verrou) {
 
 /** Sert un fichier local (fonctionne aussi depuis l'archive asar). */
 async function servirFichier(cheminAbsolu, mime) {
-  const octets = await fs.promises.readFile(cheminAbsolu);
-  return new Response(octets, { headers: { 'Content-Type': mime } });
+  try {
+    const octets = await fs.promises.readFile(cheminAbsolu);
+    return new Response(octets, { headers: { 'Content-Type': mime } });
+  } catch {
+    // v0.1.2 : un fichier manquant doit echouer clairement (404), pas renvoyer
+    // une reponse vide qui masquerait l'erreur dans la console.
+    return new Response('Fichier introuvable.', { status: 404 });
+  }
 }
 
 const MIMES = {
@@ -64,18 +70,23 @@ const MIMES = {
 };
 
 function initProtocole() {
-  protocol.handle('app', (requ) => {
+  protocol.handle('app', async (requ) => {
     const url = new URL(requ.url);
-    // app://local/renderer/…  → fichiers du dossier renderer.
-    // app://local/libs/…     → dépendances servies localement (pdfjs-dist).
+    // app://local/renderer/...  -> fichiers du dossier renderer.
+    // app://local/libs/...      -> dependances servies localement (pdfjs-dist).
+    // v0.1.2 : le prefixe « libs/ » designe l'interieur du dossier des
+    // dependances ; il doit etre retire du chemin servi (l'import de pdf.js
+    // pointait avant vers node_modules/libs/..., un dossier inexistant).
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-    let racine;
-    if (rel.startsWith('libs/')) {
-      racine = dossierLibs;
-    } else {
-      racine = __dirname;
+    const racine = rel.startsWith('libs/') ? dossierLibs : __dirname;
+    const cible = rel.startsWith('libs/')
+      ? path.join(dossierLibs, rel.slice('libs/'.length))
+      : path.join(__dirname, rel);
+    // Garde-fou : jamais de remontee hors de la racine servie.
+    const resolu = path.resolve(cible);
+    if (resolu !== path.resolve(racine) && !resolu.startsWith(path.resolve(racine) + path.sep)) {
+      return new Response('Chemin refuse.', { status: 403 });
     }
-    const cible = path.join(racine, rel);
     const mime = MIMES[path.extname(cible).toLowerCase()] || 'application/octet-stream';
     return servirFichier(cible, mime);
   });
