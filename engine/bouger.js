@@ -63,9 +63,10 @@ function translaterLigne(ligne, dx, dy) {
   if (!mots[0]) return ligne;
   const op = mots[mots.length - 1];
 
-  // `x y w h re S` et `x y w h re f` (rectangles peints/tracés).
+  // `x y w h re S` et `x y w h re f` (rectangles peints/tracés) :
+  // SIX mots, opcode peint en dernière position (`re` en 5e).
   if (op === 'S' || op === 'f') {
-    if (mots.length === 7 && mots[5] === 're') {
+    if (mots.length === 6 && mots[4] === 're') {
       mots[0] = fmt(Number(mots[0]) + dx);
       mots[1] = fmt(Number(mots[1]) + dy);
       return mots.join(' ');

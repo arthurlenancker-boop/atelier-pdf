@@ -109,7 +109,7 @@ test('deplacerAnnot : équation — /Rect seul, apparence locale intacte', async
 
 test('deplacerAnnot : fiche mixte — marqueur et formules préservés, AP translaté', async () => {
   const { doc, page } = await neuf();
-  const { ref } = addMixedFiche(doc, page, {
+  const { ref } = await addMixedFiche(doc, page, {
     rect: [100, 600, 360, 660], source: 'a $x$ b', fontSize: 11,
   });
   const avant = annotParRef(doc, ref);
@@ -165,7 +165,7 @@ test('redimensionnerAnnot : équation — /Rect seul, apparence locale intacte',
 test('redimensionnerAnnot : fiche mixte reposée, source et taille intactes', async () => {
   const { doc, page } = await neuf();
   const source = 'Large $\\frac{a}{b}$ fin';
-  const { ref, rect } = addMixedFiche(doc, page, {
+  const { ref, rect } = await addMixedFiche(doc, page, {
     rect: [100, 600, 360, 660], source, fontSize: 11,
   });
   const rep = await redimensionnerAnnot(doc, page, { ref, rect: [100, 500, 460, 660] });
@@ -189,7 +189,12 @@ test('redimensionnerAnnot : surlignage, trait et note refuse(nt)', async () => {
       /ne se redimensionne pas/,
     );
   }
-  assert.throws(() => redimensionnerAnnot(doc, page, { ref: null, rect: [0, 0, 10, 10] }));
+  // L'absence de cible se rejette comme le reste (fonction asynchrone :
+  // une promesse rejetée, jamais un lancer synchrone).
+  await assert.rejects(
+    () => redimensionnerAnnot(doc, page, { ref: null, rect: [0, 0, 10, 10] }),
+    /Aucune annotation désignée/,
+  );
 });
 
 test('session : deplacer et redimensionner passent par le journal', async () => {
