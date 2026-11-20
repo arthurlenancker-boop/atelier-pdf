@@ -51,7 +51,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Écrire une fiche sur la page | outil Fiche : glisser la zone, puis écrire directement dans la zone posée sur la page |
 | Modifier une note ou une fiche | double-clic dessus (outil Sélection ou Équation), corriger, Ctrl+Entrée |
 | Insérer une équation | outil Équation : clic sur la page (la formule pose sa ligne de base à cet endroit), formule dans le panneau, bouton Insérer dans la page |
-| Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : cases en clair, bande Insérer, aperçu en direct, bouton Écrire |
+| Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : cases en clair, bande Insérer, bouton Écrire (pas de zone d'aperçu) |
 | Corriger une équation posée | clic sur l'équation (outil Équation) ou double-clic (outil Sélection), corriger, bouton Remplacer la formule |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette : zoom fluide centré sur le pointeur, ou touches + - 0 et boutons + / − / 1:1 ; le défilement garde le point visé sous le curseur |

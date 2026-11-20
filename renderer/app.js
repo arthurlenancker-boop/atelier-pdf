@@ -993,7 +993,6 @@ let valeursGuide = {};        // contenu des champs texte
 let choixGuide = null;        // option radio courante des gabarits à variantes
 let cochesGuide = {};         // cases cochées (norme, coordonnées verticales…)
 let lignesSysteme = [];        // équations déjà validées du système
-let apercuGuide = null;       // dernier aperçu calculé par la fenêtre
 let dernierChampGuide = null; // dernier champ actif (cible de la bande « Insérer »)
 
 function construireBoutonsGuides() {
@@ -1054,7 +1053,6 @@ function ouvrirGuide(id) {
   choixGuide = null;
   cochesGuide = {};
   lignesSysteme = [];
-  apercuGuide = null;
   dernierChampGuide = null;
   const cont = $('#guide-champs');
   cont.replaceChildren();
@@ -1111,8 +1109,6 @@ function ouvrirGuide(id) {
     }
   }
   $('#guide-erreur').hidden = true;
-  const ap = $('#guide-apercu');
-  ap.getContext('2d').clearRect(0, 0, ap.width, ap.height);
   $('#guide-fond').hidden = false;
   const premier = cont.querySelector('input');
   if (premier) premier.focus();
@@ -1133,12 +1129,11 @@ function composerCourant() {
   return GUIDES[guideOuvert].composer(valeursGuide, choixGuide, cochesGuide);
 }
 
+/* v0.1.8 : la fenêtre guidée n'affiche PLUS de zone d'aperçu (demande
+   d'Arthur). La composition est seulement vérifiée en silence afin de
+   signaler toute erreur AVANT le bouton Écrire. */
 async function majApercuGuide() {
   if (!guideOuvert) return;
-  const canvas = $('#guide-apercu');
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  apercuGuide = null;
   const comp = composerCourant();
   const err = $('#guide-erreur');
   if (!comp) { err.hidden = true; return; }
@@ -1146,8 +1141,6 @@ async function majApercuGuide() {
   err.hidden = true;
   const rep = await window.atelier.previewEquation(comp.latex, etat.eqExPt);
   if (rep.erreur) { err.textContent = rep.erreur; err.hidden = false; return; }
-  apercuGuide = rep.apercu;
-  dessinerOpsCanvas(canvas, rep.apercu);
 }
 
 function insererSnipGuide(sn) {
