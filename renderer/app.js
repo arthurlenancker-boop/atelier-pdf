@@ -703,6 +703,12 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
    Barre d'outils, zoom, pages, glisser-déposer, menu
    ============================================================ */
 function choisirOutil(outil) {
+  // v0.1.1 : sans document ouvert, les outils d'annotation n'ont pas de page
+  // où agir ; on le dit plutôt que de laisser des clics sans effet.
+  if (outil !== 'aucun' && !etat.resume) {
+    message('Ouvrez d\'abord un document PDF (bouton Ouvrir ou glisser-déposer).', 'erreur');
+    return;
+  }
   etat.outil = outil;
   document.querySelectorAll('.outil').forEach((b) => {
     b.classList.toggle('actif', b.dataset.outil === outil);

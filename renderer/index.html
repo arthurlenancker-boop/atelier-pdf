@@ -92,7 +92,7 @@
       </div>
 
       <label class="champ-libelle" id="eq-libelle">LaTeX</label>
-      <textarea id="eq-saisie" class="eq-saisie" rows="3"
+      <textarea id="eq-saisie" class="eq-saisie" rows="3" spellcheck="false"
         placeholder="Ex. : x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}"></textarea>
 
       <div class="apercu-cadre">
@@ -118,7 +118,8 @@
   <div id="saisie-fond" class="saisie-fond" hidden>
     <div class="saisie-carte" role="dialog" aria-modal="true">
       <h3 id="saisie-titre">Texte</h3>
-      <textarea id="saisie-texte" class="saisie-texte" rows="4"></textarea>
+      <textarea id="saisie-texte" class="saisie-texte" rows="4" spellcheck="false"></textarea>
+      <p class="saisie-aide">Ctrl+Entrée pour valider</p>
       <div class="saisie-actions">
         <button id="saisie-annuler" class="btn">Annuler</button>
         <button id="saisie-valider" class="btn accent">Poser</button>

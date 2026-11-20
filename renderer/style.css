@@ -1,19 +1,41 @@
-/* renderer/style.css — thème Glass on Charcoal (dérivé de SpotiKit). */
+/* renderer/style.css — thème Glass on Charcoal (dérivé de SpotiKit).
+   Identité : fond Charcoal #0C0E13, surfaces surélevées, remplissages blancs
+   translucides (6 % / survol 9 % / appui 4 %), listels internes qui donnent
+   le bord de verre (1 px clair en haut, 1 px sombre en bas, contour faible),
+   accent doux à 16 %, rayons 20 / 14 / 10 / 6, EaseOutQuint. */
+
+/* Correctif v0.1.1 (critique) : l'attribut hidden doit toujours masquer,
+   même sur un élément doté d'un display explicite par ailleurs
+   (la fenêtre de saisie restait affichée et capturait tous les clics). */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #0C0E13;
   --surface: #151821;
   --surface-2: #1B1F2B;
-  --verre: rgba(21, 24, 33, 0.72);
+  --verre: rgba(255, 255, 255, 0.06);
+  --verre-survol: rgba(255, 255, 255, 0.09);
+  --verre-appui: rgba(255, 255, 255, 0.04);
+  --verre-panneau: rgba(21, 24, 33, 0.78);
   --bord: rgba(167, 175, 192, 0.14);
+  --liseret-clair: rgba(255, 255, 255, 0.1);
+  --liseret-sombre: rgba(0, 0, 0, 0.38);
   --ink: #F3F5FA;
   --ink-2: #A7AFC0;
   --ink-3: #6B7386;
   --accent: #4C6FFF;
   --accent-clair: #56A8FF;
+  --accent-doux: rgba(76, 111, 255, 0.16);
   --reussite: #3DDC97;
   --alerte: #FFB547;
   --erreur: #FF5C7A;
   --pause: cubic-bezier(0.22, 1, 0.36, 1);
+  --rayon-grand: 20px;
+  --rayon-carte: 14px;
+  --rayon-controle: 10px;
+  --rayon-menue: 6px;
+  --ombre-verre: inset 0 1px 0 var(--liseret-clair), inset 0 -1px 0 var(--liseret-sombre), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --ombre-verre-faible: inset 0 1px 0 var(--liseret-clair), inset 0 -1px 0 var(--liseret-sombre);
 }
 
 * { box-sizing: border-box; }
@@ -28,10 +50,7 @@ html, body {
   overflow: hidden;
 }
 
-body {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
-}
+body { display: grid; grid-template-rows: auto auto 1fr auto; }
 
 /* ————— Barre supérieure ————— */
 .barre {
@@ -39,9 +58,9 @@ body {
   align-items: center;
   gap: 16px;
   padding: 10px 14px;
-  background: linear-gradient(180deg, rgba(27, 31, 43, 0.9), var(--verre));
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
   border-bottom: 1px solid var(--bord);
-  backdrop-filter: blur(14px);
+  box-shadow: var(--ombre-verre-faible), 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 .marque { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .logo {
@@ -49,11 +68,12 @@ body {
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
+  border-radius: var(--rayon-controle);
   background: linear-gradient(135deg, var(--accent), #8E7BFF);
   font-weight: 700;
   font-size: 12px;
   color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 8px rgba(76, 111, 255, 0.35);
 }
 .titre { font-weight: 600; letter-spacing: 0.02em; }
 .nom-fichier {
@@ -69,32 +89,45 @@ body {
   border: 1px solid rgba(255, 181, 71, 0.4);
   border-radius: 999px;
   padding: 1px 8px;
+  background: rgba(255, 181, 71, 0.08);
 }
 .actions-fichier, .affichage { display: flex; align-items: center; gap: 6px; }
 .affichage { margin-left: auto; }
 .separateur { width: 1px; height: 18px; background: var(--bord); margin: 0 4px; }
 .etiquette-zoom, .etiquette-page { min-width: 46px; text-align: center; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
-/* ————— Boutons ————— */
+/* ————— Boutons : verre translucide, listel interne, accent doux ————— */
 .btn {
   border: 1px solid var(--bord);
-  background: rgba(48, 54, 72, 0.42);
+  background: var(--verre);
   color: var(--ink);
-  border-radius: 8px;
+  border-radius: var(--rayon-controle);
   padding: 6px 12px;
   font: inherit;
   cursor: pointer;
-  transition: background 0.18s var(--pause), border-color 0.18s var(--pause), transform 0.12s var(--pause);
+  box-shadow: var(--ombre-verre-faible), 0 2px 8px rgba(0, 0, 0, 0.22);
+  transition: background 0.18s var(--pause), border-color 0.18s var(--pause), transform 0.12s var(--pause), box-shadow 0.18s var(--pause);
 }
-.btn:hover { background: rgba(76, 111, 255, 0.18); border-color: rgba(76, 111, 255, 0.45); }
-.btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.38; cursor: default; transform: none; }
+.btn:hover {
+  background: var(--accent-doux);
+  border-color: rgba(76, 111, 255, 0.45);
+  box-shadow: inset 0 1px 0 var(--liseret-clair), inset 0 -1px 0 var(--liseret-sombre), 0 4px 14px rgba(76, 111, 255, 0.22);
+}
+.btn:active { transform: translateY(1px) scale(0.98); background: var(--verre-appui); }
+.btn:disabled { opacity: 0.38; cursor: default; transform: none; box-shadow: var(--ombre-verre-faible); }
 .btn.accent {
-  background: linear-gradient(135deg, var(--accent), #6C8BFF);
+  background: linear-gradient(135deg, #5B79FF, var(--accent));
   border-color: transparent;
   color: #fff;
   font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 18px rgba(76, 111, 255, 0.35);
 }
+.btn.accent:hover {
+  background: linear-gradient(135deg, #6C8BFF, #4C6FFF);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 22px rgba(76, 111, 255, 0.45);
+}
+.btn.accent:disabled { background: rgba(76, 111, 255, 0.4); }
 .btn.carre { padding: 6px 9px; min-width: 32px; }
 .btn.plein { width: 100%; padding: 9px; font-size: 14px; }
 
@@ -113,7 +146,7 @@ body {
   gap: 7px;
   padding: 7px 12px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--rayon-controle);
   background: none;
   color: var(--ink-2);
   font: inherit;
@@ -121,32 +154,34 @@ body {
   transition: all 0.18s var(--pause);
 }
 .outil .icone { font-size: 14px; width: 20px; text-align: center; }
-.outil:hover { background: rgba(76, 111, 255, 0.12); color: var(--ink); }
+.outil:hover { background: var(--verre-survol); color: var(--ink); box-shadow: var(--ombre-verre-faible); }
 .outil.actif {
-  background: rgba(76, 111, 255, 0.2);
-  border-color: rgba(76, 111, 255, 0.55);
+  background: var(--accent-doux);
+  border-color: rgba(76, 111, 255, 0.5);
   color: var(--ink);
-  box-shadow: 0 0 0 1px rgba(76, 111, 255, 0.15) inset;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 var(--liseret-sombre);
 }
 
 /* ————— Corps : visionneuse + panneau ————— */
 .corps { display: grid; grid-template-columns: 1fr auto; min-height: 0; }
 .zone { position: relative; min-width: 0; }
 
+/* Écran d'accueil : grande carte de verre au centre. */
 .accueil {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  background: radial-gradient(1200px 600px at 50% 20%, rgba(76, 111, 255, 0.07), transparent 60%);
+  background: radial-gradient(1200px 600px at 50% 20%, rgba(76, 111, 255, 0.08), transparent 60%);
 }
 .accueil-carte {
   max-width: 440px;
   padding: 28px 32px;
-  border-radius: 16px;
+  border-radius: var(--rayon-grand);
   background: var(--verre);
   border: 1px solid var(--bord);
-  backdrop-filter: blur(10px);
+  box-shadow: var(--ombre-verre);
+  backdrop-filter: blur(22px);
   text-align: center;
 }
 .accueil-titre { font-size: 18px; font-weight: 600; margin: 0 0 10px; }
@@ -179,14 +214,15 @@ body {
 .corps[data-curseur="viseur"] .calque-tampon { cursor: cell; }
 .corps[data-curseur="defaut"] .calque-tampon { cursor: default; }
 
-/* ————— Panneau Équation ————— */
+/* ————— Panneau Équation : colonne de verre ————— */
 .panneau-equation {
   width: 336px;
   overflow-y: auto;
   padding: 14px 16px 20px;
-  background: var(--verre);
+  background: var(--verre-panneau);
   border-left: 1px solid var(--bord);
-  backdrop-filter: blur(14px);
+  box-shadow: inset 1px 0 0 var(--liseret-clair);
+  backdrop-filter: blur(18px);
 }
 .panneau-equation h2 { font-size: 16px; margin: 4px 0 10px; }
 .panneau-equation h3 {
@@ -201,9 +237,10 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 3px;
-  border-radius: 10px;
+  border-radius: var(--rayon-controle);
   background: rgba(7, 8, 11, 0.6);
   border: 1px solid var(--bord);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 .bascule {
   border: none;
@@ -213,26 +250,38 @@ body {
   padding: 6px 4px;
   border-radius: 7px;
   cursor: pointer;
+  transition: all 0.18s var(--pause);
 }
-.bascule.actif { background: rgba(76, 111, 255, 0.28); color: var(--ink); font-weight: 600; }
+.bascule.actif {
+  background: var(--accent-doux);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 2px 8px rgba(76, 111, 255, 0.3);
+}
 .champ-libelle { display: block; margin: 12px 0 4px; color: var(--ink-3); font-size: 12px; }
 .eq-saisie, .saisie-texte {
   width: 100%;
   resize: vertical;
   background: rgba(7, 8, 11, 0.72);
   border: 1px solid var(--bord);
-  border-radius: 8px;
+  border-radius: var(--rayon-controle);
   color: var(--ink);
   font-family: "Cambria Math", Georgia, serif;
   font-size: 15px;
   padding: 8px 10px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.18s var(--pause), box-shadow 0.18s var(--pause);
 }
-.eq-saisie:focus, .saisie-texte:focus { outline: 1px solid var(--accent); }
+.eq-saisie:focus, .saisie-texte:focus {
+  outline: none;
+  border-color: rgba(76, 111, 255, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 3px var(--accent-doux);
+}
 .apercu-cadre {
   margin-top: 10px;
   border: 1px dashed var(--bord);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--rayon-carte);
+  background: var(--verre-appui);
   padding: 6px;
   display: grid;
   place-items: center;
@@ -245,28 +294,30 @@ body {
 .grille-petite { display: flex; flex-wrap: wrap; gap: 6px; }
 .puce {
   border: 1px solid var(--bord);
-  border-radius: 8px;
-  background: rgba(48, 54, 72, 0.42);
+  border-radius: var(--rayon-controle);
+  background: var(--verre);
   color: var(--ink-2);
   font: inherit;
   font-size: 12px;
   padding: 4px 9px;
   cursor: pointer;
+  box-shadow: var(--ombre-verre-faible);
   transition: all 0.15s var(--pause);
 }
-.puce:hover { border-color: var(--accent); color: var(--ink); }
+.puce:hover { border-color: rgba(76, 111, 255, 0.5); background: var(--accent-doux); color: var(--ink); }
 .groupe-title { font-size: 12px; color: var(--ink-2); margin: 8px 0 4px; }
 .grille-struct { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .case-struct {
   border: 1px solid var(--bord);
-  border-radius: 9px;
-  background: rgba(48, 54, 72, 0.3);
+  border-radius: var(--rayon-controle);
+  background: var(--verre-appui);
   color: var(--ink);
   padding: 6px 8px;
   cursor: pointer;
   text-align: left;
   font: inherit;
   font-size: 12px;
+  box-shadow: var(--ombre-verre-faible);
   transition: all 0.15s var(--pause);
 }
 .case-struct .viz {
@@ -276,7 +327,7 @@ body {
   text-align: center;
   margin-bottom: 2px;
 }
-.case-struct:hover { border-color: var(--accent); background: rgba(76, 111, 255, 0.12); }
+.case-struct:hover { border-color: rgba(76, 111, 255, 0.5); background: var(--accent-doux); }
 .grille-symboles { display: flex; flex-wrap: wrap; gap: 4px; }
 .symb {
   width: 30px;
@@ -284,21 +335,22 @@ body {
   display: grid;
   place-items: center;
   border: 1px solid var(--bord);
-  border-radius: 7px;
-  background: rgba(48, 54, 72, 0.3);
+  border-radius: 8px;
+  background: var(--verre-appui);
   color: var(--ink);
   font-family: "Cambria Math", Georgia, serif;
   font-size: 15px;
   cursor: pointer;
+  box-shadow: var(--ombre-verre-faible);
 }
-.symb:hover { border-color: var(--accent); background: rgba(76, 111, 255, 0.15); }
+.symb:hover { border-color: rgba(76, 111, 255, 0.5); background: var(--accent-doux); }
 
-/* ————— Fenêtre de saisie ————— */
+/* ————— Fenêtre de saisie : grande carte de verre modale ————— */
 .saisie-fond {
   position: fixed;
   inset: 0;
   background: rgba(5, 6, 8, 0.55);
-  backdrop-filter: blur(3px);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   z-index: 20;
@@ -306,14 +358,21 @@ body {
 .saisie-carte {
   width: 380px;
   padding: 18px;
-  border-radius: 14px;
-  background: var(--surface);
+  border-radius: var(--rayon-grand);
+  background: var(--verre-panneau);
   border: 1px solid var(--bord);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--ombre-verre), 0 24px 70px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(22px);
 }
 .saisie-carte h3 { margin: 0 0 10px; font-size: 15px; }
 .saisie-texte { font-family: inherit; }
 .saisie-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.saisie-aide {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: right;
+}
 
 /* ————— Barre d'état ————— */
 .etat {
@@ -325,5 +384,6 @@ body {
   color: var(--ink-2);
   background: rgba(7, 8, 11, 0.7);
   border-top: 1px solid var(--bord);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .etat .faible { color: var(--ink-3); }
