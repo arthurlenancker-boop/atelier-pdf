@@ -1,11 +1,11 @@
 # Livraison automatique : ce fichier, poussé sur main, construit et publie la
-# versiondeclare dans package.json (tag vX.Y.Z pose au passage si absent).
+# version declare dans package.json (tag vX.Y.Z pose au passage si absent).
 # Necessaire car ni le connecteur GitHub ni l'application mobile ne savent
 # creer une etiquette, et l'ordinateur d'Arthur n'a pas npm. Les etiquettes
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.11 : fiche texte + formules ($...$) insérées au curseur (bouton de la fiche ou Ctrl+M, fenêtres guidées), posées en une annotation rendue pareil partout ; insertion au curseur aussi dans le champ du panneau Équation
+# Declencheur de la v0.1.11 (relance) : correction de l'echec CI — pdf-lib 1.17.1 expose embedFont de façon asynchrone, la pose d'une fiche mixte attend la police (refus sans formule toujours immédiat), session et livreur attendent chaque pose avant d'en déduire le résumé.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;

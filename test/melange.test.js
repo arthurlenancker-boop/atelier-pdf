@@ -8,6 +8,7 @@ const { PDFDocument } = require('pdf-lib');
 const { PDFDocument: Doc } = require('pdf-lib');
 
 const { addMixedFiche } = require('../engine/melange.js');
+const { createSession } = require('../engine/session.js');
 const { extraireSourceFiche, PREFIXE_FICHE_MIXTE } = require('../engine/texte.js');
 const { listAnnots } = require('../engine/reread.js');
 
@@ -16,7 +17,7 @@ const SOURCE = 'Pour tout $x \\ne 2$, $\\frac{x^2+1}{x-2} = 3$ fin.';
 test('addMixedFiche : pose une fiche mixte lisible et relisible', async () => {
   const doc = await PDFDocument.create();
   const page = doc.addPage([595, 842]);
-  const rep = addMixedFiche(doc, page, { rect: [100, 600, 360, 660], source: SOURCE, fontSize: 11 });
+  const rep = await addMixedFiche(doc, page, { rect: [100, 600, 360, 660], source: SOURCE, fontSize: 11 });
   assert.ok(rep.ref, 'une référence est retournée');
   assert.strictEqual(rep.rect[0], 100);
   assert.strictEqual(rep.rect[2], 360);
@@ -37,4 +38,22 @@ test('addMixedFiche : sans formule $...$, la pose est refusée sans rien écrire
   const page = doc.addPage([595, 842]);
   assert.throws(() => addMixedFiche(doc, page, { rect: [10, 10, 60, 60], source: 'texte ordinaire', fontSize: 11 }));
   assert.strictEqual(listAnnots(doc).length, 0);
+});
+
+test('la session attend la pose asynchrone et ne journalise que la réussite', async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]);
+  const session = createSession(doc);
+  const rep = await session.apply({
+    kind: 'ficheMelangee', pageIndex: 0,
+    args: { rect: [100, 700, 300, 740], source: 'Soit $x$ un réel.', fontSize: 11 },
+  });
+  assert.ok(rep.ref, 'la fiche posée est désignée par sa référence');
+  assert.strictEqual(session.edits().length, 1, 'une seule modification journalisée');
+  assert.strictEqual(session.listAnnots().length, 1);
+  assert.throws(() => session.apply({
+    kind: 'ficheMelangee', pageIndex: 0,
+    args: { rect: [10, 10, 60, 60], source: 'sans formule', fontSize: 11 },
+  }));
+  assert.strictEqual(session.edits().length, 1, 'un refus n\'entre pas au journal');
 });

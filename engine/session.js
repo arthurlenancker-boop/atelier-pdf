@@ -95,6 +95,15 @@ function createSession(doc) {
       }
       const page = doc.getPage(pageIndex);
       const resultat = fn(doc, page, args);
+      if (resultat && typeof resultat.then === 'function') {
+        // v0.1.11 : les fiches mixtes se posent en asynchrone (pdf-lib expose
+        // embedFont asynchrone). L'entrée de journal n'est écrite qu'une fois
+        // la pose réussie ; l'éventuelle erreur remonte à l'appelant.
+        return resultat.then((r) => {
+          journal.push({ kind, pageIndex, args });
+          return r;
+        });
+      }
       journal.push({ kind, pageIndex, args });
       return resultat;
     },

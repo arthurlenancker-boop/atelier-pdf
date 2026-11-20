@@ -258,7 +258,10 @@ ipcMain.handle('pdf:apply', async (_e, edits) => {
     if (!Array.isArray(edits)) return { erreur: 'Requête d\'édition mal formée.' };
     const faits = [];
     for (const edit of edits) {
-      faits.push(etat.session.apply(edit));
+      // v0.1.11 : les fiches mixtes se posent en asynchrone (embedFont de
+      // pdf-lib) ; il faut les attendre une à une pour que le résumé reflète
+      // vraiment le document AVANT qu'il ne soit envoyé au rendu.
+      faits.push(await etat.session.apply(edit));
     }
     etat.modifie = true;
     notifierChangement();

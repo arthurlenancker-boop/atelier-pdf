@@ -28,17 +28,24 @@ const INTERBASE = 0.45; // × fontSize entre deux lignes
  * @param {number[]} p.rect     zone glissée [x0, y0bas, x1, y1haut]
  * @param {string}   p.source  texte avec formules $latex$ inline
  * @param {number}  [p.fontSize=11]
- * @returns {{ref: PDFRef, rect: number[]}} rectangle RÉALISÉ (le bas
+ * @returns {Promise<{ref: PDFRef, rect: number[]}>} rectangle RÉALISÉ (le bas
  *          descend si le contenu dépasse la zone ; le haut reste fixe).
+ * PREUVÉ (échec CI v0.1.11, source pdf-lib 1.17.1) : embedFont est
+ * asynchrone. La pose attend donc la police avant de mesurer le texte ;
+ * le refus « sans formule » reste une erreur levée de façon synchrone.
  */
 function addMixedFiche(doc, page, { rect, source, fontSize = 11 }) {
   const src = String(source ?? '');
   if (!contientFormule(src)) {
     throw new Error('Une fiche mixte doit contenir au moins une formule $...$.');
   }
+  return poserFiche(doc, page, { rect, source: src, fontSize });
+}
+
+async function poserFiche(doc, page, { rect, source, fontSize }) {
   const [x0, y0, x1, y1] = normalizeRect(rect);
   const exPt = exPourCorps(fontSize);
-  const font = doc.embedFont(StandardFonts.Helvetica);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
   const mesurerTexte = (t) => font.widthOfTextAtSize(String(t), fontSize);
 
   // Rendu MathJax une fois par formule distincte, à la taille du corps.
