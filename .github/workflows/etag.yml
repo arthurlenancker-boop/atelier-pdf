@@ -131,11 +131,25 @@ jobs:
             echo "OK : $f"
           done
           echo "=== Contenu du portable ==="
-          7z x "dist/atelier-pdf-portable-$VERSION.exe" -oportable-extrait -y > /dev/null
+          # Le portable d'electron-builder est un conteneur NSIS qui renferme
+          # une archive .7z : les fichiers ne sortent qu'apres la DEUXIEME
+          # extraction (premier essai : app.asar reste introuvable).
           somme () { node -e "const c=require('crypto'),h=c.createHash('sha512');h.update(require('fs').readFileSync(process.argv[1]));console.log(h.digest('hex'))" "$1"; }
+          rm -rf portable-enveloppe portable-charge
+          if ! 7z x "dist/atelier-pdf-portable-$VERSION.exe" -oportable-enveloppe -y > /dev/null; then
+            echo "::error::7z n'a pas pu ouvrir le conteneur du portable."; exit 1
+          fi
+          charge=$(find portable-enveloppe -type f -iname '*.7z' | head -1)
+          if [ -n "$charge" ]; then
+            if ! 7z x "$charge" -oportable-charge -y > /dev/null; then
+              echo "::error::7z n'a pas pu extraire la charge interne du portable : $charge"; exit 1
+            fi
+            cheminPortable=$(find portable-charge -type f -name app.asar | head -1)
+          else
+            cheminPortable=$(find portable-enveloppe -type f -name app.asar | head -1)
+          fi
+          test -n "$cheminPortable" || { echo "::error::app.asar introuvable dans le portable meme apres double extraction."; exit 1; }
           shaUnpacked=$(somme dist/win-unpacked/resources/app.asar)
-          cheminPortable=$(find portable-extrait -type f -name app.asar | head -1)
-          test -n "$cheminPortable" || { echo "::error::app.asar introuvable dans le portable."; exit 1; }
           shaPortable=$(somme "$cheminPortable")
           test "$shaUnpacked" = "$shaPortable" || { echo "::error::Le paquet portable differe de l'installateur (app.asar)."; exit 1; }
           echo "OK : portable et installateur portent le meme app.asar."
