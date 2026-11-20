@@ -78,6 +78,15 @@
           <canvas id="calque-pdf" class="calque-pdf"></canvas>
           <canvas id="calque-annots" class="calque-annots"></canvas>
           <canvas id="calque-tampon" class="calque-tampon"></canvas>
+          <!-- v0.1.7 : saisie des notes et fiches directement sur la page -->
+          <div id="editeur-page" class="editeur-page" hidden>
+            <p id="editeur-titre" class="editeur-titre">Note</p>
+            <textarea id="editeur-texte" class="editeur-texte" rows="3" spellcheck="false"></textarea>
+            <div class="editeur-actions">
+              <button id="editeur-annuler" class="btn">Annuler</button>
+              <button id="editeur-valider" class="btn accent">Poser</button>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -115,19 +124,6 @@
       <button id="eq-inserer" class="btn accent plein" disabled>Insérer dans la page</button>
       <p class="note-insertion" id="eq-note">Cliquez d'abord sur la page à l'outil Équation.</p>
     </aside>
-  </div>
-
-  <!-- Fenêtre de saisie pour notes et fiches -->
-  <div id="saisie-fond" class="saisie-fond" hidden>
-    <div class="saisie-carte" role="dialog" aria-modal="true">
-      <h3 id="saisie-titre">Texte</h3>
-      <textarea id="saisie-texte" class="saisie-texte" rows="4" spellcheck="false"></textarea>
-      <p class="saisie-aide">Ctrl+Entrée pour valider</p>
-      <div class="saisie-actions">
-        <button id="saisie-annuler" class="btn">Annuler</button>
-        <button id="saisie-valider" class="btn accent">Poser</button>
-      </div>
-    </div>
   </div>
 
   <!-- v0.1.5 : fenêtre guidée « à la Dmaths » pour les équations -->

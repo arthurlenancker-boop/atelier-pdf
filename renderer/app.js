@@ -151,8 +151,10 @@ const etat = {
   eqPoint: null,  // dernier clic Équation : { pageIndex, point }
   eqExPt: 4.5,
   selection: null,
-  saisieAttente: null, // { kind, rect, pageIndex } pendant la fenêtre de saisie
-  cacheOps: new Map(), // « pageIndex:objectNumber » -> ops d'équation, pour le calque
+  saisieAttente: null, // { kind, rect, pageIndex, ref? } pendant l'édition sur la page
+  // v0.1.7 : remplacement d'une équation existante (clic sur l'équation) :
+  // tant que rempli, « Insérer » remplace au lieu de poser un nouveau objet.
+  remplacement: null,   // { ref, pageIndex, latex }
 };
 
 const els = {
@@ -210,7 +212,7 @@ async function ouvrirDocument(chemin) {
   etat.annotsPdf = [];
   etat.selection = null;
   etat.eqPoint = null;
-  etat.cacheOps.clear();
+  etat.remplacement = null;
   etat.chemin = rep.resume.chemin;
   etat.page = 1;
   resoudreZoom();
@@ -279,6 +281,8 @@ async function rendPage() {
   dessinerAnnots();
   $('#etiquette-page').textContent = `${etat.page} / ${etat.resume.pageCount}`;
   $('#etiquette-zoom').textContent = `${Math.round(etat.zoom * 100)} %`;
+  // v0.1.7 : une saisie en cours sur la page suit le rendu (zoom, page).
+  if (etat.saisieAttente) editeurCaler(etat.saisieAttente);
 }
 
 /* ============================================================
@@ -295,42 +299,6 @@ function pdfVersEcran(pt) {
     default: v = pageW - pt.x; u = pageH - pt.y; break;
   }
   return { x: u * scale, y: v * scale };
-}
-
-function tracceEquation(ctx, apercu, rect) {
-  // Trace les opérateurs vectoriels d'une équation dans son rectangle d'écran.
-  const c0 = pdfVersEcran({ x: rect[0], y: rect[1] });
-  const c1 = pdfVersEcran({ x: rect[2], y: rect[3] });
-  const x0 = Math.min(c0.x, c1.x);
-  const y0 = Math.min(c0.y, c1.y);
-  const k = Math.abs(c1.x - c0.x) / (apercu.widthPt || 1);
-  const px = (x) => x0 + x * k;
-  const py = (y) => y0 + (apercu.heightPt - y) * k;
-  ctx.save();
-  ctx.fillStyle = '#111319';
-  ctx.strokeStyle = '#111319';
-  ctx.lineWidth = Math.max(0.6, 0.9 * k);
-  const p = new Path2D();
-  const mots = apercu.ops.split(/\s+/).filter(Boolean);
-  let i = 0;
-  while (i < mots.length) {
-    const t = mots[i];
-    const attendus = { m: 2, l: 2, c: 6, re: 4 }[t];
-    if (attendus !== undefined) {
-      const v = [];
-      for (let j = 0; j < attendus; j++) v.push(Number(mots[i - attendus + j]));
-      if (t === 'm') p.moveTo(px(v[0]), py(v[1]));
-      else if (t === 'l') p.lineTo(px(v[0]), py(v[1]));
-      else if (t === 'c') p.bezierCurveTo(px(v[0]), py(v[1]), px(v[2]), py(v[3]), px(v[4]), py(v[5]));
-      else if (t === 're') p.rect(px(v[0]), py(v[1] + v[3]), v[2] * k, v[3] * k);
-      i += 1;
-    } else if (t === 'f') { ctx.fill(p); p = new Path2D(); i += 1; }
-    else if (t === 'S') { ctx.stroke(p); i += 1; }
-    else { i += 1; } // h, rg, w, gs : ignorés pour le calque d'apparence
-  }
-  ctx.fill(p);
-  ctx.stroke(p);
-  ctx.restore();
 }
 
 /* v0.1.6 : le TEXTE des commentaires doit être lisible dans l'application,
@@ -395,25 +363,14 @@ async function dessinerAnnots() {
       ctx.fillStyle = 'rgba(232, 179, 75, 0.42)';
       ctx.fillRect(x, y, w, h);
     } else if (a.subtype === 'Square') {
-      const estEq = (a.contents || '').startsWith('Équation LaTeX');
-      if (estEq) {
-        ctx.strokeStyle = 'rgba(76, 111, 255, 0.0)'; // invisible : l'équation est dans le fichier
-        const enCache = etat.cacheOps.get(`${a.page}:${a.ref && a.ref.objectNumber}`);
-        if (enCache) {
-          tracceEquation(ctx, enCache, a.rect);
-        } else {
-          // v0.1.6 : après réouverture, tant que pdf.js expose le dessin
-          // de l'apparence, montrer au moins la source lisible de la formule.
-          ctx.setLineDash([3, 3]);
-          ctx.strokeStyle = 'rgba(167, 175, 192, 0.35)';
-          ctx.strokeRect(x, y, w, h);
-          const latex = String(a.contents || '').replace(/^Équation LaTeX\s*:\s*/, '');
-          if (latex) {
-            ctx.font = `${11 * etat.zoom}px sans-serif`;
-            ecrireCarteCommentaire(ctx, latex, x + w + 8 * etat.zoom, y, etat.zoom);
-          }
-        }
-      } else {
+      // v0.1.7 : les équations ne sont PLUS tracées sur ce calque. Leur
+      // apparence /AP (dessin vectoriel MathJax, écrite dans le fichier)
+      // est rendue par pdf.js dans la page elle-même : un second tracé
+      // superposé doublait les glyphes et un cadre pointillé apparaissait
+      // quand le calque ne reconnaissait plus la formule. Il suffit de ne
+      // rien dessiner ici ; seule la sélection (liseret bleu, plus bas)
+      // marque l'équation choisie.
+      if (!(a.contents || '').startsWith('Équation LaTeX')) {
         ctx.strokeStyle = '#c0392b';
         ctx.lineWidth = 1.5 * etat.zoom;
         ctx.strokeRect(x, y, w, h);
@@ -500,13 +457,36 @@ function ecouterSouris() {
     } else if (etat.outil === 'encre') {
       geste = { outil: 'encre', points: [point] };
     } else if (etat.outil === 'note') {
-      ouvrirSaisie('note', point);
+      ouvrirEditeur('note', point);
     } else if (etat.outil === 'equation') {
+      // v0.1.7 : cliquer une équation EXISTANTE l'ouvre pour correction.
+      const cible = annotationSous(point);
+      if (cible && (cible.contents || '').startsWith('Équation LaTeX')) {
+        ouvrirRemplacement(cible);
+        return;
+      }
+      annulerRemplacement();
       etat.eqPoint = { pageIndex: etat.page - 1, point };
       $('#eq-inserer').disabled = false;
       const note = $('#eq-note');
       note.textContent = `Point d'insertion posé (page ${etat.page}). Choisissez la formule, puis Insérer.`;
       note.classList.add('ok');
+    }
+  });
+
+  // v0.1.7 : double-clic sur une équation ou une note avec l'outil Sélection
+  // ou Équation : rouvrir l'objet pour le corriger.
+  els.calqueTampon.addEventListener('dblclick', (ev) => {
+    if (gesteZoomActif()) return;
+    const point = pointPdf(ev);
+    const cible = annotationSous(point);
+    if (!cible) return;
+    if ((cible.contents || '').startsWith('Équation LaTeX')) {
+      ouvrirRemplacement(cible);
+    } else if (cible.subtype === 'Text') {
+      ouvrirEditeur('note', null, cible);
+    } else if (cible.subtype === 'FreeText') {
+      ouvrirEditeur('fiche', null, cible);
     }
   });
 
@@ -557,7 +537,7 @@ function ecouterSouris() {
           await appliquer({ kind: 'square', pageIndex, args: { rect } });
           message('Encadré posé.', 'reussite');
         } else if (geste.outil === 'fiche') {
-          ouvrirSaisie('fiche', null, { kind: 'freeText', pageIndex, args: { rect } });
+          ouvrirEditeur('fiche', rect.slice());
         }
       }
     } finally {
@@ -569,11 +549,16 @@ function ecouterSouris() {
   });
 }
 
-function selectionner(point) {
-  if (!etat.resume) return;
+/** Annotation de la page courante sous le point PDF donné, ou null. */
+function annotationSous(point) {
+  if (!etat.resume) return null;
   const annots = etat.resume.annots.filter((a) => a.page === etat.page - 1 && a.ref);
-  const cible = annots.find((a) => point.x >= a.rect[0] && point.x <= a.rect[2]
-    && point.y >= a.rect[1] && point.y <= a.rect[3]);
+  return annots.find((a) => point.x >= a.rect[0] && point.x <= a.rect[2]
+    && point.y >= a.rect[1] && point.y <= a.rect[3]) || null;
+}
+
+function selectionner(point) {
+  const cible = annotationSous(point);
   etat.selection = cible || null;
   dessinerAnnots();
   if (cible) {
@@ -597,44 +582,133 @@ async function supprimerSelection() {
 }
 
 /* ============================================================
-   Fenêtre de saisie (note et fiche)
+   Éditeur sur la page (v0.1.7) — notes et fiches, à la demande
+   d'Arthur : plus de panneau modal, la saisie se fait directement
+   à l'endroit cliqué, dans une petite zone posée sur la page.
    ============================================================ */
-function ouvrirSaisie(genre, point, attente) {
-  const fond = $('#saisie-fond');
-  const titre = $('#saisie-titre');
-  const champ = $('#saisie-texte');
-  if (genre === 'note' && point) {
-    const rect = [point.x, point.y, point.x + 18, point.y + 18];
-    etat.saisieAttente = { kind: 'textNote', pageIndex: etat.page - 1, args: { rect } };
-    titre.textContent = 'Note (icône post-it, texte au survol dans Adobe)';
-  } else if (attente) {
-    etat.saisieAttente = attente;
-    titre.textContent = 'Fiche : texte écrit sur la page';
-  }
-  champ.value = '';
-  fond.hidden = false;
-  champ.focus();
+function positionnerEditeur(rectPdf) {
+  // Place la carte d'édition aux coordonnées écran du rectangle PDF visé.
+  const c0 = pdfVersEcran({ x: rectPdf[0], y: rectPdf[1] });
+  const c1 = pdfVersEcran({ x: rectPdf[2], y: rectPdf[3] });
+  const x = Math.min(c0.x, c1.x);
+  const y = Math.min(c0.y, c1.y);
+  const carte = $('#editeur-page');
+  carte.style.left = `${Math.round(x)}px`;
+  carte.style.top = `${Math.round(y)}px`;
+  carte.style.width = `auto`;
+  carte.style.height = `auto`;
+  return { x, y, largeur: Math.abs(c1.x - c0.x), hauteur: Math.abs(c1.y - c0.y) };
 }
 
-$('#saisie-annuler').addEventListener('click', () => { $('#saisie-fond').hidden = true; etat.saisieAttente = null; });
+/** Cale la carte d'édition sur son rectangle PDF (ouverture et recalage après rendu). */
+function editeurCaler(attente) {
+  const geom = positionnerEditeur(attente.rect);
+  const carte = $('#editeur-page');
+  if (attente.kind === 'freeText') {
+    // La fiche s'édite DANS sa zone : la carte épouse le rectangle glissé.
+    carte.style.width = `${Math.max(160, Math.round(geom.largeur))}px`;
+    carte.style.height = `${Math.max(56, Math.round(geom.hauteur))}px`;
+  } else {
+    // La note s'édite à côté de son icône post-it.
+    carte.style.width = '230px';
+    carte.style.height = 'auto';
+    carte.style.left = `${Math.round(geom.x + 26 * etat.zoom)}px`;
+  }
+}
 
-$('#saisie-valider').addEventListener('click', async () => {
-  const texte = $('#saisie-texte').value;
-  $('#saisie-fond').hidden = true;
-  const attente = etat.saisieAttente;
+function ouvrirEditeur(genre, pointOuRect, cible) {
+  if (!etat.resume) return;
+  let attente;
+  if (cible && (cible.subtype === 'Text' || cible.subtype === 'FreeText')) {
+    // Modification d'une annotation existante : retirer puis reposer.
+    attente = {
+      kind: cible.subtype === 'Text' ? 'textNote' : 'freeText',
+      pageIndex: cible.page,
+      ref: cible.ref,
+      rect: cible.rect.slice(),
+      contenu: String(cible.contents || ''),
+    };
+  } else if (genre === 'note' && pointOuRect) {
+    const p = pointOuRect;
+    attente = {
+      kind: 'textNote',
+      pageIndex: etat.page - 1,
+      rect: [p.x, p.y, p.x + 18, p.y + 18],
+      contenu: '',
+    };
+  } else if (genre === 'fiche' && pointOuRect) {
+    attente = {
+      kind: 'freeText',
+      pageIndex: etat.page - 1,
+      rect: pointOuRect.slice(),
+      contenu: '',
+    };
+  } else {
+    return;
+  }
+  etat.saisieAttente = attente;
+  const carte = $('#editeur-page');
+  const zone = $('#editeur-texte');
+  zone.classList.toggle('fiche', attente.kind === 'freeText');
+  editeurCaler(attente);
+  const titre = $('#editeur-titre');
+  titre.textContent = attente.kind === 'textNote'
+    ? (attente.ref ? 'Modifier la note' : 'Note')
+    : (attente.ref ? 'Modifier la fiche' : 'Fiche : texte écrit sur la page');
+  zone.value = attente.contenu;
+  carte.hidden = false;
+  zone.focus();
+  zone.setSelectionRange(zone.value.length, zone.value.length);
+}
+
+function fermerEditeur() {
+  $('#editeur-page').hidden = true;
   etat.saisieAttente = null;
-  if (!attente || !texte.trim()) return;
-  const args = { ...attente.args };
+}
+
+async function validerEditeur() {
+  const attente = etat.saisieAttente;
+  const texte = $('#editeur-texte').value;
+  fermerEditeur();
+  if (!attente) return;
+  if (!texte.trim()) {
+    message('Texte vide : rien n\'a été posé.');
+    return;
+  }
+  const edits = [];
+  if (attente.ref) {
+    edits.push({ kind: 'remove', pageIndex: attente.pageIndex, args: { ref: attente.ref } });
+  }
+  const args = { rect: attente.rect.slice() };
   if (attente.kind === 'textNote') args.contents = texte;
   if (attente.kind === 'freeText') args.text = texte;
-  await appliquer({ kind: attente.kind, pageIndex: attente.pageIndex, args });
-  message('Texte posé.', 'reussite');
-});
+  edits.push({ kind: attente.kind, pageIndex: attente.pageIndex, args });
+  const rep = await window.atelier.applyEdits(edits);
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  majResume(rep.resume);
+  message(attente.ref ? 'Texte modifié.' : 'Texte posé.', 'reussite');
+}
 
-$('#saisie-texte').addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) $('#saisie-valider').click();
+$('#editeur-annuler').addEventListener('click', fermerEditeur);
+$('#editeur-valider').addEventListener('click', validerEditeur);
+$('#editeur-texte').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+    ev.preventDefault();
+    validerEditeur();
+  } else if (ev.key === 'Escape') {
+    ev.stopPropagation();
+    fermerEditeur();
+  }
 });
-
+$('#editeur-page').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') fermerEditeur();
+});
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && etat.remplacement) {
+    annulerRemplacement();
+    message('Modification d\'équation abandonnée. Le bouton Insérer reprend son rôle.');
+  }
+});
 /* ============================================================
    Panneau Équation
    ============================================================ */
@@ -649,12 +723,20 @@ function construirePanneauEquation() {
   }
   const structs = $('#eq-structs');
   for (const sec of STRUCTS) {
-    const titre = document.createElement('div');
-    titre.className = 'groupe-title';
-    titre.textContent = sec.group;
-    structs.appendChild(titre);
+    // v0.1.7 : chaque catégorie de caractères est un MENU DÉROULANT
+    // (demande d'Arthur) : le panneau reste court, on déplie ce qu'on veut.
+    const deroulant = document.createElement('details');
+    deroulant.className = 'deploi';
+    const entete = document.createElement('summary');
+    entete.textContent = sec.group;
+    deroulant.appendChild(entete);
+    const corps = document.createElement('div');
+    corps.className = 'deploi-corps';
+    deroulant.appendChild(corps);
+    structs.appendChild(deroulant);
     const grille = document.createElement('div');
     grille.className = 'grille-struct';
+    corps.appendChild(grille);
     for (const it of sec.items) {
       const b = document.createElement('button');
       b.className = 'case-struct';
@@ -669,16 +751,21 @@ function construirePanneauEquation() {
       b.addEventListener('click', () => insererAuChamp(it.tex));
       grille.appendChild(b);
     }
-    structs.appendChild(grille);
   }
   const syms = $('#eq-symboles');
   for (const cat of SYMR) {
-    const titre = document.createElement('div');
-    titre.className = 'groupe-title';
-    titre.textContent = cat.name;
-    syms.appendChild(titre);
+    const deroulant = document.createElement('details');
+    deroulant.className = 'deploi';
+    const entete = document.createElement('summary');
+    entete.textContent = cat.name;
+    deroulant.appendChild(entete);
+    const corps = document.createElement('div');
+    corps.className = 'deploi-corps';
+    deroulant.appendChild(corps);
+    syms.appendChild(deroulant);
     const grille = document.createElement('div');
     grille.className = 'grille-symboles';
+    corps.appendChild(grille);
     for (const [tex, car] of cat.items) {
       const b = document.createElement('button');
       b.className = 'symb';
@@ -687,7 +774,6 @@ function construirePanneauEquation() {
       b.addEventListener('click', () => insererAuChamp(tex));
       grille.appendChild(b);
     }
-    syms.appendChild(grille);
   }
 }
 
@@ -786,26 +872,83 @@ function dessinerOpsCanvas(canvas, apercu) {
 
 async function insererEquation() {
   const latex = latexCourant();
-  if (!latex || !etat.eqPoint) return;
+  if (!latex) return;
+  const remplacer = etat.remplacement;
+  if (!remplacer && !etat.eqPoint) return;
   const apercu = etat.eqApercu || (await window.atelier.previewEquation(latex, etat.eqExPt)).apercu;
-  const { point, pageIndex } = etat.eqPoint;
-  // Le clic désigne le bas-gauche de l'équation, centré horizontalement sur lui.
-  const x = point.x; const y = point.y + (apercu.heightPt / 2) - apercu.depthPt;
-  const rep = await window.atelier.applyEdits([{
-    kind: 'equation',
-    pageIndex,
-    args: { latex, x, y, exPt: etat.eqExPt },
-  }]);
-  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
-  // Conserver les opérateurs pour le calque d'apparence de cette équation.
-  const nouvelle = rep.resume.annots.find((a) => a.page === pageIndex
-    && (a.contents || '').includes(latex.slice(0, 12)));
-  if (nouvelle && nouvelle.ref) {
-    etat.cacheOps.set(`${pageIndex}:${nouvelle.ref.objectNumber}`, apercu);
+  let pageIndex;
+  let x; let y; // y = bas du rectangle ; la ligne de base de la formule
+  let edits;
+  if (remplacer) {
+    pageIndex = remplacer.pageIndex;
+    // v0.1.7 : conserver la ligne de base de l'équation remplacée. Le
+    // rectangle stocké [x0, y0bas, x1, y1haut] donnait y0bas = ligne de
+    // base - profondeur ; on restitue la même ligne de base en passant
+    // l'ancien LaTeX pour mesurer sa profondeur.
+    const r = remplacer.rect;
+    let profondeurAncienne = 0;
+    if (remplacer.latex) {
+      try {
+        profondeurAncienne = (await window.atelier.previewEquation(remplacer.latex, etat.eqExPt)).apercu.depthPt;
+      } catch (e) { profondeurAncienne = 0; }
+    }
+    const base = r[1] + (Number.isFinite(profondeurAncienne) ? profondeurAncienne : 0);
+    x = r[0];
+    y = base - apercu.depthPt;
+    edits = [
+      { kind: 'remove', pageIndex, args: { ref: remplacer.ref } },
+      { kind: 'equation', pageIndex, args: { latex, x, y, exPt: etat.eqExPt } },
+    ];
+  } else {
+    const { point } = etat.eqPoint;
+    pageIndex = etat.eqPoint.pageIndex;
+    // v0.1.7 : le point CLIQUÉ est la ligne de base de la formule, comme
+    // un point d'insertion de texte. Auparavant la formule atterrissait
+    // une demi-hauteur AU-DESSUS du clic, sans rapport avec le geste.
+    x = point.x;
+    y = point.y - apercu.depthPt;
+    edits = [{ kind: 'equation', pageIndex, args: { latex, x, y, exPt: etat.eqExPt } }];
   }
+  const rep = await window.atelier.applyEdits(edits);
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
   etat.eqApercu = apercu;
+  annulerRemplacement();
   majResume(rep.resume);
-  message('Équation insérée dans la page.', 'reussite');
+  message(remplacer ? 'Équation remplacée sur place.' : 'Équation insérée dans la page.', 'reussite');
+}
+
+/** Fait disparaître le mode « remplacer l'équation » et rend au bouton Insérer son rôle. */
+function annulerRemplacement() {
+  if (!etat.remplacement && $('#eq-inserer').textContent !== 'Remplacer') return;
+  etat.remplacement = null;
+  const b = $('#eq-inserer');
+  b.textContent = 'Insérer dans la page';
+  b.disabled = !etat.eqPoint;
+  const note = $('#eq-note');
+  note.classList.remove('ok');
+}
+
+/** Ouvre une équation existante pour correction (clic ou double-clic dessus). */
+async function ouvrirRemplacement(a) {
+  const latex = String(a.contents || '').replace(/^Équation LaTeX\s*:\s*/, '');
+  if (!latex) {
+    message('Cette annotation équation ne contient pas de formule lisible.');
+    return;
+  }
+  etat.remplacement = { ref: a.ref, pageIndex: a.page, latex, rect: a.rect.slice() };
+  etat.selection = a;
+  if (etat.eqMode !== 'pro') $('#eq-pro').click();
+  $('#eq-saisie').value = latex;
+  $('#panneau-equation').hidden = false;
+  const b = $('#eq-inserer');
+  b.textContent = 'Remplacer la formule';
+  b.disabled = false;
+  const note = $('#eq-note');
+  note.textContent = 'Modification d\u2019une équation existante : corrigez la formule, puis Remplacer.';
+  note.classList.add('ok');
+  rafraichirApercu();
+  message('Équation ouverte pour correction. Corrigez la formule, puis « Remplacer la formule ».');
+  dessinerAnnots();
 }
 
 $('#eq-inserer').addEventListener('click', insererEquation);

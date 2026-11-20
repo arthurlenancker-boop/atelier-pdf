@@ -5,13 +5,11 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.6 : zoom fluide (transformation CSS pendant le
-# geste, pivot au pointeur, un seul rendu net — plus de rendus pdf.js
-# concurrents, cause de la page vide et des annotations disparues),
-# texte des commentaires affiché dans l'application, et garde-fou
-# nouveau : syntaxe du code empaqueté vérifiée (asar extrait + node
-# --check, portable comparé à l'installateur octet par octet) après
-# l'erreur au démarrage du portable v0.1.5.
+# Declencheur de la v0.1.7 : équations affichées uniquement par leur
+# apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
+# clic (Remplacer la formule) ; notes et fiches écrites directement sur
+# la page (plus de panneau central), modifiables par double-clic ;
+# catégories de caractères en menus déroulants.
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison
