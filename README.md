@@ -14,6 +14,7 @@ Fonctionnalités de la phase 1 :
 - Équations LaTeX rendues en vecteurs PDF par MathJax, insérées en un clic, déplacées d'un glissement, supprimées d'une pression de Suppr.
 - Sélection d'une annotation sur la page (liseret) et suppression.
 - Confort à la PDF-XChange : barre à huit outils d'une fonction claire chacun, dont la machine à écrire (v0.1.14) ; outil Main pour faire défiler la page, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste (v0.1.13) outil Main pour faire défiler la page à la main, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste, raccourcis affichés au menu sans capter la saisie des champs.
+- Vue d'ensemble du document (v0.1.15) : colonne de vignettes des pages, ouverte par défaut avec le document, page courante signalée et suivie, un clic y amène ; bouton ▤ pour la masquer ou la remettre.
 - Enregistrement : réécriture complète du fichier (bouton Enregistrer) ou copie horodatée à côté de l'original (nom-AAAA-MM-JJ-HHmmss.pdf) ; jamais d'écrasement silencieux du fichier source en dehors de l'action explicite.
 - Lectures des annotations d'autres logiciels (sans apparence /AP) en lecture seul : affichées mais non éditables.
 - Mise à jour automatique silencieuse (releases GitHub, via electron-updater).
@@ -47,6 +48,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Ouvrir un PDF | Ctrl+O, bouton Ouvrir, ou glisser-déposer sur la fenêtre |
 | Prendre la page à la main | outil Main (premier bouton) : cliquer puis faire glisser, la page suit le geste comme une feuille sur la table (v0.1.13) |
 | Sélectionner du texte | outil Texte : glisser sur le texte du document (sélection native), puis Surligner (surlignage exact, un quad par ligne) ou Copier ; les PDF scannés sans texte réel ne se prêtent pas à la sélection, le rectangle de l'outil Surligner reste alors (v0.1.13) |
+| Voir tout le document d'un coup | colonne Pages (✓ bouton ▤) : miniatures de toutes les pages, la courante signalée, un clic y amène (v0.1.15) |
 | Annuler / Rétablir | Ctrl+Z / Ctrl+Maj+Z, boutons ou menu Édition : geste par geste (pose, déplacement, redimensionnement, correction) ; pendant une saisie dans un champ, Ctrl+Z reste au champ, sortez-en pour annuler un geste (v0.1.13) |
 | Surligner | outil Surligner : glisser sur une ligne de texte |
 | Encadrer | outil Encadrer : glisser un rectangle |
@@ -60,7 +62,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Corriger une équation posée | clic sur l'équation (outil Équation) ou double-clic (outil Sélection), corriger, bouton Remplacer la formule ; fenêtres guidées et préréglages s'insèrent au curseur dans le champ (v0.1.11) |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette : zoom fluide centré sur le pointeur, ou touches + - 0 et boutons + / − / 1:1 ; le défilement garde le point visé sous le curseur |
-| Changer de page | PgSuiv / PgPréc, touches Début / Fin, boutons ‹ › |
+| Changer de page | PgSuiv / PgPréc, touches Début / Fin, boutons ‹ ›, ou clic sur une vignette (v0.1.15) |
 | Sélectionner une annotation | outil Sélection : clic sur l'annotation (liseret bleu, poignées de redimensionnement si elle s'y prête) |
 | Déplacer une annotation | outil Sélection : cliquer dessus puis la faire glisser ; notes, fiches, cadres, équations et annotations d'origine suivent (une seule entrée dans le journal d'annulation) (v0.1.12) |
 | Redimensionner une annotation | outil Sélection : tirer l'une des huit poignées du liseret ; texte, fiche (recomposée depuis sa source), cadre et équation ; surlignage, trait et icône-note ne se redimensionnent pas (v0.1.12) |

@@ -172,6 +172,8 @@ const els = {
   calqueAnnots: $('#calque-annots'),
   calqueTampon: $('#calque-tampon'),
   calqueTexte: $('#calque-texte'),
+  panneauPages: $('#panneau-pages'),
+  vignettes: $('#vignettes'),
 };
 
 /* ============================================================
@@ -257,8 +259,96 @@ async function ouvrirDocument(chemin) {
   els.visionneuse.hidden = false;
   majResume(rep.resume);
   await rendPage();
+  // v0.1.15 : le document s'ouvre sur sa vue d'ensemble, la colonne de
+  // vignettes est visible par defaut (c'est l'ouverture demandee par
+  // Arthur) ; le bouton Pages la masque ou la remet.
+  els.panneauPages.hidden = false;
+  $('#btn-pages').classList.add('actif');
+  construireVignettes();
   message(`Document ouvert : ${rep.resume.pageCount} page(s).`, 'reussite');
 }
+
+/* ============================================================
+   v0.1.15 : vignettes des pages, vision d'ensemble du document
+   ============================================================
+   Retour d'Arthur : l'application « fermait vers le cours », une page
+   seule a la fois ; les autres editeurs laissent regarder partout. La
+   colonne de miniatures montre TOUT le fichier d'un coup, signale la
+   page courante et y amène d'un clic. Les vignettes se construisent
+   une a une (un grand document n'attend pas la dernière page pour
+   montrer les premières) ; un changement de document annule la
+   construction en cours par un simple numero de génération. */
+let generationVignettes = 0;
+
+async function construireVignettes() {
+  if (!etat.pdfjs || !etat.resume) return;
+  const gen = ++generationVignettes;
+  const colonne = els.vignettes;
+  colonne.replaceChildren();
+  const total = etat.resume.pageCount;
+  for (let n = 1; n <= total; n += 1) {
+    if (gen !== generationVignettes) return; // document changé entre-temps
+    try {
+      const page = await etat.pdfjs.getPage(n);
+      if (gen !== generationVignettes) return;
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: 124 / base.width });
+      const toile = document.createElement('canvas');
+      toile.width = Math.max(1, Math.round(vp.width));
+      toile.height = Math.max(1, Math.round(vp.height));
+      await page.render({ canvasContext: toile.getContext('2d'), viewport: vp }).promise;
+      if (gen !== generationVignettes) return;
+      const figure = document.createElement('figure');
+      figure.className = 'vignette';
+      figure.dataset.page = String(n);
+      const etiquette = document.createElement('figcaption');
+      etiquette.textContent = String(n);
+      figure.append(toile, etiquette);
+      colonne.append(figure);
+      majVignettesPage();
+    } catch (err) {
+      // Une vignette manquante n'entrave ni la lecture ni les outils.
+    }
+  }
+}
+
+/* Signale la page courante dans la colonne et la garde visible. */
+function majVignettesPage() {
+  if (!els.vignettes.children.length) return;
+  const colonne = els.vignettes;
+  for (const f of colonne.querySelectorAll('.vignette.actif')) {
+    f.classList.remove('actif');
+  }
+  const cible = colonne.querySelector(`.vignette[data-page="${etat.page}"]`);
+  if (!cible) return;
+  cible.classList.add('actif');
+  // Suivre sans secouer : recadrer la colonne seulement si la courante
+  // sort du champ.
+  const haut = cible.offsetTop;
+  const bas = haut + cible.offsetHeight;
+  if (haut < colonne.scrollTop || bas > colonne.scrollTop + colonne.clientHeight) {
+    colonne.scrollTop = haut - colonne.clientHeight / 2 + cible.offsetHeight / 2;
+  }
+}
+
+/* Un clic sur une vignette amène à cette page. */
+els.vignettes.addEventListener('click', (ev) => {
+  const figure = ev.target.closest('.vignette');
+  if (!figure || !etat.resume) return;
+  const n = Number(figure.dataset.page);
+  if (!Number.isInteger(n) || n < 1 || n > etat.resume.pageCount) return;
+  if (n === etat.page) return;
+  etat.page = n;
+  rendPage();
+});
+
+/* Le bouton Pages masque ou remet la colonne ; une feuille ouverte sans
+   colonne repond aussi a l'envie d'espace. */
+$('#btn-pages').addEventListener('click', () => {
+  const visible = els.panneauPages.hidden;
+  els.panneauPages.hidden = !visible;
+  $('#btn-pages').classList.toggle('actif', visible);
+});
 
 /* v0.1.6 : (1) un seul rendu pdf.js à la fois — le RenderTask précédent est
    annulé avant d'en commencer un autre, sinon pdf.js lève
@@ -318,6 +408,8 @@ async function rendPage() {
   rendCalqueTexte(page, viewport);
   dessinerAnnots();
   $('#etiquette-page').textContent = `${etat.page} / ${etat.resume.pageCount}`;
+  // v0.1.15 : la page courante se signale dans la colonne de vignettes.
+  majVignettesPage();
   $('#etiquette-zoom').textContent = `${Math.round(etat.zoom * 100)} %`;
   // v0.1.7 : une saisie en cours sur la page suit le rendu (zoom, page).
   if (etat.saisieAttente) editeurCaler(etat.saisieAttente);

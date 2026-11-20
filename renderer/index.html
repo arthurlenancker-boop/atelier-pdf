@@ -23,6 +23,9 @@
       <button id="btn-copie" class="btn" disabled>Copie horodatée</button>
     </div>
     <div class="affichage">
+      <!-- v0.1.15 : vue d'ensemble, colonne de vignettes des pages -->
+      <button id="btn-pages" class="btn carre" title="Pages : montrer ou masquer la colonne de vignettes">▤</button>
+      <span class="separateur"></span>
       <button id="btn-zoom-moins" class="btn carre" title="Zoom arrière (−)">−</button>
       <span id="etiquette-zoom" class="etiquette-zoom">100 %</span>
       <button id="btn-zoom-plus" class="btn carre" title="Zoom avant (+)">+</button>
@@ -66,6 +69,13 @@
   </nav>
 
   <div class="corps">
+    <!-- v0.1.15 : vision d'ensemble du document, à la manière des
+         grands éditeurs : miniatures des pages, la courante signalée,
+         un clic y amène -->
+    <aside id="panneau-pages" class="panneau-pages" hidden>
+      <h2>Pages</h2>
+      <div id="vignettes" class="vignettes"></div>
+    </aside>
     <!-- Zone centrale : la visionneuse pdf.js et ses calques -->
     <main id="zone" class="zone">
       <div id="accueil" class="accueil">
