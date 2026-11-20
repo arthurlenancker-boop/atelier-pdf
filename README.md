@@ -5,7 +5,7 @@ Atelier PDF
 
 Un mix volontaire de OneNote (ruban Équation, structures et préréglages) et d'un éditeur PDF classique, pour un enseignant qui ne veut que deux choses : surligner, encadrer, écrire et poser des maths sur ses documents, puis les enregistrer proprement.
 
-Deux sortes d'équations : un mode Professionnel (saisie LaTeX directe) et un mode Linéaire (saisie à plat, symboles convertis), un aperçu vectoriel avant insertion, structures de ruban (fraction, racine, somme, intégrale, matrices, accents, crochets, fonctions et limites), préréglages d'identités remarquables et symboles usuels. Depuis la v0.1.5, des fenêtres guidées à la manière de Dmaths (quotient, racine, limite, intégrale/somme/produit, vecteur, angle et produit de vecteurs, mesure algébrique ou angle, système d'équations ligne à ligne) permettent d'écrire les maths en remplissant des cases libellées en français, sans jamais taper de LaTeX : chaque fenêtre offre la bande « Insérer » (parenthèses, racine, pi, exposant, indice...) et un aperçu en direct.
+Deux sortes d'équations : un mode Professionnel (saisie LaTeX directe) et un mode Linéaire (saisie à plat, symboles convertis), un aperçu vectoriel avant insertion, structures de ruban (fraction, racine, somme, intégrale, matrices, accents, crochets, fonctions et limites), préréglages d'identités remarquables et symboles usuels. Depuis la v0.1.5, des fenêtres guidées à la manière de Dmaths (quotient, racine, limite, intégrale/somme/produit, dérivée, primitive, vecteur, angle et produit de vecteurs, mesure algébrique ou angle, binôme « k parmi n », matrice jusqu'à 3×3, intervalle à crochets, ensemble avec appartenance ou condition, nombre complexe algébrique/exponentiel/trigonométrique, pourcentage, système d'équations ligne à ligne) permettent d'écrire les maths en remplissant des cases libellées en français, sans jamais taper de LaTeX : chaque fenêtre offre la bande « Insérer » (parenthèses, racine, pi, exposant, indice... ; pas de zone d'aperçu depuis la v0.1.8).
 
 Fonctionnalités de la phase 1 :
 
@@ -51,7 +51,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Écrire une fiche sur la page | outil Fiche : glisser la zone, puis écrire directement dans la zone posée sur la page |
 | Modifier une note ou une fiche | double-clic dessus (outil Sélection ou Équation), corriger, Ctrl+Entrée |
 | Insérer une équation | outil Équation : clic sur la page (la formule pose sa ligne de base à cet endroit), formule dans le panneau, bouton Insérer dans la page |
-| Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : cases en clair, bande Insérer, bouton Écrire (pas de zone d'aperçu) |
+| Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : 16 fenêtres (dont dérivée, primitive, binôme, matrice, intervalle, ensemble, nombre complexe, pourcentage), cases en clair, bande Insérer, bouton Écrire (pas de zone d'aperçu) |
 | Corriger une équation posée | clic sur l'équation (outil Équation) ou double-clic (outil Sélection), corriger, bouton Remplacer la formule |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette : zoom fluide centré sur le pointeur, ou touches + - 0 et boutons + / − / 1:1 ; le défilement garde le point visé sous le curseur |

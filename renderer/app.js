@@ -971,7 +971,7 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
    Fenêtres guidées « à la Dmaths » (v0.1.5)
    Gabarits et composition : engine/guides.js (testé sous Node).
    ============================================================ */
-const { GUIDES, composerSysteme } = globalThis.AtelierGuides;
+const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;
 
 const GUIDE_SYSTEME = { titre: 'Écrire une (in)équation du système' };
 
@@ -1043,6 +1043,30 @@ function creerChamp(f) {
   return span;
 }
 
+/* v0.1.9 : fenêtre matrice — après validation des dimensions (1 à 3),
+   les deux cases de réglage sont remplacées par la grille des cellules. */
+function validerDimensionsMatrice() {
+  const l = Math.min(3, Math.max(1, parseInt(valeursGuide.lignes, 10) || 2));
+  const c = Math.min(3, Math.max(1, parseInt(valeursGuide.colonnes, 10) || 2));
+  valeursGuide.lignes = String(l);
+  valeursGuide.colonnes = String(c);
+  const cont = $('#guide-champs');
+  cont.replaceChildren();
+  for (let i = 1; i <= l; i += 1) {
+    for (let j = 1; j <= c; j += 1) {
+      cont.appendChild(creerChamp({
+        id: `c${i}${j}`,
+        libelle: `Ligne ${i}, colonne ${j}`,
+        place: '0',
+      }));
+    }
+  }
+  $('#guide-erreur').hidden = true;
+  $('#guide-valider').hidden = true;
+  const premier = cont.querySelector('input');
+  if (premier) premier.focus();
+}
+
 function ouvrirGuide(id) {
   if (!etat.resume) {
     message("Ouvrez d'abord un document PDF (bouton Ouvrir ou glisser-déposer).", 'erreur');
@@ -1057,10 +1081,12 @@ function ouvrirGuide(id) {
   const cont = $('#guide-champs');
   cont.replaceChildren();
   const estSysteme = id === 'systeme';
+  const estMatrice = id === 'matrice'; // v0.1.9 : dimensions puis cases
   const g = estSysteme ? GUIDE_SYSTEME : GUIDES[id];
   $('#guide-titre').textContent = g.titre;
   $('#guide-ecrire').hidden = estSysteme;
-  $('#guide-valider').hidden = !estSysteme;
+  $('#guide-valider').hidden = !estSysteme && !estMatrice;
+  $('#guide-valider').textContent = estMatrice ? 'Créer les cases' : 'Valider';
   $('#guide-terminer').hidden = !estSysteme;
   $('#guide-lignes').hidden = true;
   if (estSysteme) {
@@ -1126,6 +1152,7 @@ function composerCourant() {
     || lignesSysteme.length > 0;
   if (!auMoinsUn) return null;
   if (guideOuvert === 'systeme') return composerSysteme(lignesSysteme);
+  if (guideOuvert === 'matrice') return composerMatrice(valeursGuide); // v0.1.9
   return GUIDES[guideOuvert].composer(valeursGuide, choixGuide, cochesGuide);
 }
 
@@ -1209,7 +1236,10 @@ async function ecrireGuide() {
 
 $('#guide-annuler').addEventListener('click', fermerGuide);
 $('#guide-ecrire').addEventListener('click', ecrireGuide);
-$('#guide-valider').addEventListener('click', validerLigneSysteme);
+$('#guide-valider').addEventListener('click', () => {
+  if (guideOuvert === 'matrice') validerDimensionsMatrice();
+  else validerLigneSysteme();
+});
 $('#guide-terminer').addEventListener('click', async () => {
   const gauche = String(valeursGuide.gauche || '').trim();
   const droite = String(valeursGuide.droite || '').trim();
@@ -1226,6 +1256,7 @@ $('#guide-champs').addEventListener('keydown', (ev) => {
   if (ev.key !== 'Enter') return;
   ev.preventDefault();
   if (guideOuvert === 'systeme') validerLigneSysteme();
+  else if (guideOuvert === 'matrice' && !$('#guide-valider').hidden) validerDimensionsMatrice(); // v0.1.9
   else ecrireGuide();
 });
 $('#guide-fond').addEventListener('keydown', (ev) => {

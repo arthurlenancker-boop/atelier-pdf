@@ -3,7 +3,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { GUIDES, composerSysteme } = require('../engine/guides.js');
+const { GUIDES, composerSysteme, composerMatrice } = require('../engine/guides.js');
 
 const ok = (r) => { assert.ok(r.latex, JSON.stringify(r)); return r.latex; };
 
@@ -91,6 +91,84 @@ test('système : une seule ligne sans matrice, plusieurs lignes entre accolades'
   assert.match(composerSysteme([]).erreur, /au moins une/i);
 });
 
+test('dérivée : une, deux puis n apostrophes, évaluée ou non (v0.1.9)', () => {
+  const g = GUIDES.derivee;
+  assert.strictEqual(ok(g.composer({ nom: 'f', ordre: '1' })), "f'");
+  assert.strictEqual(ok(g.composer({ ordre: '2', en: 'a' })), "f''\\left(a\\right)");
+  assert.strictEqual(ok(g.composer({ ordre: '5' })), 'f^{(5)}');
+  assert.strictEqual(ok(g.composer({ nom: 'g', ordre: '' })), "g'");
+});
+
+test('primitive : intégrale sans bornes (v0.1.9)', () => {
+  const g = GUIDES.primitive;
+  assert.strictEqual(ok(g.composer({ expr: 'f(x)', variable: 't' })), '\\int f(x) \\, dt');
+  assert.strictEqual(ok(g.composer({ expr: 'x^2' })), '\\int x^2 \\, dx');
+  assert.match(g.composer({ expr: '' }).erreur, /fonction/i);
+});
+
+test('binôme : k parmi n (v0.1.9)', () => {
+  const g = GUIDES.binome;
+  assert.strictEqual(ok(g.composer({ n: 'n', k: 'k' })), '\\binom{n}{k}');
+  assert.strictEqual(ok(g.composer({ n: '5', k: '2' })), '\\binom{5}{2}');
+  assert.match(g.composer({ n: '5', k: '' }).erreur, /deux nombres/i);
+});
+
+test('matrice : composition et bornes des dimensions (v0.1.9)', () => {
+  const m = composerMatrice({ lignes: '2', colonnes: '3', c11: '1', c12: '0', c13: '-2', c21: 'a', c22: 'b', c23: 'c' });
+  assert.strictEqual(ok(m), '\\begin{pmatrix}1 & 0 & -2 \\\\ a & b & c\\end{pmatrix}');
+  assert.strictEqual(m.dims.lignes, 2);
+  assert.strictEqual(m.dims.colonnes, 3);
+  // Dimensions absentes : 2 par défaut ; hors bornes : ramenées dans [1 ; 3].
+  assert.strictEqual(composerMatrice({}).dims.lignes, 2);
+  assert.strictEqual(composerMatrice({ lignes: '9', colonnes: '0' }).dims.colonnes, 1);
+  // Gabarit déclaratif branché sur la même fonction.
+  assert.strictEqual(ok(GUIDES.matrice.composer({ lignes: '1', colonnes: '1', c11: '7' })),
+    '\\begin{pmatrix}7\\end{pmatrix}');
+  // Case vide : matrice squelette conservée.
+  assert.match(ok(composerMatrice({ lignes: '2', colonnes: '2' })), /^\\begin\{pmatrix\} &  \\\\  & \\end\{pmatrix\}$/);
+});
+
+test('intervalle : les quatre types de crochets (v0.1.9)', () => {
+  const g = GUIDES.intervalle;
+  assert.strictEqual(ok(g.composer({ gauche: '0', droite: '1' }, 'ff')), '\\left[0 \\, ;\\, 1\\right]');
+  assert.strictEqual(ok(g.composer({ gauche: 'a', droite: 'b' }, 'oo')), '\\left]a \\, ;\\, b\\right[');
+  assert.strictEqual(ok(g.composer({ gauche: 'a', droite: 'b' }, 'fo')), '\\left[a \\, ;\\, b\\right[');
+  assert.strictEqual(ok(g.composer({ gauche: 'a', droite: 'b' }, 'of')), '\\left]a \\, ;\\, b\\right]');
+  assert.match(g.composer({ gauche: '0', droite: '' }, 'ff').erreur, /bornes/i);
+});
+
+test('ensemble : appartenance, inclusion, ensemble en compréhension (v0.1.9)', () => {
+  const g = GUIDES.ensemble;
+  assert.strictEqual(ok(g.composer({ element: 'x', ens: '\\mathbb{R}' }, 'in')), 'x \\in \\mathbb{R}');
+  assert.strictEqual(ok(g.composer({ element: 'A', ens: '\\mathbb{R}' }, 'subset')), 'A \\subset \\mathbb{R}');
+  assert.strictEqual(ok(g.composer({ ens: '\\mathbb{N}' })), '\\mathbb{N}');
+  assert.strictEqual(ok(g.composer({ element: 'x', ens: '\\mathbb{R}', cond: 'x > 1' }, 'in')),
+    '\\left\\{ x \\in \\mathbb{R} \\,\\middle|\\, x > 1 \\right\\}');
+  // Condition sans élément : x par défaut.
+  assert.match(ok(g.composer({ ens: '\\mathbb{R}', cond: 't < 5' })), /\\middle\|\\, t < 5/);
+  assert.match(g.composer({ ens: '' }).erreur, /ensemble/i);
+});
+
+test('complexe : formes algébrique, exponentielle, trigonométrique (v0.1.9)', () => {
+  const g = GUIDES.complexe;
+  assert.strictEqual(ok(g.composer({ nom: 'z', re: 'a', im: 'b' }, 'alg')), 'z = a + \\mathrm{i}b');
+  assert.strictEqual(ok(g.composer({ re: '3', im: '' }, 'alg')), 'z = 3');
+  assert.strictEqual(ok(g.composer({ im: '-2' }, 'alg')), 'z = \\mathrm{i}-2');
+  assert.strictEqual(ok(g.composer({ module: 'r', argument: '\\theta' }, 'expo')),
+    'z = r\\,\\mathrm{e}^{\\mathrm{i}\\theta}');
+  assert.strictEqual(ok(g.composer({ module: '2', argument: '\\frac{\\pi}{4}' }, 'trig')),
+    'z = 2\\left(\\cos \\frac{\\pi}{4} + \\mathrm{i}\\,\\sin \\frac{\\pi}{4}\\right)');
+  assert.match(g.composer({ re: '', im: '' }, 'alg').erreur, /réelle|imaginaire/i);
+  assert.match(g.composer({ module: '2', argument: '' }, 'expo').erreur, /module|argument/i);
+});
+
+test('pourcentage : symbole et fraction sur 100 (v0.1.9)', () => {
+  const g = GUIDES.pourcentage;
+  assert.strictEqual(ok(g.composer({ valeur: '15' }, 'symbole')), '15\\,\\%');
+  assert.strictEqual(ok(g.composer({ valeur: 't' }, 'fraction')), '\\frac{t}{100}');
+  assert.match(g.composer({ valeur: '' }, 'symbole').erreur, /valeur/i);
+});
+
 test('module exporté en CommonJS sans référence nue à « module »', () => {
   // Leçon v0.1.4 : dans le rendu (ESM), « module » n'existe pas. Toute
   // référence doit rester sous garde typeof. On vérifie ici que le fichier
@@ -102,7 +180,7 @@ test('module exporté en CommonJS sans référence nue à « module »', () => {
   const guardes = source.match(/^module\./gm) || [];
   assert.strictEqual(guardes.length, 0, 'aucune exportation inconditionnelle en tête de ligne');
   const keys = Object.keys(GUIDES);
-  assert.strictEqual(keys.length, 7);
+  assert.strictEqual(keys.length, 15); // v0.1.9 : 7 + 8 nouveaux gabarits
   for (const k of keys) {
     assert.strictEqual(typeof GUIDES[k].composer, 'function');
     assert.strictEqual(typeof GUIDES[k].titre, 'string');

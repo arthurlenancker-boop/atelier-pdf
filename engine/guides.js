@@ -211,6 +211,186 @@ const GUIDES = {
       return { latex: `${coeff ? `${coeff} \\, ` : ''}${corps}` };
     },
   },
+
+  /* v0.1.9 : demandes d'Arthur (rétro-ingénierie Dmaths 3.5.9.8 en
+     référence). La version Dmaths analysée ne connaît PAS les nombres
+     complexes : le gabarit ci-dessous est une extension Atelier PDF. */
+  derivee: {
+    bouton: 'Dérivée',
+    titre: 'Écrire une fonction dérivée',
+    champs: [
+      { id: 'nom', libelle: 'Fonction', place: 'f', defaut: 'f' },
+      { id: 'ordre', libelle: 'Ordre', place: '1', defaut: '1', etroit: true },
+      { id: 'en', libelle: 'Évaluée en (facultatif)', place: 'a' },
+    ],
+    composer(v) {
+      const nom = net(v.nom) || 'f';
+      const ordre = Math.min(9, Math.max(1, parseInt(net(v.ordre), 10) || 1));
+      const apostrophes = ordre === 1 ? "'" : (ordre === 2 ? "''" : `^{(${ordre})}`);
+      const en = net(v.en);
+      return { latex: `${nom}${apostrophes}${en ? `\\left(${en}\\right)` : ''}` };
+    },
+  },
+
+  primitive: {
+    bouton: 'Primitive',
+    titre: 'Écrire une primitive',
+    champs: [
+      { id: 'expr', libelle: 'Fonction', place: 'f(x)' },
+      { id: 'variable', libelle: 'Variable', place: 'x', defaut: 'x' },
+    ],
+    composer(v) {
+      const expr = net(v.expr);
+      if (!expr) return { erreur: 'Complétez la fonction à intégrer.' };
+      const variable = net(v.variable) || 'x';
+      return { latex: `\\int ${expr} \\, d${variable}` };
+    },
+  },
+
+  binome: {
+    bouton: 'Binôme',
+    titre: 'Écrire un coefficient binomial (k parmi n)',
+    champs: [
+      { id: 'n', libelle: 'Effectif total (en haut)', place: 'n', defaut: 'n', etroit: true },
+      { id: 'k', libelle: 'Choisis (en bas)', place: 'k', defaut: 'k', etroit: true },
+    ],
+    composer(v) {
+      const n = net(v.n);
+      const k = net(v.k);
+      if (!n || !k) return { erreur: 'Complétez les deux nombres du coefficient.' };
+      return { latex: `\\binom{${n}}{${k}}` };
+    },
+  },
+
+  matrice: {
+    bouton: 'Matrice',
+    titre: 'Écrire une matrice',
+    champs: [
+      { id: 'lignes', libelle: 'Lignes (1 à 3)', place: '2', defaut: '2', etroit: true },
+      { id: 'colonnes', libelle: 'Colonnes (1 à 3)', place: '3', defaut: '3', etroit: true },
+    ],
+    /* Les cases c11..c33 sont créées par la fenêtre (v0.1.9) après
+       validation des dimensions ; composerMatrice lit v.lignes/colonnes. */
+    composer: (v) => composerMatrice(v),
+  },
+
+  intervalle: {
+    bouton: 'Intervalle',
+    titre: 'Écrire un intervalle',
+    champs: [
+      { id: 'gauche', libelle: 'Borne gauche', place: '0' },
+      { id: 'droite', libelle: 'Borne droite', place: '1' },
+    ],
+    radios: {
+      id: 'crochets',
+      defaut: 'ff',
+      options: [
+        { id: 'ff', libelle: '[ a ; b ] fermé' },
+        { id: 'oo', libelle: '] a ; b [ ouvert' },
+        { id: 'fo', libelle: '[ a ; b [ semi-ouvert' },
+        { id: 'of', libelle: '] a ; b ] semi-ouvert' },
+      ],
+    },
+    composer(v, r) {
+      const a = net(v.gauche);
+      const b = net(v.droite);
+      if (!a || !b) return { erreur: 'Complétez les deux bornes.' };
+      const gauche = (r === 'oo' || r === 'of') ? '\\left]' : '\\left[';
+      const droite = (r === 'ff' || r === 'of') ? '\\right]' : '\\right[';
+      return { latex: `${gauche}${a} \\, ;\\, ${b}${droite}` };
+    },
+  },
+
+  ensemble: {
+    bouton: 'Ensemble',
+    titre: 'Écrire un ensemble',
+    champs: [
+      { id: 'element', libelle: 'Élément', place: 'x' },
+      { id: 'ens', libelle: 'Ensemble (LaTeX admis)', place: '\\mathbb{R}' },
+      { id: 'cond', libelle: 'Condition (facultatif)', place: 'x > 1', large: true },
+    ],
+    radios: {
+      id: 'relation',
+      defaut: 'in',
+      options: [
+        { id: 'in', libelle: 'appartient' },
+        { id: 'notin', libelle: 'n’appartient pas' },
+        { id: 'subset', libelle: 'est inclus dans' },
+      ],
+    },
+    composer(v, r) {
+      const ens = net(v.ens);
+      if (!ens) return { erreur: "Complétez l'ensemble (ex. : \\mathbb{R})." };
+      const cond = net(v.cond);
+      let element = net(v.element);
+      if (cond && !element) element = 'x';
+      if (cond) return { latex: `\\left\\{ ${element} \\in ${ens} \\,\\middle|\\, ${cond} \\right\\}` };
+      if (element) {
+        const relation = r === 'notin' ? '\\notin' : (r === 'subset' ? '\\subset' : '\\in');
+        return { latex: `${element} ${relation} ${ens}` };
+      }
+      return { latex: ens };
+    },
+  },
+
+  complexe: {
+    bouton: 'Complexe',
+    titre: 'Écrire un nombre complexe',
+    champs: [
+      { id: 'nom', libelle: 'Nom', place: 'z', defaut: 'z', etroit: true },
+      { id: 're', libelle: 'Partie réelle (a)', place: 'a', large: true },
+      { id: 'im', libelle: 'Partie imaginaire (b)', place: 'b', large: true },
+      { id: 'module', libelle: 'Module (r)', place: 'r', large: true },
+      { id: 'argument', libelle: 'Argument (θ)', place: '\\theta', large: true },
+    ],
+    radios: {
+      id: 'forme',
+      defaut: 'alg',
+      options: [
+        { id: 'alg', libelle: 'algébrique a + ib' },
+        { id: 'expo', libelle: 'exponentielle r·e^{iθ}' },
+        { id: 'trig', libelle: 'trigonométrique r(cos θ + i sin θ)' },
+      ],
+    },
+    composer(v, r) {
+      const nom = net(v.nom) || 'z';
+      if (r !== 'alg') {
+        const module = net(v.module);
+        const argument = net(v.argument);
+        if (!module || !argument) return { erreur: "Complétez le module et l'argument." };
+        if (r === 'expo') return { latex: `${nom} = ${module}\\,\\mathrm{e}^{\\mathrm{i}${argument}}` };
+        return { latex: `${nom} = ${module}\\left(\\cos ${argument} + \\mathrm{i}\\,\\sin ${argument}\\right)` };
+      }
+      const a = net(v.re);
+      const b = net(v.im);
+      if (!a && !b) return { erreur: 'Complétez la partie réelle ou la partie imaginaire.' };
+      if (a && b) return { latex: `${nom} = ${a} + \\mathrm{i}${b}` };
+      return { latex: `${nom} = ${a || `\\mathrm{i}${b}`}` };
+    },
+  },
+
+  pourcentage: {
+    bouton: 'Pourcentage',
+    titre: 'Écrire un pourcentage',
+    champs: [
+      { id: 'valeur', libelle: 'Valeur', place: '15' },
+    ],
+    radios: {
+      id: 'notation',
+      defaut: 'symbole',
+      options: [
+        { id: 'symbole', libelle: 'avec le symbole %' },
+        { id: 'fraction', libelle: 'en fraction sur 100' },
+      ],
+    },
+    composer(v, r) {
+      const valeur = net(v.valeur);
+      if (!valeur) return { erreur: 'Complétez la valeur.' };
+      return r === 'fraction'
+        ? { latex: `\\frac{${valeur}}{100}` }
+        : { latex: `${valeur}\\,\\%` };
+    },
+  },
 };
 
 /* Système d'équations : chaque ligne = { gauche, symbole, droite }. */
@@ -226,12 +406,33 @@ function composerSysteme(lignes) {
   return { latex: `\\left\\{\\begin{matrix}${valides.join(' \\\\ ')}\\end{matrix}\\right.` };
 }
 
+/* v0.1.9 : matrice 1 à 3 lignes sur 1 à 3 colonnes. Valeurs lues dans
+   v.lignes, v.colonnes et les cases v.c11 … v.c33 (ligne puis colonne).
+   Les dimensions hors bornes sont ramenées dans [1 ; 3] ; une case
+   vide reste vide (matrice squelette). */
+function composerMatrice(v) {
+  const val = v || {};
+  const dim = (t, dft) => {
+    const n = parseInt(net(t), 10);
+    return Number.isNaN(n) ? dft : Math.min(3, Math.max(1, n));
+  };
+  const l = dim(val.lignes, 2);
+  const c = dim(val.colonnes, 2);
+  const ranges = [];
+  for (let i = 1; i <= l; i += 1) {
+    const rangee = [];
+    for (let j = 1; j <= c; j += 1) rangee.push(net(val[`c${i}${j}`]));
+    ranges.push(rangee.join(' & '));
+  }
+  return { latex: `\\begin{pmatrix}${ranges.join(' \\\\ ')}\\end{pmatrix}`, dims: { lignes: l, colonnes: c } };
+}
+
 // Double en-tête : sous Node (tests), CommonJS habituel ; dans le navigateur
 // du processus de rendu (module ESM sans « module »), exposition sur
 // globalThis. v0.1.4 : TOUJOURS la forme gardée, jamais d'exportation
 // inconditionnelle (voir la leçon de coords.js).
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { GUIDES, composerSysteme };
+  module.exports = { GUIDES, composerSysteme, composerMatrice };
 } else {
-  globalThis.AtelierGuides = { GUIDES, composerSysteme };
+  globalThis.AtelierGuides = { GUIDES, composerSysteme, composerMatrice };
 }
