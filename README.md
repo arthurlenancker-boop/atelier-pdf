@@ -51,6 +51,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Écrire une fiche sur la page | outil Fiche : glisser la zone, puis écrire directement dans la zone posée sur la page |
 | Modifier une note ou une fiche | double-clic dessus (outil Sélection ou Équation), corriger, Ctrl+Entrée |
 | Insérer une équation | outil Équation : clic sur la page (la formule pose sa ligne de base à cet endroit), formule dans le panneau, bouton Insérer dans la page |
+| Voir les équations posées | affichées à l'écran, calées exactement sur leur rectangle enregistré (depuis la v0.1.10, tracées par l'application depuis le LaTeX embarqué, identiques aux autres lecteurs) |
 | Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : 16 fenêtres (dont dérivée, primitive, binôme, matrice, intervalle, ensemble, nombre complexe, pourcentage), cases en clair, bande Insérer, bouton Écrire (pas de zone d'aperçu) |
 | Corriger une équation posée | clic sur l'équation (outil Équation) ou double-clic (outil Sélection), corriger, bouton Remplacer la formule |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |

@@ -4,7 +4,8 @@
 'use strict';
 
 import '../engine/coords.js'; // expose globalThis.AtelierCoords
-import '../engine/guides.js'; // expose globalThis.AtelierGuides (v0.1.5)
+import '../engine/guides.js';
+import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10) // expose globalThis.AtelierGuides (v0.1.5)
 
 const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
 
@@ -148,6 +149,7 @@ const etat = {
   annotsPdf: [],  // annotations au format PDF de la page courante { ref, subtype, rect, contents, page }
   eqMode: 'pro',
   eqApercu: null, // dernier aperçu { widthPt, heightPt, depthPt, ops }
+  opsEquation: new Map(), // v0.1.10 : ops de tracé par équation « page:objet »
   eqPoint: null,  // dernier clic Équation : { pageIndex, point }
   eqExPt: 4.5,
   selection: null,
@@ -213,6 +215,7 @@ async function ouvrirDocument(chemin) {
   etat.selection = null;
   etat.eqPoint = null;
   etat.remplacement = null;
+  etat.opsEquation.clear(); // v0.1.10
   etat.chemin = rep.resume.chemin;
   etat.page = 1;
   resoudreZoom();
@@ -346,6 +349,86 @@ function ecrireCarteCommentaire(ctx, texte, x, y, zoom) {
   ctx.restore();
 }
 
+/* v0.1.10 : une équation posée se TRACE dans son rectangle. pdf.js ne
+   dessine pas l'apparence /AP des /Square : notre calque est le seul
+   à les montrer. Les opérateurs sont recalculés depuis le LaTeX
+   EMBARQUÉ dans l'annotation (/Contents), via MathJax côté main :
+   aucun cache lié à la pose, donc le faux repli pointillé de la
+   v0.1.6 (find() par préfixe) ne peut plus se reproduire. */
+function cleEquation(a) {
+  return `${a.page}:${a.ref && a.ref.objectNumber}`;
+}
+
+const opsEnVol = new Set(); // clés en cours de calcul, contre les requêtes en double
+
+async function chargerOpsEquations() {
+  if (!etat.resume) return;
+  const annots = (etat.resume.annots || []).filter((x) => x.page === etat.page - 1
+    && x.ref && (x.contents || '').startsWith(PREFIXE_EQUATION));
+  // Nettoyage : supprime les clés des équations disparues de cette page.
+  const cles = new Set(annots.map(cleEquation));
+  for (const cle of etat.opsEquation.keys()) {
+    if (cle.split(':')[0] === String(etat.page - 1) && !cles.has(cle)) {
+      etat.opsEquation.delete(cle);
+    }
+  }
+  const manquantes = annots.filter((x) => !etat.opsEquation.has(cleEquation(x))
+    && !opsEnVol.has(cleEquation(x)));
+  if (manquantes.length === 0) return;
+  for (const x of manquantes) opsEnVol.add(cleEquation(x));
+  let ajoute = false;
+  for (const x of manquantes) {
+    const cle = cleEquation(x);
+    const latex = extraireLatexEquation(x.contents);
+    if (latex) {
+      try {
+        const rep = await window.atelier.previewEquation(latex, etat.eqExPt);
+        if (!rep.erreur) { etat.opsEquation.set(cle, rep.apercu); ajoute = true; }
+      } catch (e) { /* repli conservé */ }
+    }
+    opsEnVol.delete(cle);
+  }
+  if (ajoute) dessinerAnnots();
+}
+
+/** Trace les opérateurs vectoriels d'une équation dans son rectangle
+ * d'écran (restauré de la v0.1.6, où il fonctionnait correctement). */
+function tracceEquation(ctx, apercu, rect) {
+  const c0 = pdfVersEcran({ x: rect[0], y: rect[1] });
+  const c1 = pdfVersEcran({ x: rect[2], y: rect[3] });
+  const x0 = Math.min(c0.x, c1.x);
+  const y0 = Math.min(c0.y, c1.y);
+  const k = Math.abs(c1.x - c0.x) / (apercu.widthPt || 1);
+  const px = (x) => x0 + x * k;
+  const py = (y) => y0 + (apercu.heightPt - y) * k;
+  ctx.save();
+  ctx.fillStyle = '#111319';
+  ctx.strokeStyle = '#111319';
+  ctx.lineWidth = Math.max(0.6, 0.9 * k);
+  ctx.setLineDash([]);
+  let p = new Path2D();
+  const mots = apercu.ops.split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < mots.length) {
+    const t = mots[i];
+    const attendus = { m: 2, l: 2, c: 6, re: 4 }[t];
+    if (attendus !== undefined) {
+      const v = [];
+      for (let j = 0; j < attendus; j += 1) v.push(Number(mots[i - attendus + j]));
+      if (t === 'm') p.moveTo(px(v[0]), py(v[1]));
+      else if (t === 'l') p.lineTo(px(v[0]), py(v[1]));
+      else if (t === 'c') p.bezierCurveTo(px(v[0]), py(v[1]), px(v[2]), py(v[3]), px(v[4]), py(v[5]));
+      else if (t === 're') p.rect(px(v[0]), py(v[1] + v[3]), v[2] * k, v[3] * k);
+      i += 1;
+    } else if (t === 'f') { ctx.fill(p); p = new Path2D(); i += 1; }
+    else if (t === 'S') { ctx.stroke(p); p = new Path2D(); i += 1; }
+    else { i += 1; } // h, rg, w, gs : ignorés pour le calque d'apparence
+  }
+  ctx.fill(p);
+  ctx.stroke(p);
+  ctx.restore();
+}
+
 async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
@@ -370,10 +453,36 @@ async function dessinerAnnots() {
       // quand le calque ne reconnaissait plus la formule. Il suffit de ne
       // rien dessiner ici ; seule la sélection (liseret bleu, plus bas)
       // marque l'équation choisie.
-      if (!(a.contents || '').startsWith('Équation LaTeX')) {
+      /* v0.1.10 : pdf.js ne dessine PAS l'apparence des /Square (vérifié
+         dans son source : la couche d'annotations n'y met qu'une zone
+         invisible de déclencheur de pop-up). Le tracé des équations
+         revient donc à CE calque, calé sur le /Rect enregistré, qui est
+         celui de l'apparence écrite dans le fichier : l'écran montre la
+         même chose que les autres lecteurs. La « correction » de la
+         v0.1.7 (suppression du tracé) rendait les équations posées
+         totalement invisibles à l'écran. */
+      if (!(a.contents || '').startsWith(PREFIXE_EQUATION)) {
         ctx.strokeStyle = '#c0392b';
         ctx.lineWidth = 1.5 * etat.zoom;
         ctx.strokeRect(x, y, w, h);
+      } else {
+        const apercu = etat.opsEquation.get(cleEquation(a));
+        if (apercu) {
+          tracceEquation(ctx, apercu, a.rect);
+        } else {
+          // Ops pas encore chargées (ou formule illisible) : montrons au
+          // moins la source, et demandons le tracé au fond.
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(167, 175, 192, 0.35)';
+          ctx.strokeRect(x, y, w, h);
+          ctx.setLineDash([]);
+          const latex = extraireLatexEquation(a.contents);
+          if (latex) {
+            ctx.font = `${11 * etat.zoom}px sans-serif`;
+            ecrireCarteCommentaire(ctx, latex, x + w + 8 * etat.zoom, y, etat.zoom);
+          }
+          chargerOpsEquations();
+        }
       }
     } else if (a.subtype === 'Ink') {
       ctx.setLineDash([3, 3]);
@@ -461,7 +570,7 @@ function ecouterSouris() {
     } else if (etat.outil === 'equation') {
       // v0.1.7 : cliquer une équation EXISTANTE l'ouvre pour correction.
       const cible = annotationSous(point);
-      if (cible && (cible.contents || '').startsWith('Équation LaTeX')) {
+      if (cible && (cible.contents || '').startsWith(PREFIXE_EQUATION)) {
         ouvrirRemplacement(cible);
         return;
       }
@@ -481,7 +590,7 @@ function ecouterSouris() {
     const point = pointPdf(ev);
     const cible = annotationSous(point);
     if (!cible) return;
-    if ((cible.contents || '').startsWith('Équation LaTeX')) {
+    if ((cible.contents || '').startsWith(PREFIXE_EQUATION)) {
       ouvrirRemplacement(cible);
     } else if (cible.subtype === 'Text') {
       ouvrirEditeur('note', null, cible);
@@ -875,7 +984,15 @@ async function insererEquation() {
   if (!latex) return;
   const remplacer = etat.remplacement;
   if (!remplacer && !etat.eqPoint) return;
-  const apercu = etat.eqApercu || (await window.atelier.previewEquation(latex, etat.eqExPt)).apercu;
+  // v0.1.10 : aperçu TOUJOURS recalculé. Celui du panneau peut être périmé
+  // (la fenêtre guidée vient d'écrire la saisie) et donnait une mauvaise
+  // profondeur de pose : la formule se posait au mauvais endroit.
+  const repApercu = await window.atelier.previewEquation(latex, etat.eqExPt);
+  if (repApercu.erreur || !repApercu.apercu) {
+    message(repApercu.erreur || 'La formule n\u2019a pas pu être calculée.');
+    return;
+  }
+  const apercu = repApercu.apercu;
   let pageIndex;
   let x; let y; // y = bas du rectangle ; la ligne de base de la formule
   let edits;
@@ -930,7 +1047,7 @@ function annulerRemplacement() {
 
 /** Ouvre une équation existante pour correction (clic ou double-clic dessus). */
 async function ouvrirRemplacement(a) {
-  const latex = String(a.contents || '').replace(/^Équation LaTeX\s*:\s*/, '');
+  const latex = extraireLatexEquation(a.contents); // v0.1.10 : marqueur canonique
   if (!latex) {
     message('Cette annotation équation ne contient pas de formule lisible.');
     return;
@@ -971,6 +1088,7 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
    Fenêtres guidées « à la Dmaths » (v0.1.5)
    Gabarits et composition : engine/guides.js (testé sous Node).
    ============================================================ */
+const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;
 
 const GUIDE_SYSTEME = { titre: 'Écrire une (in)équation du système' };

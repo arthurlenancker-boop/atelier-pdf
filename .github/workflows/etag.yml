@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.9 : huit nouvelles fenetres guidees (derivee, primitive, binome, matrice, intervalle, ensemble, complexe, pourcentage)
+# Declencheur de la v0.1.10 : les equations posees s'affichent de nouveau dans l'application (tracé calé sur le rectangle enregistré, recalculé depuis le LaTeX embarqué) ; la pose utilise toujours un aperçu frais
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;
