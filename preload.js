@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld('atelier', {
   open: (chemin) => ipcRenderer.invoke('pdf:open', chemin),
   /** Applique une liste d'éditions {kind, pageIndex, args} et renvoie le résumé. */
   applyEdits: (edits) => ipcRenderer.invoke('pdf:apply', edits),
+  /** v0.1.13 : annule le dernier geste (rejeu depuis les octets originaux). */
+  undo: () => ipcRenderer.invoke('pdf:undo'),
+  /** v0.1.13 : rétablit le geste annulé au sommet de la pile. */
+  redo: () => ipcRenderer.invoke('pdf:redo'),
   /** Enregistre : mode 'overwrite' (défaut) ou 'timestamped'. */
   save: (mode) => ipcRenderer.invoke('pdf:save', { mode }),
   /** Aperçu d'une équation LaTeX : dimensions et opérateurs vectoriels. */

@@ -3,7 +3,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { deviceToPdf, quadPointsForRange } = require('../engine/coords.js');
+const { deviceToPdf, quadPointsForRange, quadsPourLignes } = require('../engine/coords.js');
 
 const V0 = { scale: 1, rotation: 0, pageW: 595.28, pageH: 841.89 };
 
@@ -64,4 +64,34 @@ test('quadPointsForRange ordonne [ul, ur, ll, lr] avec hauteur minimale', () => 
   assert.deepStrictEqual(inv, q);
   assert.throws(() => deviceToPdf(0, 0, { ...V0, rotation: 45 }),
     /Rotation non gérée/, 'seules 0/90/180/270 sont admises');
+});
+
+// v0.1.13 — sélection de texte : une ligne écran devenue ligne page
+// ({x0, yHaut, x1, yBas}, yHaut > yBas en repère page) donne un quad
+// [xTL,yTL, xTR,yTR, xBL,yBL, xBR,yBR] prêt pour QuadPoints.
+test('quadsPourLignes : une ligne -> un quad ordonné TL TR BL BR', () => {
+  const quads = quadsPourLignes([{ x0: 10, yHaut: 700, x1: 200, yBas: 688 }]);
+  assert.deepStrictEqual(quads, [[10, 700, 200, 700, 10, 688, 200, 688]]);
+});
+
+test('quadsPourLignes : deux lignes -> deux quads du haut vers le bas', () => {
+  const lignes = [
+    { x0: 60, yHaut: 560, x1: 190, yBas: 548 }, // deuxième ligne page (plus basse)
+    { x0: 10, yHaut: 700, x1: 200, yBas: 688 }, // première ligne page (plus haute)
+  ];
+  const quads = quadsPourLignes(lignes);
+  assert.strictEqual(quads.length, 2, 'un quad par ligne');
+  assert.deepStrictEqual(quads[0], [10, 700, 200, 700, 10, 688, 200, 688],
+    'la ligne la plus haute d\'abord');
+  assert.deepStrictEqual(quads[1], [60, 560, 190, 560, 60, 548, 190, 548]);
+});
+
+test('quadsPourLignes : fragments d\'une même ligne fusionnés en un quad', () => {
+  // Mots séparés sur la même ligne (même yHaut) : min des x0, max des x1.
+  const quads = quadsPourLignes([
+    { x0: 10, yHaut: 700, x1: 40, yBas: 688 },
+    { x0: 120, yHaut: 700, x1: 200, yBas: 688 },
+  ]);
+  assert.strictEqual(quads.length, 1, 'les fragments partagent la ligne');
+  assert.deepStrictEqual(quads[0], [10, 700, 200, 700, 10, 688, 200, 688]);
 });

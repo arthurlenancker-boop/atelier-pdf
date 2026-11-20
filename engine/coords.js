@@ -51,6 +51,34 @@ function quadPointsForRange(pointA, pointB) {
   return [[x0, yc + h, x1, yc + h, x0, yc - h, x1, yc - h]];
 }
 
+/**
+ * Regroupe des fragments de sélection, déjà convertis en repère page,
+ * en un quad par ligne de texte : les fragments qui partagent le même
+ * yHaut appartiennent à la même ligne (mots séparés par un espace, par
+ * exemple) et sont fusionnés — min des x0, max des x1. La sortie est
+ * ordonnée de la ligne la plus haute vers la plus basse, chaque quad
+ * étant [xTl, yTl, xTr, yTr, xBl, yBl, xBr, yBr], prêt pour QuadPoints.
+ * @param {{x0: number, yHaut: number, x1: number, yBas: number}[]} fragments
+ * @returns {number[][]}
+ */
+function quadsPourLignes(fragments) {
+  const parLigne = new Map();
+  for (const f of fragments) {
+    const cle = f.yHaut;
+    if (!parLigne.has(cle)) {
+      parLigne.set(cle, { x0: f.x0, x1: f.x1, yHaut: f.yHaut, yBas: f.yBas });
+    } else {
+      const l = parLigne.get(cle);
+      l.x0 = Math.min(l.x0, f.x0);
+      l.x1 = Math.max(l.x1, f.x1);
+      l.yBas = Math.min(l.yBas, f.yBas);
+    }
+  }
+  const lignes = [...parLigne.values()]
+    .sort((a, b) => b.yHaut - a.yHaut); // yHaut décroissant = haut de page d'abord
+  return lignes.map((l) => [l.x0, l.yHaut, l.x1, l.yHaut, l.x0, l.yBas, l.x1, l.yBas]);
+}
+
 // Double en-tête : sous Node (tests, processus principal), CommonJS habituel ;
 // dans le navigateur du processus de rendu (module ESM sans « module »),
 // les fonctions sont exposées sur globalThis.AtelierCoords — le rendu emploie
@@ -60,7 +88,7 @@ function quadPointsForRange(pointA, pointB) {
 // defined » — et donc TOUTE l'interface (aucun bouton branché) depuis la
 // v0.1.0. Seule la forme gardée doit exister.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deviceToPdf, quadPointsForRange };
+  module.exports = { deviceToPdf, quadPointsForRange, quadsPourLignes };
 } else {
-  globalThis.AtelierCoords = { deviceToPdf, quadPointsForRange };
+  globalThis.AtelierCoords = { deviceToPdf, quadPointsForRange, quadsPourLignes };
 }

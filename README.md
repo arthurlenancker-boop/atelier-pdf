@@ -13,6 +13,7 @@ Fonctionnalités de la phase 1 :
 - Cinq annotations standard : surlignage translucide (opacité 0,35), encadré rouge, encre à main levée, note post-it (icône Comment, texte au survol dans Adobe) et fiche de texte sur la page, y compris sur les pages tournées (/Rotate 90/180/270).
 - Équations LaTeX rendues en vecteurs PDF par MathJax, insérées en un clic, déplacées d'un glissement, supprimées d'une pression de Suppr.
 - Sélection d'une annotation sur la page (liseret) et suppression.
+- Confort à la PDF-XChange (v0.1.13) : outil Main pour faire défiler la page à la main, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste, raccourcis affichés au menu sans capter la saisie des champs.
 - Enregistrement : réécriture complète du fichier (bouton Enregistrer) ou copie horodatée à côté de l'original (nom-AAAA-MM-JJ-HHmmss.pdf) ; jamais d'écrasement silencieux du fichier source en dehors de l'action explicite.
 - Lectures des annotations d'autres logiciels (sans apparence /AP) en lecture seul : affichées mais non éditables.
 - Mise à jour automatique silencieuse (releases GitHub, via electron-updater).
@@ -44,6 +45,9 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Action | Contrôle |
 | --- | --- |
 | Ouvrir un PDF | Ctrl+O, bouton Ouvrir, ou glisser-déposer sur la fenêtre |
+| Prendre la page à la main | outil Main (premier bouton) : cliquer puis faire glisser, la page suit le geste comme une feuille sur la table (v0.1.13) |
+| Sélectionner du texte | outil Texte : glisser sur le texte du document (sélection native), puis Surligner (surlignage exact, un quad par ligne) ou Copier ; les PDF scannés sans texte réel ne se prêtent pas à la sélection, le rectangle de l'outil Surligner reste alors (v0.1.13) |
+| Annuler / Rétablir | Ctrl+Z / Ctrl+Maj+Z, boutons ou menu Édition : geste par geste (pose, déplacement, redimensionnement, correction) ; pendant une saisie dans un champ, Ctrl+Z reste au champ, sortez-en pour annuler un geste (v0.1.13) |
 | Surligner | outil Surligner : glisser sur une ligne de texte |
 | Encadrer | outil Encadrer : glisser un rectangle |
 | Écrire à main levée | outil Encre : tracer |

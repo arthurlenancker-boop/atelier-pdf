@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.12 (relance 1) : six mots pour « x y w h re S » (le rectangle composite des apparences cadre, note et fiche), attente de la pose de fiche mixte dans ses tests, rejet asynchrone testé comme tel.
+# Declencheur de la v0.1.13 : confort d'usage — outil Main (defilement direct), selection de texte reelle (calque pdf.js, surlignage exact par lignes + Copier), annulation et retablissement geste par geste (rejeu deterministe depuis les octets d'origine).
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;

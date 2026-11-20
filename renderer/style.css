@@ -296,6 +296,8 @@ details.deploi > .deploi-corps {
 .corps[data-curseur="crayon"] .calque-tampon { cursor: crosshair; }
 .corps[data-curseur="viseur"] .calque-tampon { cursor: cell; }
 .corps[data-curseur="defaut"] .calque-tampon { cursor: default; }
+.corps[data-curseur="main"] .calque-tampon { cursor: grab; }
+body.page-tenue .calque-tampon { cursor: grabbing; }
 
 /* ————— Panneau Équation : colonne de verre ————— */
 .panneau-equation {
@@ -523,3 +525,47 @@ details.deploi > .deploi-corps {
   border: 1px solid rgba(122, 162, 224, 0.25);
   border-radius: 4px;
 }
+
+/* ————— v0.1.13 : calque de texte et sélection fonctionnelle ————— */
+/* Le calque pdf.js porte le texte invisible de la page : rendu transparent,
+   matériellement au-dessus du tampon, mais il n'intercepte la souris QUE
+   lorsque l'outil Texte est actif (la classe porte-parole du conteneur). */
+.calque-texte {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  line-height: 1;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  font-kerning: none;
+}
+.calque-texte[hidden] { display: none; }
+.conteneur-page.outil-texte .calque-texte { pointer-events: auto; }
+.conteneur-page .calque-texte { pointer-events: none; }
+.calque-texte span,
+.calque-texte br {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0 100%;
+  color: transparent;
+}
+/* Le pdf.js officiel colore la sélection en bleu plein ; ici, un voile
+   accent léger, cohérent avec le surlignage posé ensuite. */
+.calque-texte ::selection { background: rgba(84, 160, 255, 0.35); }
+.conteneur-page.outil-texte .calque-tampon { pointer-events: none; }
+
+/* Mini-barre flottante Surligner / Copier, au-dessus de la sélection. */
+.barre-selection {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(28, 32, 40, 0.96);
+  border: 1px solid var(--bord, #2c3340);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.barre-selection[hidden] { display: none; }

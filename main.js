@@ -13,6 +13,7 @@ const { openPdf, savePdf, timestampedPath } = require('./engine/pdfio.js');
 const { createSession } = require('./engine/session.js');
 const { listAnnots } = require('./engine/reread.js');
 const { mjRender } = require('./engine/mjrender.js');
+const { rejouer } = require('./engine/undo.js');
 
 // ---------------------------------------------------------------------------
 // Dossiers : en développement, tout vit dans le dossier du projet ; empaqueté,
@@ -30,7 +31,10 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let fenetre = null;
-let etat = null; // { chemin, session, doc, modifie }
+let etat = null; // { chemin, session, doc, modifie, octets, gestes, aRefaire }
+// v0.1.13 : octets = fichier TEL QU'OUVERT (jamais réenregistré), socle du
+// rejeu d'annulation ; gestes = lots d'éditions appliqués (un lot = un geste
+// utilisateur) ; aRefaire = lots écartés par les annulations.
 const derniersMessages = []; // journal console du rendu, pour les diagnostics
 
 // ---------------------------------------------------------------------------
@@ -155,6 +159,28 @@ function menuApplication() {
       ],
     },
     {
+      // v0.1.13 : annulation et rétablissement. Les raccourcis sont AFFICHÉS
+      // mais non enregistrés comme accélérateurs natifs : un accélérateur
+      // natif intercepterait Ctrl+Z même pendant la saisie d'une note et
+      // casserait l'annulation native du champ. L'appui réel est écouté côté
+      // rendu, avec une garde sur les champs de saisie.
+      label: 'Édition',
+      submenu: [
+        {
+          label: 'Annuler',
+          accelerator: 'CmdOrCtrl+Z',
+          registerAccelerator: false,
+          click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'annuler' }); },
+        },
+        {
+          label: 'Rétablir',
+          accelerator: 'CmdOrCtrl+Shift+Z',
+          registerAccelerator: false,
+          click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'retablir' }); },
+        },
+      ],
+    },
+    {
       label: 'Affichage',
       submenu: [
         { role: 'zoomIn', label: 'Zoom avant' },
@@ -221,6 +247,8 @@ function resumerSession() {
     chemin: etat.chemin,
     modifie: etat.modifie,
     pageCount: etat.doc.getPageCount(),
+    peutAnnuler: Boolean(etat.gestes && etat.gestes.length),
+    peutRefaire: Boolean(etat.aRefaire && etat.aRefaire.length),
     annots: listAnnots(etat.doc).map((a) => ({
       ...a,
       ref: a.ref ? { objectNumber: a.ref.objectNumber, generationNumber: a.ref.generationNumber } : null,
@@ -245,7 +273,18 @@ ipcMain.handle('pdf:open', async (_e, cheminDemande) => {
     }
     const octets = await fs.promises.readFile(chemin);
     const doc = await openPdf(octets); // PdfioError en français si corrompu
-    etat = { chemin, doc, session: createSession(doc), modifie: false };
+    etat = {
+      chemin,
+      doc,
+      session: createSession(doc),
+      modifie: false,
+      // v0.1.13 : la copie PRISTINE des octets est le point de repli de
+      // chaque annulation ; les lots appliqués s'y rejouent pour reconstruire
+      // l'état exact d'avant le dernier geste.
+      octets: new Uint8Array(octets),
+      gestes: [],
+      aRefaire: [],
+    };
     return { resume: resumerSession(), octets: new Uint8Array(octets) };
   } catch (err) {
     return { erreur: err.message || String(err) };
@@ -263,10 +302,63 @@ ipcMain.handle('pdf:apply', async (_e, edits) => {
       // vraiment le document AVANT qu'il ne soit envoyé au rendu.
       faits.push(await etat.session.apply(edit));
     }
+    // v0.1.13 : les éditions EFFECTIVEMENT appliquées forment UN lot = un
+    // geste rejouable ; un lot partiel (échec en milieu de lot) est journalisé
+    // tel quel, il s'annulera d'un bloc avec son voisin réussi. Toute pose
+    // nouvelle vide la pile « à refaire » (règle habituelle des éditeurs).
+    etat.gestes.push(edits.slice(0, faits.length).map((e) => JSON.parse(JSON.stringify(e))));
+    etat.aRefaire = [];
     etat.modifie = true;
     notifierChangement();
     return { resume: resumerSession(), faits };
   } catch (err) {
+    return { erreur: err.message || String(err) };
+  }
+});
+
+// v0.1.13 : annulation par rejeu. L'état courant n'est JAMAIS touché tant
+// que le rejeu du nouveau départ n'a pas réussi : toute erreur de rejeu
+// renvoie { erreur } et laisse le document exactement comme avant.
+ipcMain.handle('pdf:undo', async () => {
+  try {
+    if (!etat) return { erreur: 'Aucun document n\'est ouvert.' };
+    if (!etat.gestes.length) return { resume: resumerSession(), rien: true };
+    const dernier = etat.gestes[etat.gestes.length - 1];
+    const { doc, session } = await rejouer(etat.octets, etat.gestes.slice(0, -1));
+    etat.gestes.pop();
+    etat.aRefaire.push(dernier);
+    etat.doc = doc;
+    etat.session = session;
+    etat.modifie = etat.gestes.length > 0;
+    notifierChangement();
+    return { resume: resumerSession() };
+  } catch (err) {
+    return { erreur: err.message || String(err) };
+  }
+});
+
+// v0.1.13 : rétablissement. Le lot écarté se réapplique sur la session
+// courante ; en cas d'échec, le lot RESTE sur la pile et rien ne change.
+ipcMain.handle('pdf:redo', async () => {
+  try {
+    if (!etat) return { erreur: 'Aucun document n\'est ouvert.' };
+    if (!etat.aRefaire.length) return { resume: resumerSession(), rien: true };
+    const lot = etat.aRefaire[etat.aRefaire.length - 1];
+    const faits = [];
+    for (const edit of lot) faits.push(await etat.session.apply(edit));
+    etat.aRefaire.pop();
+    etat.gestes.push(lot);
+    etat.modifie = true;
+    notifierChangement();
+    return { resume: resumerSession(), faits };
+  } catch (err) {
+    // Un lot à moitié appliqué ne doit JAMAIS rester en place : on reconstruit
+    // l'état en rejetant tous les gestes sains, la pile « à refaire » intacte.
+    try {
+      const { doc, session } = await rejouer(etat.octets, etat.gestes);
+      etat.doc = doc;
+      etat.session = session;
+    } catch (e2) { void e2; /* état inchangé ; l'erreur d'origine prime */ }
     return { erreur: err.message || String(err) };
   }
 });

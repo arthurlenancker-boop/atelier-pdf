@@ -17,6 +17,8 @@
     </div>
     <div class="actions-fichier">
       <button id="btn-ouvrir" class="btn accent">Ouvrir</button>
+      <button id="btn-annuler" class="btn" disabled title="Annuler le dernier geste (Ctrl+Z)">Annuler</button>
+      <button id="btn-retablir" class="btn" disabled title="Rétablir (Ctrl+Maj+Z)">Rétablir</button>
       <button id="btn-enregistrer" class="btn" disabled>Enregistrer</button>
       <button id="btn-copie" class="btn" disabled>Copie horodatée</button>
     </div>
@@ -32,10 +34,16 @@
     </div>
   </header>
 
-  <!-- Barre d'outils : les cinq annotations + l'équation -->
+  <!-- Barre d'outils : Main, les cinq annotations + l'équation -->
   <nav class="outils">
+    <button data-outil="main" class="outil" title="Main : faire glisser la page">
+      <span class="icone">✋</span><span class="etiquette">Main</span>
+    </button>
     <button data-outil="aucun" class="outil actif" title="Déplacement et sélection (Suppr pour supprimer)">
       <span class="icone">✥</span><span class="etiquette">Sélection</span>
+    </button>
+    <button data-outil="texte" class="outil" title="Sélectionner le texte : glisser sur le texte, puis Surligner ou Copier">
+      <span class="icone">I</span><span class="etiquette">Texte</span>
     </button>
     <button data-outil="surligner" class="outil" title="Surligner : glisser sur le texte">
       <span class="icone">HB</span><span class="etiquette">Surligner</span>
@@ -78,6 +86,9 @@
           <canvas id="calque-pdf" class="calque-pdf"></canvas>
           <canvas id="calque-annots" class="calque-annots"></canvas>
           <canvas id="calque-tampon" class="calque-tampon"></canvas>
+          <!-- v0.1.13 : calque de texte pdf.js pour la sélection native,
+               visible et cliquable uniquement à l'outil Texte -->
+          <div id="calque-texte" class="calque-texte" hidden></div>
           <!-- v0.1.7 : saisie des notes et fiches directement sur la page -->
           <div id="editeur-page" class="editeur-page" hidden>
             <p id="editeur-titre" class="editeur-titre">Note</p>
@@ -148,6 +159,12 @@
         <button id="guide-ecrire" class="btn accent">Écrire</button>
       </div>
     </div>
+  </div>
+
+  <!-- v0.1.13 : mini-barre flottante de la sélection de texte -->
+  <div id="barre-selection" class="barre-selection" hidden>
+    <button id="sel-surligner" class="btn">Surligner</button>
+    <button id="sel-copier" class="btn">Copier</button>
   </div>
 
   <!-- Barre d'état -->

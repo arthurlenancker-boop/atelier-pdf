@@ -9,7 +9,7 @@ import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10)
 import '../engine/texte.js'; // expose globalThis.AtelierTexte (v0.1.11)
 import '../engine/geom.js'; // expose globalThis.AtelierGeom (v0.1.12)
 
-const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
+const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
 
 // v0.1.2 : chargement dynamique de pdf.js. Un import statique qui echoue
 // (fichier absent) tuait silencieusement tout le module : plus aucun bouton
@@ -171,6 +171,7 @@ const els = {
   calquePdf: $('#calque-pdf'),
   calqueAnnots: $('#calque-annots'),
   calqueTampon: $('#calque-tampon'),
+  calqueTexte: $('#calque-texte'),
 };
 
 /* ============================================================
@@ -190,8 +191,33 @@ function majResume(resume) {
   $('#etiquette-page').textContent = resume ? `${etat.page} / ${resume.pageCount}` : '–';
   $('#btn-enregistrer').disabled = !resume;
   $('#btn-copie').disabled = !resume;
+  // v0.1.13 : les boutons d'annulation suivent l'état du journal.
+  $('#btn-annuler').disabled = !(resume && resume.peutAnnuler);
+  $('#btn-retablir').disabled = !(resume && resume.peutRefaire);
   dessinerAnnots();
 }
+
+/* v0.1.13 : annulation et rétablissement, geste par geste. */
+async function annulerGeste() {
+  if (!etat.resume) return;
+  const rep = await window.atelier.undo();
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  majResume(rep.resume);
+  etat.selection = null;
+  message(rep.rien ? 'Rien à annuler.' : 'Dernier geste annulé.', rep.rien ? 'info' : 'reussite');
+}
+
+async function retablirGeste() {
+  if (!etat.resume) return;
+  const rep = await window.atelier.redo();
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  majResume(rep.resume);
+  etat.selection = null;
+  message(rep.rien ? 'Rien à rétablir.' : 'Geste rétabli.', rep.rien ? 'info' : 'reussite');
+}
+
+$('#btn-annuler').addEventListener('click', annulerGeste);
+$('#btn-retablir').addEventListener('click', retablirGeste);
 
 window.atelier.onChanged((infos) => {
   const pastille = $('#pastille-modifie');
@@ -286,6 +312,10 @@ async function rendPage() {
   }
   if (ma !== generationRendu) { renduNetEnCours = false; return; }
   renduNetEnCours = false;
+  // v0.1.13 : reconstruction du calque de texte invisible de pdf.js —
+  // il porte la sélection native du navigateur à l'outil Texte ; un
+  // échec n'entrave ni l'affichage ni les autres outils (diagnostics).
+  rendCalqueTexte(page, viewport);
   dessinerAnnots();
   $('#etiquette-page').textContent = `${etat.page} / ${etat.resume.pageCount}`;
   $('#etiquette-zoom').textContent = `${Math.round(etat.zoom * 100)} %`;
@@ -869,6 +899,169 @@ function pointPdf(ev) {
   return deviceToPdf(ev.clientX - r.left, ev.clientY - r.top, etat.viewport);
 }
 
+/* ============================================================
+   v0.1.13 : sélection de texte (calque pdf.js + mini-barre)
+   ============================================================ */
+let erreurCalqueTexte = null; // dernier échec du calque (diagnostics)
+
+/* Reconstruit la couche de texte invisible de la page courante. Sans
+   elle, le navigateur ne peut pas sélectionner le texte avec la souris.
+   pdf.js v4 expose TextLayer ; en son absence, l'ancienne fonction
+   renderTextLayer fait office de repli ; en cas d'échec, l'outil Texte
+   se contente de le signaler mais le reste de l'application vit. */
+async function rendCalqueTexte(page, viewport) {
+  erreurCalqueTexte = null;
+  els.calqueTexte.replaceChildren();
+  els.calqueTexte.style.width = `${Math.round(viewport.width)}px`;
+  els.calqueTexte.style.height = `${Math.round(viewport.height)}px`;
+  if (!pdfjsLib) return;
+  try {
+    const contenu = await page.getTextContent();
+    els.calqueTexte.style.setProperty("--scale-factor", String(viewport.scale));
+    els.calqueTexte.style.setProperty("--total-scale-factor", String(viewport.scale));
+    if (typeof pdfjsLib.TextLayer === 'function') {
+      await new pdfjsLib.TextLayer({
+        textContentSource: contenu,
+        container: els.calqueTexte,
+        viewport,
+      }).render();
+    } else {
+      // Repli pdf.js antérieur à v4 (renderTextLayer, dépréciée).
+      await pdfjsLib.renderTextLayer({
+        textContentSource: contenu,
+        textContent: contenu,
+        container: els.calqueTexte,
+        viewport,
+        textDivs: [],
+      });
+    }
+  } catch (err) {
+    erreurCalqueTexte = (err && err.message) ? err.message : String(err);
+  }
+}
+
+/* État de la sélection en cours : les quads et le texte retenus au
+   relâchement de la souris, pour Surligner et Copier. */
+const selectionTexte = { quads: null, rect: null, page: null, texte: '' };
+
+function fermerBarreSelection() {
+  $('#barre-selection').hidden = true;
+  selectionTexte.quads = null;
+  selectionTexte.rect = null;
+  selectionTexte.page = null;
+  selectionTexte.texte = '';
+}
+
+/* Convertit la sélection native du navigateur en fragments de page
+   ({x0, yHaut, x1, yBas} en points PDF), un par rectangle du texte
+   réellement sélectionné — le navigateur fournit déjà le découpage par
+   ligne de texte via getClientRects. */
+function fragmentsDeSelection() {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+  const ancre = els.calqueTexte.getBoundingClientRect();
+  const fragments = [];
+  for (let i = 0; i < sel.rangeCount; i += 1) {
+    for (const r of sel.getRangeAt(i).getClientRects()) {
+      if (r.width < 0.5 || r.height < 0.5) continue;
+      const a = deviceToPdf(r.left - ancre.left, r.top - ancre.top, etat.viewport);
+      const b = deviceToPdf(r.right - ancre.left, r.bottom - ancre.top, etat.viewport);
+      fragments.push({
+        x0: Math.min(a.x, b.x),
+        x1: Math.max(a.x, b.x),
+        yHaut: Math.max(a.y, b.y),
+        yBas: Math.min(a.y, b.y),
+      });
+    }
+  }
+  if (!fragments.length) return null;
+  return { fragments, texte: sel.toString() };
+}
+
+/* Boîte englobante de tous les quads, pour le /Rect de l'annotation. */
+function boiteQuads(quads) {
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const q of quads) {
+    x0 = Math.min(x0, q[0], q[4]);
+    y0 = Math.min(y0, q[5], q[7]);
+    x1 = Math.max(x1, q[2], q[6]);
+    y1 = Math.max(y1, q[1], q[3]);
+  }
+  return [x0, y0, x1, y1];
+}
+
+function placerBarreSelection(x, y) {
+  const barre = $('#barre-selection');
+  barre.hidden = false;
+  const largeur = barre.offsetWidth || 180;
+  const hauteur = barre.offsetHeight || 36;
+  const gauche = Math.min(window.innerWidth - largeur - 8, Math.max(8, x - largeur / 2));
+  const haut = Math.min(window.innerHeight - hauteur - 8, Math.max(8, y - hauteur - 14));
+  barre.style.left = `${Math.round(gauche)}px`;
+  barre.style.top = `${Math.round(haut)}px`;
+}
+
+/* Au relâchement d'un geste de sélection avec l'outil Texte : la
+   mini-barre flottante Surligner / Copier apparaît au curseur. */
+document.addEventListener('mouseup', (ev) => {
+  if (etat.outil !== 'texte' || gesteZoomActif() || !etat.resume) {
+    if (etat.outil !== 'texte') fermerBarreSelection();
+    return;
+  }
+  // Un clic sur la barre elle-même n'efface pas la sélection en cours :
+  // ses boutons en ont besoin pour agir juste après.
+  if (ev.target && ev.target.closest && ev.target.closest('#barre-selection')) return;
+  const infos = fragmentsDeSelection();
+  if (!infos) { fermerBarreSelection(); return; }
+  const quads = quadsPourLignes(infos.fragments);
+  if (!quads.length) { fermerBarreSelection(); return; }
+  selectionTexte.quads = quads;
+  selectionTexte.rect = boiteQuads(quads);
+  selectionTexte.page = etat.page - 1;
+  selectionTexte.texte = infos.texte;
+  placerBarreSelection(ev.clientX, ev.clientY);
+});
+
+function viderSelectionNative() {
+  const sel = window.getSelection();
+  if (sel) sel.removeAllRanges();
+}
+
+$('#sel-surligner').addEventListener('click', async () => {
+  if (!selectionTexte.quads) return;
+  const { quads, rect, page } = selectionTexte;
+  fermerBarreSelection();
+  viderSelectionNative();
+  const rep = await appliquer({
+    kind: 'highlight',
+    pageIndex: page,
+    args: {
+      rect: rect.map((v) => Math.round(v * 100) / 100),
+      quadPoints: quads.map((q) => q.map((v) => Math.round(v * 100) / 100)),
+    },
+  });
+  if (rep) message('Texte sélectionné surligné.', 'reussite');
+});
+
+$('#sel-copier').addEventListener('click', async () => {
+  const texte = selectionTexte.texte || '';
+  fermerBarreSelection();
+  viderSelectionNative();
+  try {
+    await navigator.clipboard.writeText(texte);
+    message('Texte copié dans le presse-papiers.', 'reussite');
+  } catch (err) {
+    message('Copie impossible : le presse-papiers a refusé l\'accès.', 'erreur');
+  }
+});
+
+/* Échap referme la barre ; le moindre défilement la fait disparaître
+   (elle serait désynchronisée de la page). */
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') fermerBarreSelection();
+});
+els.visionneuse.addEventListener('scroll', fermerBarreSelection);
+
 function ecouterSouris() {
   let geste = null; // { outil, depart, point, points[] }
 
@@ -879,6 +1072,17 @@ function ecouterSouris() {
     ev.preventDefault();
     els.calqueTampon.setPointerCapture(ev.pointerId);
     const point = pointPdf(ev);
+    if (etat.outil === 'main') {
+      // v0.1.13 : à la Main, la page se PREND et se fait glisser ; le
+      // défilement suit le geste écran, sans conversion en points PDF.
+      geste = {
+        outil: 'main',
+        ecran: { x: ev.clientX, y: ev.clientY },
+        defile: { gauche: els.visionneuse.scrollLeft, haut: els.visionneuse.scrollTop },
+      };
+      document.body.classList.add('page-tenue');
+      return;
+    }
     if (etat.outil === 'aucun') {
       // v0.1.12 (croquis validé) : l'outil Sélection saisit l'annotation.
       // Une POIGNÉE (si l'annotation s'y prête et que le clic tombe dessus)
@@ -967,6 +1171,12 @@ function ecouterSouris() {
 
   els.calqueTampon.addEventListener('pointermove', (ev) => {
     if (!geste) return;
+    if (geste.outil === 'main') {
+      // v0.1.13 : la page suit le pointeur, pixel pour pixel.
+      els.visionneuse.scrollLeft = geste.defile.gauche - (ev.clientX - geste.ecran.x);
+      els.visionneuse.scrollTop = geste.defile.haut - (ev.clientY - geste.ecran.y);
+      return;
+    }
     const point = pointPdf(ev);
     const ctx = els.calqueTampon.getContext('2d');
     ctx.clearRect(0, 0, els.calqueTampon.width, els.calqueTampon.height);
@@ -1082,6 +1292,7 @@ function ecouterSouris() {
       }
     } finally {
       geste = null;
+      document.body.classList.remove('page-tenue');
       const ctx = els.calqueTampon.getContext('2d');
       ctx.clearRect(0, 0, els.calqueTampon.width, els.calqueTampon.height);
     }
@@ -1919,11 +2130,21 @@ function choisirOutil(outil) {
   const corps = document.body;
   const curseur = outil === 'encre' ? 'crayon'
     : (outil === 'surligner' || outil === 'encadrer' || outil === 'fiche') ? 'texte'
-      : outil === 'equation' ? 'viseur' : 'defaut';
+      : outil === 'equation' ? 'viseur'
+        : outil === 'main' ? 'main'
+          : outil === 'texte' ? 'texte'
+            : 'defaut';
   corps.dataset.curseur = curseur;
+  // v0.1.13 : le calque de texte ne devient visible et cliquable qu'à
+  // l'outil Texte ; ailleurs, il laisserait le tampon passer.
+  els.conteneur.classList.toggle('outil-texte', outil === 'texte');
+  els.calqueTexte.hidden = outil !== 'texte';
+  fermerBarreSelection();
   $('#panneau-equation').hidden = outil !== 'equation';
   const notes = {
+    main: 'Faites glisser la page pour la faire défiler.',
     aucun: 'Cliquez une annotation : glissez-la pour la déplacer, tirez une poignée pour la redimensionner (Suppr pour retirer).',
+    texte: 'Faites glisser sur le texte du document, puis Surligner ou Copier.',
     surligner: 'Glissez sur une ligne de texte.',
     encadrer: 'Glissez pour tracer un cadre.',
     encre: 'Tracez à main levée.',
@@ -2046,7 +2267,20 @@ els.visionneuse.addEventListener('wheel', (ev) => {
 }, { passive: false });
 
 window.addEventListener('keydown', (ev) => {
+  // v0.1.13 : pendant la saisie d'une note ou d'une formule, Ctrl+Z reste
+  // l'annulation NATURE du champ ; le document ne bouge pas. Hors des champs,
+  // il annule le dernier GESTE d'annotation, Ctrl+Maj+Z le rétablit.
   if (ev.target.tagName === 'TEXTAREA' || ev.target.tagName === 'INPUT') return;
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'z' || ev.key === 'Z')) {
+    ev.preventDefault();
+    if (ev.shiftKey) retablirGeste(); else annulerGeste();
+    return;
+  }
+  if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'y' || ev.key === 'Y')) {
+    ev.preventDefault();
+    retablirGeste();
+    return;
+  }
   if (ev.key === '+' || ev.key === '=') zoomVersCentre(1.25);
   else if (ev.key === '-') zoomVersCentre(1 / 1.25);
   else if (ev.key === '0') zoomVersCentre(1 / (zoomCible ?? etat.zoom));
@@ -2074,6 +2308,8 @@ window.atelier.onCommande(async (cmd) => {
   if (cmd.nom === 'ouvrir') ouvrirDocument();
   if (cmd.nom === 'enregistrer') enregistrer('overwrite');
   if (cmd.nom === 'copie') enregistrer('timestamped');
+  if (cmd.nom === 'annuler') annulerGeste();      // v0.1.13 : menu Édition
+  if (cmd.nom === 'retablir') retablirGeste();
 });
 
 $('#btn-ouvrir').addEventListener('click', () => ouvrirDocument());
