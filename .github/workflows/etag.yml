@@ -5,9 +5,9 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.4 (exportation CommonJS inconditionnelle supprimée
-# de engine/coords.js : elle tuait le module du rendu « module is not
-# defined », aucune interface n'a jamais démarré depuis la v0.1.0).
+# Declencheur de la v0.1.5 : fenêtres guidées « à la Dmaths » (quotient,
+# racine, limite, intégrale/somme/produit, vecteur, angle de vecteurs,
+# mesure, système d'équations) — saisie en clair, sans LaTeX.
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison

@@ -4,6 +4,7 @@
 'use strict';
 
 import '../engine/coords.js'; // expose globalThis.AtelierCoords
+import '../engine/guides.js'; // expose globalThis.AtelierGuides (v0.1.5)
 
 const { deviceToPdf, quadPointsForRange } = globalThis.AtelierCoords;
 
@@ -718,6 +719,278 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
 }
 
 /* ============================================================
+   Fenêtres guidées « à la Dmaths » (v0.1.5)
+   Gabarits et composition : engine/guides.js (testé sous Node).
+   ============================================================ */
+const { GUIDES, composerSysteme } = globalThis.AtelierGuides;
+
+const GUIDE_SYSTEME = { titre: 'Écrire une (in)équation du système' };
+
+/* Bande « Insérer » présente dans chaque fenêtre, comme Dmaths. */
+const GUIDE_SNIPPETS = [
+  { label: '( )', avant: '\\left(', apres: '\\right)' },
+  { label: '[ ]', avant: '\\left[', apres: '\\right]' },
+  { label: '{ }', avant: '\\{', apres: '\\}' },
+  { label: '√', avant: '\\sqrt{', apres: '}' },
+  { label: 'π', avant: '\\pi', apres: '' },
+  { label: '∞', avant: '\\infty', apres: '' },
+  { label: '·', avant: '\\cdot', apres: '' },
+  { label: 'Exp', avant: '^{', apres: '}' },
+  { label: 'Index', avant: '_{', apres: '}' },
+];
+
+let guideOuvert = null;       // identifiant du gabarit ouvert, ou 'systeme'
+let valeursGuide = {};        // contenu des champs texte
+let choixGuide = null;        // option radio courante des gabarits à variantes
+let cochesGuide = {};         // cases cochées (norme, coordonnées verticales…)
+let lignesSysteme = [];        // équations déjà validées du système
+let apercuGuide = null;       // dernier aperçu calculé par la fenêtre
+let dernierChampGuide = null; // dernier champ actif (cible de la bande « Insérer »)
+
+function construireBoutonsGuides() {
+  const cont = $('#eq-guides');
+  for (const [id, g] of Object.entries(GUIDES)) {
+    const b = document.createElement('button');
+    b.className = 'puce';
+    b.textContent = g.bouton;
+    b.addEventListener('click', () => ouvrirGuide(id));
+    cont.appendChild(b);
+  }
+  const sys = document.createElement('button');
+  sys.className = 'puce';
+  sys.textContent = 'Système';
+  sys.addEventListener('click', () => ouvrirGuide('systeme'));
+  cont.appendChild(sys);
+  const bande = $('#guide-inserer');
+  for (const sn of GUIDE_SNIPPETS) {
+    const b = document.createElement('button');
+    b.className = 'symb';
+    b.textContent = sn.label;
+    b.title = 'Insérer dans la case active';
+    b.addEventListener('pointerdown', (ev) => ev.preventDefault()); // garder le focus du champ
+    b.addEventListener('click', () => insererSnipGuide(sn));
+    bande.appendChild(b);
+  }
+}
+
+function creerChamp(f) {
+  const span = document.createElement('span');
+  span.className = 'guide-champ';
+  const lab = document.createElement('span');
+  lab.className = 'lib';
+  lab.textContent = f.libelle;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.dataset.gid = f.id;
+  inp.placeholder = f.place || '';
+  if (f.large) inp.classList.add('vaste');
+  if (f.etroit) inp.classList.add('etroit');
+  inp.value = f.defaut || '';
+  inp.spellcheck = false;
+  if (f.defaut) valeursGuide[f.id] = f.defaut;
+  inp.addEventListener('input', () => { valeursGuide[f.id] = inp.value; majApercuGuide(); });
+  inp.addEventListener('focus', () => { dernierChampGuide = inp; });
+  span.appendChild(lab);
+  span.appendChild(inp);
+  return span;
+}
+
+function ouvrirGuide(id) {
+  if (!etat.resume) {
+    message("Ouvrez d'abord un document PDF (bouton Ouvrir ou glisser-déposer).", 'erreur');
+    return;
+  }
+  guideOuvert = id;
+  valeursGuide = {};
+  choixGuide = null;
+  cochesGuide = {};
+  lignesSysteme = [];
+  apercuGuide = null;
+  dernierChampGuide = null;
+  const cont = $('#guide-champs');
+  cont.replaceChildren();
+  const estSysteme = id === 'systeme';
+  const g = estSysteme ? GUIDE_SYSTEME : GUIDES[id];
+  $('#guide-titre').textContent = g.titre;
+  $('#guide-ecrire').hidden = estSysteme;
+  $('#guide-valider').hidden = !estSysteme;
+  $('#guide-terminer').hidden = !estSysteme;
+  $('#guide-lignes').hidden = true;
+  if (estSysteme) {
+    for (const f of [
+      { id: 'gauche', libelle: 'Gauche', place: '2x + 3', large: true },
+      { id: 'symbole', libelle: 'Symbole', defaut: '=', etroit: true },
+      { id: 'droite', libelle: 'Droite', place: '5', large: true },
+    ]) {
+      cont.appendChild(creerChamp(f));
+    }
+  } else {
+    for (const f of g.champs) cont.appendChild(creerChamp(f));
+    if (g.radios) {
+      const span = document.createElement('span');
+      span.className = 'guide-choix';
+      for (const opt of g.radios.options) {
+        const l = document.createElement('label');
+        const r = document.createElement('input');
+        r.type = 'radio';
+        r.name = `guide-choix-${g.radios.id}`;
+        r.value = opt.id;
+        r.checked = opt.id === g.radios.defaut;
+        r.addEventListener('change', () => { if (r.checked) { choixGuide = opt.id; majApercuGuide(); } });
+        l.appendChild(r);
+        l.appendChild(document.createTextNode(opt.libelle));
+        span.appendChild(l);
+      }
+      choixGuide = g.radios.defaut;
+      cont.appendChild(span);
+    }
+    if (g.coches) {
+      const span = document.createElement('span');
+      span.className = 'guide-coche';
+      for (const opt of g.coches) {
+        const l = document.createElement('label');
+        const c = document.createElement('input');
+        c.type = 'checkbox';
+        c.checked = Boolean(opt.defaut);
+        cochesGuide[opt.id] = c.checked;
+        c.addEventListener('change', () => { cochesGuide[opt.id] = c.checked; majApercuGuide(); });
+        l.appendChild(c);
+        l.appendChild(document.createTextNode(opt.libelle));
+        span.appendChild(l);
+      }
+      cont.appendChild(span);
+    }
+  }
+  $('#guide-erreur').hidden = true;
+  const ap = $('#guide-apercu');
+  ap.getContext('2d').clearRect(0, 0, ap.width, ap.height);
+  $('#guide-fond').hidden = false;
+  const premier = cont.querySelector('input');
+  if (premier) premier.focus();
+}
+
+function fermerGuide() {
+  $('#guide-fond').hidden = true;
+  guideOuvert = null;
+}
+
+/** Composition courante de la fenêtre, ou null si rien n'est saisi. */
+function composerCourant() {
+  if (!guideOuvert) return null;
+  const auMoinsUn = Object.values(valeursGuide).some((s) => String(s || '').trim() !== '')
+    || lignesSysteme.length > 0;
+  if (!auMoinsUn) return null;
+  if (guideOuvert === 'systeme') return composerSysteme(lignesSysteme);
+  return GUIDES[guideOuvert].composer(valeursGuide, choixGuide, cochesGuide);
+}
+
+async function majApercuGuide() {
+  if (!guideOuvert) return;
+  const canvas = $('#guide-apercu');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  apercuGuide = null;
+  const comp = composerCourant();
+  const err = $('#guide-erreur');
+  if (!comp) { err.hidden = true; return; }
+  if (comp.erreur) { err.textContent = comp.erreur; err.hidden = false; return; }
+  err.hidden = true;
+  const rep = await window.atelier.previewEquation(comp.latex, etat.eqExPt);
+  if (rep.erreur) { err.textContent = rep.erreur; err.hidden = false; return; }
+  apercuGuide = rep.apercu;
+  dessinerOpsCanvas(canvas, rep.apercu);
+}
+
+function insererSnipGuide(sn) {
+  const champ = dernierChampGuide;
+  if (!champ || !document.contains(champ) || champ.closest('#guide-champs') === null) {
+    message("Cliquez d'abord dans une case, puis utilisez la bande Insérer.");
+    return;
+  }
+  const d = champ.selectionStart ?? champ.value.length;
+  const f = champ.selectionEnd ?? d;
+  champ.value = champ.value.slice(0, d) + sn.avant + sn.apres + champ.value.slice(f);
+  champ.focus();
+  champ.setSelectionRange(d + sn.avant.length, d + sn.avant.length);
+  valeursGuide[champ.dataset.gid] = champ.value;
+  majApercuGuide();
+}
+
+function validerLigneSysteme() {
+  const gauche = String(valeursGuide.gauche || '').trim();
+  const symbole = String(valeursGuide.symbole || '').trim() || '=';
+  const droite = String(valeursGuide.droite || '').trim();
+  if (!gauche && !droite) {
+    const err = $('#guide-erreur');
+    err.textContent = "Complétez au moins un côté de l'équation.";
+    err.hidden = false;
+    return false;
+  }
+  lignesSysteme.push({ gauche, symbole, droite });
+  const listing = $('#guide-lignes');
+  listing.textContent = `Équation n° ${lignesSysteme.length} écrite : `
+    + lignesSysteme.map((l) => `${l.gauche} ${l.symbole} ${l.droite}`).join('   ;   ');
+  listing.hidden = false;
+  for (const inp of $('#guide-champs').querySelectorAll('input')) {
+    inp.value = '';
+    valeursGuide[inp.dataset.gid] = '';
+  }
+  $('#guide-erreur').hidden = true;
+  const g = $('#guide-champs').querySelector('[data-gid="gauche"]');
+  if (g) g.focus();
+  return true;
+}
+
+async function ecrireGuide() {
+  if (guideOuvert === 'systeme' && lignesSysteme.length === 0) {
+    if (!validerLigneSysteme()) return;
+  }
+  const comp = composerCourant();
+  if (!comp || comp.erreur) {
+    const err = $('#guide-erreur');
+    err.textContent = comp && comp.erreur ? comp.erreur : "Complétez la fenêtre avant d'écrire.";
+    err.hidden = false;
+    return;
+  }
+  fermerGuide();
+  // Le champ principal reçoit le LaTeX composé : mode Professionnel requis
+  // pour éviter tout transcodage linéaire.
+  if (etat.eqMode !== 'pro') $('#eq-pro').click();
+  $('#eq-saisie').value = comp.latex;
+  rafraichirApercu();
+  if (etat.eqPoint) {
+    await insererEquation();
+  } else {
+    message('Formule prête : cliquez le point d\u2019insertion sur la page, puis « Insérer dans la page ».');
+  }
+}
+
+$('#guide-annuler').addEventListener('click', fermerGuide);
+$('#guide-ecrire').addEventListener('click', ecrireGuide);
+$('#guide-valider').addEventListener('click', validerLigneSysteme);
+$('#guide-terminer').addEventListener('click', async () => {
+  const gauche = String(valeursGuide.gauche || '').trim();
+  const droite = String(valeursGuide.droite || '').trim();
+  if (gauche || droite) validerLigneSysteme();
+  if (lignesSysteme.length === 0) {
+    const err = $('#guide-erreur');
+    err.textContent = 'Écrivez au moins une équation.';
+    err.hidden = false;
+    return;
+  }
+  await ecrireGuide();
+});
+$('#guide-champs').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter') return;
+  ev.preventDefault();
+  if (guideOuvert === 'systeme') validerLigneSysteme();
+  else ecrireGuide();
+});
+$('#guide-fond').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') fermerGuide();
+});
+
+/* ============================================================
    Barre d'outils, zoom, pages, glisser-déposer, menu
    ============================================================ */
 function choisirOutil(outil) {
@@ -850,6 +1123,7 @@ globalThis.__atelierDiagnostics = () => [
     message(`Impossible de charger le moteur d'affichage pdf.js : ${erreurPdfjs}. Menu Aide → Diagnostics de l'application.`, 'erreur');
   }
   construirePanneauEquation();
+  construireBoutonsGuides();
   ecouterSouris();
   choisirOutil('aucun');
   $('#version-etat').textContent = `Atelier PDF ${await window.atelier.version()}`;

@@ -5,7 +5,7 @@ Atelier PDF
 
 Un mix volontaire de OneNote (ruban Équation, structures et préréglages) et d'un éditeur PDF classique, pour un enseignant qui ne veut que deux choses : surligner, encadrer, écrire et poser des maths sur ses documents, puis les enregistrer proprement.
 
-Deux sortes d'équations : un mode Professionnel (saisie LaTeX directe) et un mode Linéaire (saisie à plat, symboles convertis), un aperçu vectoriel avant insertion, structures de ruban (fraction, racine, somme, intégrale, matrices, accents, crochets, fonctions et limites), préréglages d'identités remarquables et symboles usuels.
+Deux sortes d'équations : un mode Professionnel (saisie LaTeX directe) et un mode Linéaire (saisie à plat, symboles convertis), un aperçu vectoriel avant insertion, structures de ruban (fraction, racine, somme, intégrale, matrices, accents, crochets, fonctions et limites), préréglages d'identités remarquables et symboles usuels. Depuis la v0.1.5, des fenêtres guidées à la manière de Dmaths (quotient, racine, limite, intégrale/somme/produit, vecteur, angle et produit de vecteurs, mesure algébrique ou angle, système d'équations ligne à ligne) permettent d'écrire les maths en remplissant des cases libellées en français, sans jamais taper de LaTeX : chaque fenêtre offre la bande « Insérer » (parenthèses, racine, pi, exposant, indice...) et un aperçu en direct.
 
 Fonctionnalités de la phase 1 :
 
@@ -50,6 +50,7 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 | Poser une note post-it | outil Note : clic, puis saisir le texte (le texte apparaît au survol dans Adobe Acrobat) |
 | Écrire une fiche sur la page | outil Fiche : glisser la zone, puis saisir le texte |
 | Insérer une équation | outil Équation : clic sur la page, formule dans le panneau, bouton Insérer dans la page |
+| Écrire une équation sans LaTeX | panneau Équation, section Fenêtres guidées : cases en clair, bande Insérer, aperçu en direct, bouton Écrire |
 | Basculer Professionnel / Linéaire | boutons du panneau Équation |
 | Zoom | Ctrl+molette, boutons + / −, ou touches + - 0 |
 | Changer de page | PgSuiv / PgPréc, touches Début / Fin, boutons ‹ › |
