@@ -173,6 +173,29 @@
   <div id="barre-selection" class="barre-selection" hidden>
     <button id="sel-surligner" class="btn">Surligner</button>
     <button id="sel-copier" class="btn">Copier</button>
+    <!-- v0.1.22 : la zone sélectionnée part à l'OCR Mistral, les formules
+         LaTeX extraites sont copiées (pages scannées comprises) -->
+    <button id="sel-latex" class="btn" title="Lire les formules LaTeX de la zone sélectionnée (OCR Mistral)">ƒ LaTeX</button>
+  </div>
+
+  <!-- v0.1.22 : saisie de la clé API Mistral (menu Fichier) -->
+  <div id="cle-fond" class="saisie-fond" hidden>
+    <div class="saisie-carte" role="dialog" aria-modal="true">
+      <h3>Clé API Mistral (conversion LaTeX)</h3>
+      <p class="cle-aide">
+        La lecture LaTeX des formules scannées s'appuie sur l'OCR Mistral
+        (en ligne). Indiquez la clé obtenue sur console.mistral.ai, page
+        «&nbsp;Clés API&nbsp;». Elle est conservée uniquement sur cet
+        ordinateur ; seule l'image de la zone sélectionnée est envoyée.
+      </p>
+      <input id="cle-saisie" class="cle-champ" type="password" spellcheck="false"
+        autocomplete="off" placeholder="Clé API (ex. : 7A2…)" />
+      <p id="cle-erreur" class="eq-erreur" hidden></p>
+      <div class="saisie-actions">
+        <button id="cle-annuler" class="btn">Annuler</button>
+        <button id="cle-valider" class="btn accent">Enregistrer la clé</button>
+      </div>
+    </div>
   </div>
 
   <!-- Barre d'état -->

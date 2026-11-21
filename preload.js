@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('atelier', {
   previewEquation: (latex, exPt, rgb) => ipcRenderer.invoke('mjx:preview', { latex, exPt, rgb }),
   /** Version affichée (menu Aide). */
   version: () => ipcRenderer.invoke('app:version'),
+  /** v0.1.22 : envoie l'image d'une zone à l'OCR Mistral, renvoie le LaTeX. */
+  latexOcr: (dataUrl) => ipcRenderer.invoke('ocr:latex', { dataUrl }),
+  /** v0.1.22 : enregistre la clé API Mistral sur cet ordinateur. */
+  definirCle: (cle) => ipcRenderer.invoke('conf:cle', { cle }),
+  /** v0.1.22 : une clé API Mistral est-elle déjà enregistrée ? */
+  clePresente: () => ipcRenderer.invoke('conf:cle:get'),
   /** Chemin réel d'un fichier déposé par glisser-déposer. */
   cheminFichier: (fichier) => webUtils.getPathForFile(fichier),
   /** Signale chaque changement d'état (modifié / enregistré). */

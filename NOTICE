@@ -10,6 +10,10 @@ Il repose sur les composants suivants, dont les licences s'appliquent :
   Rendu des équations LaTeX en vecteurs PDF.
 - pdf.js / pdfjs-dist 4.x — © Mozilla Foundation — licence Apache-2.0.
   Affichage des pages du document.
+- tesseract.js 6.x et tesseract.js-core 6.x — © contributors tesseract.js — licence Apache-2.0.
+  Reconnaissance locale des pages scannées (cœur WASM embarqué).
+- tessdata_fast fra.traineddata — © tessdata contributors — licence Apache-2.0.
+  Modèle de langue français de la reconnaissance (dossier ocr/).
 - Electron — © OpenJS Foundation et contributeurs — licence MIT.
   Coque applicative de bureau.
 - electron-updater / electron-builder — © contributors electron-builder — licence MIT.

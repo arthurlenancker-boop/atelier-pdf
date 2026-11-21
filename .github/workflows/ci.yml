@@ -22,6 +22,11 @@ jobs:
       - name: Installation des dépendances
         run: npm install --no-audit --no-fund
 
+      # v0.1.22 : le modèle de langue de l'OCR voyage en base64 dans le
+      # dépôt ; les tests tesseract attendent le vrai binaire décodé.
+      - name: Préparation du modèle OCR (décodage base64)
+        run: node scripts/preparer-ocr.js
+
       - name: Tests du moteur (node --test)
         # En cas d'échec, l'extrait du journal est publié en annotation
         # (lisible sur la page publique des vérifications du commit).

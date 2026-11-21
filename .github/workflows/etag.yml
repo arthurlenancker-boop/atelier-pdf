@@ -5,7 +5,13 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.21 : reparation de l'insertion de formule dans un cadre de texte (le panneau Equation fait partie de la saisie : cliquer dedans ne pose plus le texte, seuls les clics sur la page posent — defaut introduit en v0.1.18) ; nouvelle etiquette clavier demandee : Echap pose le texte, Ctrl+Echap passe a la ligne, Echap ferme la fenetre guidee seule ; abandon d'un brouillon non vide en effacant puis Echap (original intact). Aucune modification du moteur.
+# Declencheur de la v0.1.22 : reconnaissance des pages scannees (OCR locale
+# tesseract.js embarquee : modele fra livree, aucun telechargement, declenchee
+# a la demande page par page a l'outil Texte — les mots reconnus rejoignent le
+# calque de texte, la selection native et les boutons Surligner/Copier) ;
+# bouton « ƒ LaTeX » de la barre de selection : la zone part a l'OCR Mistral
+# (cle API conservee sur l'ordinateur, menu Fichier → Cle API Mistral), les
+# formules extraites sont copiees dans le presse-papiers.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;
@@ -51,6 +57,12 @@ jobs:
         if: steps.version.outputs.existe == 'false'
         run: npm install --no-audit --no-fund
 
+      # v0.1.22 : le modele de langue de l'OCR voyage en base64 dans le
+      # depot ; tests et construction attendent le vrai binaire decode.
+      - name: Preparation du modele OCR (decodage base64)
+        if: steps.version.outputs.existe == 'false'
+        run: node scripts/preparer-ocr.js
+
       - name: Tests du moteur avant construction
         if: steps.version.outputs.existe == 'false'
         # En cas d'échec, l'extrait du journal est publié en annotation
@@ -92,14 +104,22 @@ jobs:
       # v0.1.3 : garde-fou de livraison. pdf.js est servi par le protocole
       # app:// depuis les ressources ; un fichier absent rend l'ouverture des
       # PDF impossible (v0.1.2). On refuse de publier sans ces fichiers.
-      - name: Verification des ressources empaquetees (pdf.js)
+      # v0.1.22 : idem pour l'OCR locale — tesseract.js (module + worker),
+      # le coeur WASM (binaire embarque dans le .wasm.js, le script choisit
+      # seul son variantes SIMD) et le modele de langue francais.
+      - name: Verification des ressources empaquetees (pdf.js, OCR)
         if: steps.version.outputs.existe == 'false'
         shell: pwsh
         run: |
           foreach ($f in @(
             "dist/win-unpacked/resources/app.asar",
             "dist/win-unpacked/resources/node_modules/pdfjs-dist/build/pdf.min.mjs",
-            "dist/win-unpacked/resources/node_modules/pdfjs-dist/build/pdf.worker.min.mjs"
+            "dist/win-unpacked/resources/node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
+            "dist/win-unpacked/resources/node_modules/tesseract.js/dist/tesseract.esm.min.js",
+            "dist/win-unpacked/resources/node_modules/tesseract.js/dist/worker.min.js",
+            "dist/win-unpacked/resources/node_modules/tesseract.js-core/tesseract-core-simd.wasm.js",
+            "dist/win-unpacked/resources/node_modules/tesseract.js-core/tesseract-core.wasm.js",
+            "dist/win-unpacked/resources/ocr/fra.traineddata.gz"
           )) {
             if (-not (Test-Path $f)) {
               Write-Error "Ressource absente du paquet Windows : $f"
@@ -129,10 +149,7 @@ jobs:
           npm ls --depth=0 || echo "(arbre npm avec avis, non bloquant)"
           echo "=== Extraction de app.asar ==="
           npx --yes @electron/asar extract dist/win-unpacked/resources/app.asar app-extrait
-          for f in main.js preload.js engine/annotcore.js engine/annots.js \
-                    engine/coords.js engine/equation.js engine/guides.js \
-                    engine/mjrender.js engine/pdfio.js engine/reread.js \
-                    engine/session.js; do
+          for f in main.js preload.js engine/*.js; do
             test -f "app-extrait/$f" || { echo "::error::Absent du paquet : $f"; exit 1; }
             node --check "app-extrait/$f" || { echo "::error::Syntaxe invalide dans $f"; exit 1; }
             echo "OK (CommonJS) : $f"

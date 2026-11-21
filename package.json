@@ -1,6 +1,6 @@
 {
   "name": "atelier-pdf",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Atelier PDF — éditeur PDF de bureau : annotations standard et équations LaTeX écrites dans le fichier.",
   "license": "AGPL-3.0-only",
   "type": "commonjs",
@@ -29,6 +29,22 @@
       {
         "from": "node_modules/pdfjs-dist",
         "to": "node_modules/pdfjs-dist"
+      },
+      {
+        "from": "node_modules/tesseract.js",
+        "to": "node_modules/tesseract.js"
+      },
+      {
+        "from": "node_modules/tesseract.js-core",
+        "to": "node_modules/tesseract.js-core"
+      },
+      {
+        "from": "ocr",
+        "to": "ocr",
+        "filter": [
+          "**/*",
+          "!*.b64"
+        ]
       }
     ],
     "win": {
@@ -64,7 +80,8 @@
     "electron-updater": "^6.6.2",
     "mathjax-full": "3.2.2",
     "pdf-lib": "1.17.1",
-    "pdfjs-dist": "^4.0.0"
+    "pdfjs-dist": "^4.0.0",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "electron": "^33.0.0",
