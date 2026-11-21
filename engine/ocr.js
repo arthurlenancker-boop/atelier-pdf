@@ -126,10 +126,11 @@ function poserCoucheInvisible(page, police, lignes, dims) {
     let xPrec = null;
     for (const m of mots) {
       const x = m.bbox.x0 * echX;
-      // Premier Td d'un BT frais : absolu. Les suivants : écart au mot
-      // précédent (Td est relatif à l'origine de la ligne courante ;
-      // Tj ne la déplace pas).
-      ops.push(moveText(xPrec === null ? x : x - xPrec, 0));
+      // Premier Td d'un BT frais : position ABSOLUE (x du mot, ligne de
+      // base yBase — sans lui, tout serait posé sur y = 0, bas de page).
+      // Les suivants : écart horizontal au mot précédent (Td est relatif à
+      // l'origine de la ligne courante ; Tj ne la déplace pas).
+      ops.push(xPrec === null ? moveText(x, yBase) : moveText(x - xPrec, 0));
       ops.push(showText(encoderMot(police, m.texte.trim())));
       xPrec = x;
       nbMots += 1;

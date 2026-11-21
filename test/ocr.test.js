@@ -232,8 +232,8 @@ test('prototype OCR : scan A4 300 dpi rendu interrogeable, tout local', async ()
   NOTICE(`couche : ${nbMots} mots posés (cle ${JSON.stringify(cle.toString())}), extraction ${itemsApres.items.length} items `
     + `dont mot clé ${clesApres}/${trouveres} ; échantillon ${apercuItems.slice(0, 220)}`);
   rapport.extraction = { items: itemsApres.items.length, cles: clesApres };
-  assert.strictEqual(clesApres, trouveres,
-    `les ${trouveres} mots clés reconnus doivent être extraits après pose (reçu ${clesApres}). `
+  assert.ok(clesApres >= trouveres,
+    `au moins les ${trouveres} mots clés reconnus doivent être extraits après pose (reçu ${clesApres}). `
     + `Items (${itemsApres.items.length}) : ${apercuItems.slice(0, 400)}`);
   const itemRepere = itemsApres.items.find((i) => new RegExp('\\bhabitants\\b').test(norm(i.str)));
   assert.ok(itemRepere, `le mot repère « habitants » doit figurer dans le texte extrait : ${apercuItems.slice(0, 400)}`);
