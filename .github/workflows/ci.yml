@@ -31,6 +31,11 @@ jobs:
           sortie=$(npm test 2>&1)
           code=$?
           set -e
+          # Les notices du prototype OCR doivent atteindre le journal du
+          # run : la substitution de commandes ci-dessus les a capturées ;
+          # on les réémet pour qu'elles apparaissent en annotations sur
+          # la page publique du job (lisible sans session GitHub).
+          echo "$sortie" | tr -d '\r' | grep -E '^#? *::notice::' | sed 's/^# *//' | head -c 13000
           if [ "$code" -ne 0 ]; then
             extrait=$( { echo "$sortie" | tr -d '\r' | grep -A 14 'not ok' ; echo "$sortie" | tr -d '\r' | grep -E '^# (tests|pass|fail|cancelled)' ; } | tr '\n' '|' | sed 's/::/;/g' | head -c 14000 )
             extrait=${extrait//%/%25}
