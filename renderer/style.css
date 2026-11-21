@@ -202,44 +202,53 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
 }
 .conteneur-page.zoom-fluide .calque-tampon { pointer-events: none; }
 
-/* ————— v0.1.7 : éditeur posé sur la page (notes et fiches) ————— */
+/* ————— v0.1.18 : écriture directe sur la page — le cadre posé sur la
+   page EST la zone d'écriture. Le cadre prend la mise en forme EXACTE
+   de l'annotation finale : ce qu'on tape est ce qui apparaîtra. Seul
+   le liseret bleu (et son voile léger) marque l'état d'édition ; il
+   disparaît à la pose. ————— */
 .editeur-page {
   position: absolute;
   z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  background: var(--surface);
-  border: 1px solid var(--bord);
-  border-radius: var(--rayon-carte);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20);
+  display: block;
+  padding: 0;
+  min-height: 26px;
+  background: transparent;
+  border: 1.5px solid var(--accent);
+  border-radius: 0;
+  box-shadow: 0 0 0 3px var(--accent-doux);
 }
-.editeur-titre {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-2);
+/* La note nue reste du texte sombre posé sur la page. */
+.editeur-page.note { background: transparent; }
+/* La fiche texte : carte bleu nuit, écriture blanche (rendu final). */
+.editeur-page.fiche {
+  background: rgba(37, 51, 125, 0.85);
+  border-color: rgba(37, 51, 125, 0.85);
 }
+/* La fiche mixte : carte quasi blanche à liseret ardoise (rendu final). */
+.editeur-page.mixte {
+  background: rgba(253, 253, 255, 0.94);
+  border-color: rgba(103, 122, 168, 0.45);
+}
+/* Le commentaire sur icône n'a pas de carré : surface de saisie neutre. */
+.editeur-page.commentaire { background: var(--surface); }
 .editeur-texte {
-  flex: 1;
-  min-height: 44px;
+  display: block;
+  width: 100%;
+  min-height: 22px;
   resize: none;
-  background: var(--verre);
-  border: 1px solid var(--bord);
-  border-radius: var(--rayon-controle);
-  color: var(--ink);
-  font: 13px/1.45 inherit;
-  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: #14161c;
+  font-family: sans-serif;
+  font-size: 11px;       /* la taille réelle est posée par le code (zoom) */
+  line-height: 13px;     /* idem : interligne du rendu final */
+  padding: 2px 3px;
   outline: none;
+  overflow: hidden;
 }
-.editeur-texte:focus { border-color: rgba(0, 103, 192, 0.55); }
-.editeur-texte.fiche { background: #EAF2FB; color: var(--ink); }
-.editeur-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
+.editeur-page.fiche .editeur-texte { color: #fff; }
 
 /* ————— v0.1.7 : catégories de caractères en menus déroulants ————— */
 details.deploi {
@@ -487,22 +496,29 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
 }
 .etat .faible { color: var(--ink-3); }
 
-/* v0.1.11 : barre « Insérer une formule » et aperçu rendu de la fiche. */
+/* v0.1.11 : barre « Insérer une formule » et aperçu rendu de la fiche.
+   v0.1.18 : flottants sous le cadre d'écriture, posés par le code. */
 .editeur-barre {
+  position: absolute;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
-}
-.editeur-barre .btn { padding: 3px 10px; font-size: 12px; }
-.editeur-rac { font-size: 11px; color: var(--faible, #8C8C8C); }
-.editeur-apercu {
-  width: 100%;
-  height: auto;
-  margin-top: 6px;
+  padding: 3px 8px;
   background: var(--surface);
   border: 1px solid var(--bord);
   border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+.editeur-barre .btn { padding: 2px 8px; font-size: 12px; }
+.editeur-rac { font-size: 11px; color: var(--faible, #8C8C8C); }
+.editeur-apercu {
+  position: absolute;
+  z-index: 6;
+  height: auto;
+  background: rgba(253, 253, 255, 0.94);
+  border: 1px solid rgba(103, 122, 168, 0.45);
 }
 
 /* ————— v0.1.13 : calque de texte et sélection fonctionnelle ————— */

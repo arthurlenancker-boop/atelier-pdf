@@ -98,21 +98,20 @@
           <!-- v0.1.13 : calque de texte pdf.js pour la sélection native,
                visible et cliquable uniquement à l'outil Texte -->
           <div id="calque-texte" class="calque-texte" hidden></div>
-          <!-- v0.1.7 : saisie des notes et fiches directement sur la page -->
+          <!-- v0.1.18 : écriture DIRECTE sur la page, façon PDF-XChange :
+               le cadre posé sur la page EST la zone d'écriture. On tape le
+               texte final, à sa place définitive, sous sa forme définitive ;
+               plus de titre, plus de boutons. La barre flottante rappelle
+               Échap et porte les formules pour les fiches. -->
           <div id="editeur-page" class="editeur-page" hidden>
-            <p id="editeur-titre" class="editeur-titre">Note</p>
-            <textarea id="editeur-texte" class="editeur-texte" rows="3" spellcheck="false"></textarea>
-            <!-- v0.1.11 : formules dans le fil du texte de la fiche -->
-            <div class="editeur-barre" id="editeur-barre" hidden>
-              <button id="editeur-formule" class="btn">ƒ Insérer une formule</button>
-              <span class="editeur-rac">ou Ctrl+M, à la position du curseur</span>
-            </div>
-            <canvas id="editeur-apercu" class="editeur-apercu" width="320" height="24" hidden></canvas>
-            <div class="editeur-actions">
-              <button id="editeur-annuler" class="btn">Annuler</button>
-              <button id="editeur-valider" class="btn accent">Poser</button>
-            </div>
+            <textarea id="editeur-texte" class="editeur-texte" rows="1" spellcheck="false"
+              placeholder="Écrire ici…"></textarea>
           </div>
+          <div class="editeur-barre" id="editeur-barre" hidden>
+            <button id="editeur-formule" class="btn">ƒ Insérer une formule</button>
+            <span class="editeur-rac">Échap : abandonner · clic à l'extérieur : poser</span>
+          </div>
+          <canvas id="editeur-apercu" class="editeur-apercu" width="320" height="24" hidden></canvas>
         </div>
       </div>
     </main>

@@ -159,6 +159,7 @@ const etat = {
   eqExPt: 4.5,
   selection: null,
   saisieAttente: null, // { kind, rect, pageIndex, ref? } pendant l'édition sur la page
+  annotationMasquee: null, // v0.1.18 : annotation rééditée, retirée du calque le temps d'écrire
   // v0.1.7 : remplacement d'une équation existante (clic sur l'équation) :
   // tant que rempli, « Insérer » remplace au lieu de poser un nouveau objet.
   remplacement: null,   // { ref, pageIndex, latex }
@@ -791,6 +792,7 @@ function rafraichirApercuFiche() {
       }
     }
     dessinerApercuFiche(source);
+    calerAccessoiresEditeur();
   }, 250);
 }
 
@@ -854,7 +856,11 @@ async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
   if (!etat.resume) return;
-  const annots = etat.resume.annots.filter((a) => a.page === etat.page - 1);
+  // v0.1.18 : l'annotation rééditée sur place disparaît du calque le temps
+  // de l'écriture : le cadre d'édition EST le futur.
+  const annots = etat.resume.annots.filter((a) => a.page === etat.page - 1
+    && !(etat.annotationMasquee && a.ref
+      && a.ref.objectNumber === etat.annotationMasquee.objectNumber));
   for (const a of annots) {
     const c0 = pdfVersEcran({ x: a.rect[0], y: a.rect[1] });
     const c1 = pdfVersEcran({ x: a.rect[2], y: a.rect[3] });
@@ -1467,18 +1473,45 @@ function positionnerEditeur(rectPdf) {
 
 /** Cale la carte d'édition sur son rectangle PDF (ouverture et recalage après rendu). */
 function editeurCaler(attente) {
+  // v0.1.18 : le cadre s'installe sur le rectangle de l'annotation même,
+  // à sa taille définitive — on écrit à la place exacte du texte posé.
   const geom = positionnerEditeur(attente.rect);
   const carte = $('#editeur-page');
-  if (attente.kind === 'freeText' || attente.kind === 'ficheMelangee') {
-    // La fiche s'édite DANS sa zone : la carte épouse le rectangle glissé.
-    carte.style.width = `${Math.max(160, Math.round(geom.largeur))}px`;
-    carte.style.height = `${Math.max(56, Math.round(geom.hauteur))}px`;
-  } else {
-    // La note s'édite à côté de son icône post-it.
-    carte.style.width = '230px';
-    carte.style.height = 'auto';
+  carte.style.width = `${Math.round(Math.max(120, geom.largeur))}px`;
+  carte.style.height = 'auto';
+  carte.style.minHeight = `${Math.round(Math.max(26, geom.hauteur))}px`;
+  if (attente.kind === 'textNote') {
+    // Le commentaire sur icône n'a pas de carré : la zone d'écriture
+    // reste posée à droite de l'icône.
     carte.style.left = `${Math.round(geom.x + 26 * etat.zoom)}px`;
+    carte.style.width = '230px';
   }
+}
+
+function calerAccessoiresEditeur() {
+  // Barre et aperçu flottent sous le cadre, à sa largeur.
+  const carte = $('#editeur-page');
+  if (carte.hidden) return;
+  const barre = $('#editeur-barre');
+  barre.style.left = carte.style.left;
+  barre.style.top = `${Math.round(carte.offsetTop + carte.offsetHeight + 8)}px`;
+  const apercu = $('#editeur-apercu');
+  if (!apercu.hidden) {
+    apercu.style.left = carte.style.left;
+    apercu.style.width = carte.style.width;
+    apercu.style.top = `${Math.round(carte.offsetTop + carte.offsetHeight + 8 + barre.offsetHeight + 6)}px`;
+  }
+}
+
+function clicHorsEditeur(ev) {
+  // v0.1.18 : tout clic à l'extérieur pose le texte (façon PDF-XChange).
+  const carte = $('#editeur-page');
+  if (carte.hidden) return;
+  for (const el of [carte, $('#editeur-barre'), $('#editeur-apercu'),
+    $('.saisie-fond:not([hidden])')]) {
+    if (el && el.contains(ev.target)) return;
+  }
+  validerEditeur();
 }
 
 function ouvrirEditeur(genre, pointOuRect, cible) {
@@ -1525,31 +1558,54 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   etat.saisieAttente = attente;
   const carte = $('#editeur-page');
   const zone = $('#editeur-texte');
-  const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
-  // v0.1.12 : une note nue s'édite comme une note : pas de barre à formules
-  // (les formules $...$ appartiennent aux fiches), titre et style à elle.
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
-  zone.classList.toggle('fiche', estFiche && !estNoteNue);
+  // v0.1.12 : les formules $...$ appartiennent aux fiches, pas aux notes.
+  const avecFormules = (attente.kind === 'freeText' || attente.kind === 'ficheMelangee')
+    && !estNoteNue;
+  // v0.1.18 : le cadre PREND la mise en forme de l'annotation finale —
+  // c'est le futur texte qu'on écrit, à sa place, sous sa forme définitive.
+  carte.className = 'editeur-page ' + (attente.kind === 'textNote' ? 'commentaire'
+    : attente.kind === 'ficheMelangee' ? 'mixte'
+      : (estNoteNue ? 'note' : 'fiche'));
   editeurCaler(attente);
-  const titre = $('#editeur-titre');
-  titre.textContent = attente.kind === 'textNote' || estNoteNue
-    ? (attente.ref ? 'Modifier la note' : 'Note')
-    : (attente.ref ? 'Modifier la fiche' : 'Fiche : texte écrit sur la page');
+  // La typographie du cadre est celle du RENDU FINAL, zoom compris.
+  zone.style.fontSize = `${11 * etat.zoom}px`;
+  zone.style.lineHeight = `${13 * etat.zoom}px`;
+  zone.style.padding = `${Math.round((estNoteNue ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
+  zone.style.height = 'auto';
   zone.value = attente.contenu;
   carte.hidden = false;
-  $('#editeur-barre').hidden = !estFiche || estNoteNue;
-  $('#editeur-apercu').hidden = !contientFormule(attente.contenu);
-  if (estFiche && !estNoteNue && contientFormule(attente.contenu)) rafraichirApercuFiche();
+  // v0.1.18 : l'original réédité s'efface du calque : le cadre montre le
+  // futur, pas le doublon (façon PDF-XChange).
+  etat.annotationMasquee = attente.ref || null;
+  dessinerAnnots();
+  $('#editeur-formule').hidden = !avecFormules;
+  $('#editeur-barre').hidden = false;
+  $('#editeur-apercu').hidden = !avecFormules || !contientFormule(attente.contenu);
+  if (avecFormules && contientFormule(attente.contenu)) rafraichirApercuFiche();
+  calerAccessoiresEditeur();
   zone.focus();
   zone.setSelectionRange(zone.value.length, zone.value.length);
+  zone.style.height = `${zone.scrollHeight}px`;
+  // Le clic qui vient d'ouvrir le cadre ne doit pas aussitôt poser :
+  // l'écouteur s'arme au tour suivant.
+  setTimeout(() => document.addEventListener('pointerdown', clicHorsEditeur, true), 0);
 }
 
 function fermerEditeur() {
+  document.removeEventListener('pointerdown', clicHorsEditeur, true);
   $('#editeur-page').hidden = true;
   $('#editeur-barre').hidden = true;
   $('#editeur-apercu').hidden = true;
   etat.saisieAttente = null;
   etat.apercuEditeur.clear();
+  // L'original masqué pendant l'édition réapparaît tel quel (abandon,
+  // ou pose d'un texte neuf : l'annotation remplacée est retirée par
+  // le fil d'édition lui-même).
+  if (etat.annotationMasquee) {
+    etat.annotationMasquee = null;
+    dessinerAnnots();
+  }
   if (etat.formuleFiche) retablirBoutonEquation();
 }
 
@@ -1558,8 +1614,9 @@ async function validerEditeur() {
   const texte = $('#editeur-texte').value;
   fermerEditeur();
   if (!attente) return;
+  // v0.1.18 : un texte vide NE DÉTRUIT PLUS l'annotation rééditée et ne
+  // toaste pas : abandon silencieux du brouillon vide.
   if (!texte.trim()) {
-    message('Texte vide : rien n\'a été posé.');
     return;
   }
   const edits = [];
@@ -1594,8 +1651,6 @@ async function validerEditeur() {
     : (estNoteNue ? 'Note posée sur la page.' : 'Texte posé.'), 'reussite');
 }
 
-$('#editeur-annuler').addEventListener('click', fermerEditeur);
-$('#editeur-valider').addEventListener('click', validerEditeur);
 $('#editeur-texte').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
     ev.preventDefault();
@@ -1610,7 +1665,13 @@ $('#editeur-texte').addEventListener('keydown', (ev) => {
   }
 });
 $('#editeur-formule').addEventListener('click', ouvrirInsertionFormule);
-$('#editeur-texte').addEventListener('input', rafraichirApercuFiche);
+$('#editeur-texte').addEventListener('input', () => {
+  const zone = $('#editeur-texte');
+  zone.style.height = 'auto';
+  zone.style.height = `${zone.scrollHeight}px`;
+  calerAccessoiresEditeur();
+  rafraichirApercuFiche();
+});
 $('#editeur-page').addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') fermerEditeur();
 });
