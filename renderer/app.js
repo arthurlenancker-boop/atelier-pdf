@@ -938,9 +938,11 @@ async function dessinerAnnots() {
       // n'oblige pas la note à tenir dedans (elle se redimensionne).
       if (a.subject === 'Note') {
         ctx.fillStyle = '#14161c';
-        // v0.1.19 : la note s'affiche en police mathématique — chiffres,
-        // symboles et lettres italiques d'usage, comme dans le cadre de saisie.
-        ctx.font = `${11 * etat.zoom}px "Cambria Math", Georgia, serif`;
+        // v0.1.20 : la note posée affiche la police CORPS de OneNote
+        // (Aptos/Calibri), comme le cadre de saisie ; les formules $...$
+        // de la note restent composées par le moteur d'équations, en
+        // italique mathématique, exactement comme sous OneNote.
+        ctx.font = `${11 * etat.zoom}px "Aptos", "Calibri", "Segoe UI", sans-serif`;
         ctx.textBaseline = 'top';
         const lignes = enveloppeTexte(ctx, a.contents, Math.max(w - 2 * etat.zoom, 10), 60);
         lignes.forEach((ligne, i) => {

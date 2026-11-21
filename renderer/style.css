@@ -220,10 +220,12 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
 }
 /* La note nue reste du texte sombre posé sur la page. */
 .editeur-page.note { background: transparent; }
-/* v0.1.19 : la machine à écrire compose en police mathématique —
-   chiffres et symboles droits dès la frappe, même pour une note. */
+/* v0.1.20 : la note prend la police CORPS de OneNote — Aptos (le cru
+   récent) puis Calibri, moderne et économe, à l'image des pages de
+   cours montrées par Arthur ; les maths composées ($...$) gardent,
+   elles, leur italique élégant rendu par le moteur d'équations. */
 .editeur-page.note .editeur-texte {
-  font-family: "Cambria Math", Georgia, serif;
+  font-family: "Aptos", "Calibri", "Segoe UI", sans-serif;
 }
 /* La fiche texte : carte bleu nuit, écriture blanche (rendu final). */
 .editeur-page.fiche {
