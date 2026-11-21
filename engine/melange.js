@@ -34,15 +34,15 @@ const INTERBASE = 0.45; // × fontSize entre deux lignes
  * asynchrone. La pose attend donc la police avant de mesurer le texte ;
  * le refus « sans formule » reste une erreur levée de façon synchrone.
  */
-function addMixedFiche(doc, page, { rect, source, fontSize = 11 }) {
+function addMixedFiche(doc, page, { rect, source, fontSize = 11, sujet = null }) {
   const src = String(source ?? '');
   if (!contientFormule(src)) {
     throw new Error('Une fiche mixte doit contenir au moins une formule $...$.');
   }
-  return poserFiche(doc, page, { rect, source: src, fontSize });
+  return poserFiche(doc, page, { rect, source: src, fontSize, sujet });
 }
 
-async function poserFiche(doc, page, { rect, source, fontSize }) {
+async function poserFiche(doc, page, { rect, source, fontSize, sujet = null }) {
   const [x0, y0, x1, y1] = normalizeRect(rect);
   const exPt = exPourCorps(fontSize);
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -147,6 +147,9 @@ async function poserFiche(doc, page, { rect, source, fontSize }) {
     // v0.1.12 : la taille du corps voyage dans le marqueur, pour
     // redimensionner sans perdre la composition de la fiche.
     Contents: `${PREFIXE_FICHE_MIXTE} ${fontSize} : ${source}`,
+    // v0.1.19 : « Note » marque une note mixte (posée sans carte à
+    // l'écran), toute autre valeur (ou absence) reste une fiche sur carte.
+    ...(sujet ? { Subject: sujet } : {}),
   });
   return { ref, rect: [x0, yBas, x1, y1] };
 }

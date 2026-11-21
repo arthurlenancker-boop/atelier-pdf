@@ -636,7 +636,9 @@ function fondFiche(ctx, x, y, w, h) {
  * (texte + formules) dans le rectangle enregistré. */
 function dessinerFicheMixte(ctx, a, x, y, w, h) {
   const source = extraireSourceFiche(a.contents);
-  fondFiche(ctx, x, y, w, h);
+  // v0.1.19 : la note mixte (Subject « Note ») reste posée À MÊME LA PAGE,
+  // sans carte ni liseret — même allure que la note texte nue.
+  if (a.subject !== 'Note') fondFiche(ctx, x, y, w, h);
   if (!source) return;
   const segments = decouperMelange(source);
   const formules = segments.filter((sg) => sg.type === 'formule');
@@ -732,19 +734,19 @@ async function chargerOpsFiches() {
 function ouvrirInsertionFormule() {
   const attente = etat.saisieAttente;
   if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) return;
-  // v0.1.12 : les formules appartiennent aux fiches ; la note nue reste du
-  // texte simple (ses $...$ ne seraient jamais rendus dans le fichier).
-  if (attente.kind === 'freeText' && attente.sujet === 'Note') {
-    message('Les formules s\u2019écrivent dans une fiche : reprenez l\u2019outil Fiche pour mêler texte et calculs.');
-    return;
-  }
+  // v0.1.19 : la machine à écrire accepte les formules — une note
+  // (outil Écrire) devient une note mixte, posée sans fond, comme la
+  // fiche mixte l'est sur carte. Plus de renvoi vers l'outil Fiche.
   etat.formuleFiche = true;
   $('#panneau-equation').hidden = false;
   const b = $('#eq-inserer');
-  b.textContent = 'Insérer dans la fiche';
+  const dansNote = attente.sujet === 'Note';
+  b.textContent = dansNote ? 'Insérer dans la note' : 'Insérer dans la fiche';
   b.disabled = false;
   const note = $('#eq-note');
-  note.textContent = 'La formule s\u2019insérera à la position du curseur dans la fiche.';
+  note.textContent = dansNote
+    ? "La formule s\u2019insérera à la position du curseur dans la note."
+    : "La formule s\u2019insérera à la position du curseur dans la fiche.";
   note.classList.remove('ok');
   $('#eq-saisie').focus();
 }
@@ -753,7 +755,7 @@ function ouvrirInsertionFormule() {
 function retablirBoutonEquation() {
   etat.formuleFiche = false;
   const b = $('#eq-inserer');
-  if (b.textContent === 'Insérer dans la fiche') {
+  if (b.textContent.startsWith('Insérer dans la ')) {
     b.textContent = etat.remplacement ? 'Remplacer la formule' : 'Insérer dans la page';
     b.disabled = !etat.remplacement && !etat.eqPoint;
     const note = $('#eq-note');
@@ -936,7 +938,9 @@ async function dessinerAnnots() {
       // n'oblige pas la note à tenir dedans (elle se redimensionne).
       if (a.subject === 'Note') {
         ctx.fillStyle = '#14161c';
-        ctx.font = `${11 * etat.zoom}px sans-serif`;
+        // v0.1.19 : la note s'affiche en police mathématique — chiffres,
+        // symboles et lettres italiques d'usage, comme dans le cadre de saisie.
+        ctx.font = `${11 * etat.zoom}px "Cambria Math", Georgia, serif`;
         ctx.textBaseline = 'top';
         const lignes = enveloppeTexte(ctx, a.contents, Math.max(w - 2 * etat.zoom, 10), 60);
         lignes.forEach((ligne, i) => {
@@ -1559,19 +1563,21 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   const carte = $('#editeur-page');
   const zone = $('#editeur-texte');
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
-  // v0.1.12 : les formules $...$ appartiennent aux fiches, pas aux notes.
-  const avecFormules = (attente.kind === 'freeText' || attente.kind === 'ficheMelangee')
-    && !estNoteNue;
+  // v0.1.19 : la note mixte s'édite comme une note — fond transparent.
+  const estNoteMixte = attente.kind === 'ficheMelangee' && attente.sujet === 'Note';
+  // v0.1.19 : les formules $...$ vivent aussi dans la machine à écrire.
+  const avecFormules = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
   // v0.1.18 : le cadre PREND la mise en forme de l'annotation finale —
   // c'est le futur texte qu'on écrit, à sa place, sous sa forme définitive.
   carte.className = 'editeur-page ' + (attente.kind === 'textNote' ? 'commentaire'
-    : attente.kind === 'ficheMelangee' ? 'mixte'
-      : (estNoteNue ? 'note' : 'fiche'));
+    : estNoteMixte ? 'note'
+      : attente.kind === 'ficheMelangee' ? 'mixte'
+        : (estNoteNue ? 'note' : 'fiche'));
   editeurCaler(attente);
   // La typographie du cadre est celle du RENDU FINAL, zoom compris.
   zone.style.fontSize = `${11 * etat.zoom}px`;
   zone.style.lineHeight = `${13 * etat.zoom}px`;
-  zone.style.padding = `${Math.round((estNoteNue ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
+  zone.style.padding = `${Math.round((estNoteNue || estNoteMixte ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
   zone.style.height = 'auto';
   zone.value = attente.contenu;
   carte.hidden = false;
@@ -1626,15 +1632,17 @@ async function validerEditeur() {
   const args = { rect: attente.rect.slice() };
   let kind = attente.kind;
   const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
-  // v0.1.12 : une note nue n'absorbe jamais les $...$ : elle reste du texte
-  // simple posé (les formules se mêlent aux FICHES seulement).
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
-  if (estFiche && !estNoteNue && contientFormule(texte)) {
+  // v0.1.19 : le texte mêlé de formules s'applique aussi à la note
+  // (machine à écrire) ; elle reste une note : fond transparent, /Subject
+  // « Note », c'est ce que l'écran lit pour la dessiner sans carte.
+  if (estFiche && contientFormule(texte)) {
     // v0.1.11 : une fiche qui contient des formules $...$ devient une
     // fiche mixte : texte et équations rendus ensemble, une seule annotation.
     kind = 'ficheMelangee';
     args.source = texte;
     args.fontSize = FS_FICHE;
+    args.sujet = attente.sujet || 'Fiche';
   } else if (attente.kind === 'textNote') {
     args.contents = texte;
   } else {
@@ -1852,7 +1860,7 @@ async function insererEquation() {
     const attente = etat.saisieAttente;
     if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) {
       retablirBoutonEquation();
-      message('La fiche n\u2019est plus ouverte : la formule n\u2019a pas été insérée.');
+      message('La saisie n\u2019est plus ouverte : la formule n\u2019a pas été insérée.');
       return;
     }
     const repF = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
@@ -1868,7 +1876,7 @@ async function insererEquation() {
     zone.focus();
     zone.setSelectionRange(apres, apres);
     rafraichirApercuFiche();
-    message('Formule insérée dans la fiche.', 'reussite');
+    message(attente.sujet === 'Note' ? 'Formule insérée dans la note.' : 'Formule insérée dans la fiche.', 'reussite');
     return;
   }
   const remplacer = etat.remplacement;

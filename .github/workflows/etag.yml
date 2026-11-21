@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.18 : ecriture DIRECTE sur la page, facon PDF-XChange : le cadre pose sur la page est la zone d'ecriture, sans titre ni boutons ; typographie du rendu final (taille, interligne, couleur de l'annotation, zoom compris) ; l'annotation reeditee s'efface du calque pendant l'ecriture ; clic a l'exterieur pose, Echap abandonne, brouillon vide non destructif ; barre a formules et apercu flottants sous le cadre. Aucune modification de comportement du moteur.
+# Declencheur de la v0.1.19 : les maths de la machine a ecrire : l'outil Ecrire accepte les formules $...$ en ligne (facon Dmaths, fenetres guidees comprises), la note contenant des formules devient une note mixte posee sans carte (sujet « Note » ecrit dans le /Subject, relu a l'ecran), et la saisie comme la note posee composent en police mathematique Cambria Math. Les fiches sur carte ne changent pas.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;
