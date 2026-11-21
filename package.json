@@ -61,12 +61,15 @@
     }
   },
   "dependencies": {
+    "@tesseract.js-data/fra": "1.0.0",
     "electron-updater": "^6.6.2",
     "mathjax-full": "3.2.2",
     "pdf-lib": "1.17.1",
-    "pdfjs-dist": "^4.0.0"
+    "pdfjs-dist": "^4.0.0",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.2.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
   }

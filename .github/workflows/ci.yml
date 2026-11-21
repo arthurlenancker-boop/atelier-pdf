@@ -45,3 +45,17 @@ jobs:
 
       - name: Contrôle des licences des dépendances
         run: node scripts/check-licenses.js
+
+      # Prototype OCR (branche vibe/proto-ocr) : l'échantillon produit par
+      # le test (sortir/scan-ocr.pdf) est publié comme artefact de la
+      # vérification, téléchargeable depuis la page du run.
+      - name: Artefact du prototype OCR
+        if: github.ref == 'refs/heads/vibe/proto-ocr'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-ocr-demo
+          path: |
+            sortir/scan-ocr.pdf
+            sortir/rapport-ocr.json
+          if-no-files-found: ignore
+          retention-days: 30
