@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex } = require('../engine/ocr.js');
+const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur } = require('../engine/ocr.js');
 
 // ————— borner —————
 test('borner borne un nombre dans l’intervalle', () => {
@@ -120,4 +120,42 @@ test('extractionLatex ne recolle pas les restes des blocs $$ déjà cueillis', (
   const md = '$$x^2$$ et $y^2$';
   const sortie = extractionLatex(md);
   assert.strictEqual(sortie, 'x^2\ny^2');
+});
+
+// ————— v0.1.23 : nettoyerUrlServeur —————
+test('nettoyerUrlServeur accepte une URL http ou https et retire espaces et barres finales', () => {
+  assert.strictEqual(nettoyerUrlServeur('http://127.0.0.1:8642/ocr'), 'http://127.0.0.1:8642/ocr');
+  assert.strictEqual(nettoyerUrlServeur('  http://127.0.0.1:8642/ocr/  '), 'http://127.0.0.1:8642/ocr');
+  assert.strictEqual(nettoyerUrlServeur('https://100.101.102.103:8642/ocr'), 'https://100.101.102.103:8642/ocr');
+  assert.strictEqual(nettoyerUrlServeur('http://mon-pc.tail*****.ts.net:8642/ocr'), 'http://mon-pc.tail*****.ts.net:8642/ocr');
+});
+
+test('nettoyerUrlServeur refuse tout ce qui n’est pas une URL http(s) nette', () => {
+  assert.strictEqual(nettoyerUrlServeur('ftp://127.0.0.1:8642/ocr'), '');
+  assert.strictEqual(nettoyerUrlServeur('127.0.0.1:8642'), '');
+  assert.strictEqual(nettoyerUrlServeur('http:// pas d espace.fr'), '');
+  assert.strictEqual(nettoyerUrlServeur('   '), '');
+  assert.strictEqual(nettoyerUrlServeur(''), '');
+  assert.strictEqual(nettoyerUrlServeur(42), '');
+  assert.strictEqual(nettoyerUrlServeur(null), '');
+  assert.strictEqual(nettoyerUrlServeur(undefined), '');
+});
+
+// ————— v0.1.23 : latexDepuisReponseServeur —————
+test('latexDepuisReponseServeur prend le champ latex tel quel, épuré', () => {
+  assert.strictEqual(latexDepuisReponseServeur({ latex: 'x^{2}' }), 'x^{2}');
+  assert.strictEqual(latexDepuisReponseServeur({ latex: '  \\frac{1}{2}  ' }), '\\frac{1}{2}');
+});
+
+test('latexDepuisReponseServeur repère les formules dans text ou markdown', () => {
+  assert.strictEqual(latexDepuisReponseServeur({ text: 'texte $x_1$ fin' }), 'x_1');
+  assert.strictEqual(latexDepuisReponseServeur({ markdown: '$$y$$' }), 'y');
+});
+
+test('latexDepuisReponseServeur renvoie null quand rien n’est exploitable', () => {
+  assert.strictEqual(latexDepuisReponseServeur({}), null);
+  assert.strictEqual(latexDepuisReponseServeur(null), null);
+  assert.strictEqual(latexDepuisReponseServeur('chaîne'), null);
+  assert.strictEqual(latexDepuisReponseServeur({ latex: '   ' }), null);
+  assert.strictEqual(latexDepuisReponseServeur({ markdown: 'aucune formule' }), null);
 });

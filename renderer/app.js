@@ -11,7 +11,7 @@ import '../engine/geom.js'; // expose globalThis.AtelierGeom (v0.1.12)
 import '../engine/ocr.js'; // expose globalThis.AtelierOcr (v0.1.22)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
-const { motsDepuisBlocs, nettoyerCle } = globalThis.AtelierOcr;
+const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur } = globalThis.AtelierOcr;
 
 // v0.1.2 : chargement dynamique de pdf.js. Un import statique qui echoue
 // (fichier absent) tuait silencieusement tout le module : plus aucun bouton
@@ -1320,10 +1320,10 @@ async function lancerOcrPage(page) {
   }
 }
 
-/* v0.1.22 : bouton ƒ LaTeX de la barre de sélection. La zone retenue
-   est redessinée NETTEMENT hors écran (jusqu'à 6× le zoom), l'image
-   part à l'OCR Mistral via le processus principal (qui détient la clé
-   API), et les formules extraites du Markdown sont copiées. */
+/* v0.1.22/v0.1.23 : bouton ƒ LaTeX de la barre de sélection. La zone retenue
+   est redessinée NETTEMENT hors écran (jusqu'à 6× le zoom), l'image part
+   à l'OCR Latin en vigueur (serveur personnel tout local, ou OCR Mistral)
+   par le processus principal, et les formules extraites sont copiées. */
 let latexEnCours = false;
 
 /* Inverse exact de deviceToPdf (même structure que pdfVersEcran) mais
@@ -1404,42 +1404,86 @@ $('#sel-latex').addEventListener('click', async () => {
   }
 });
 
-/* v0.1.22 : clé API Mistral (conversion LaTeX). Saisie locale, simple,
-   menu Fichier → Clé API Mistral (LaTeX)… — la clé reste sur cet
-   ordinateur (config de l'application), jamais dans le document. */
-function ouvrirSaisieCle() {
-  $('#cle-saisie').value = '';
-  $('#cle-erreur').hidden = true;
-  $('#cle-fond').hidden = false;
-  $('#cle-saisie').focus();
+/* v0.1.23 : options de la lecture LaTeX. Deux chemins, un seul réglage :
+   le serveur OCR personnel (tout local : son URL suffit, le jour où elle
+   est enregistrée le bouton ƒ LaTeX l'utilise) ou l'OCR Mistral (clé
+   API conservée sur cet ordinateur). Menu Fichier → Options OCR LaTeX… */
+let optionsOcrEtat = { mode: 'mistral', serveurUrl: '', clePresente: false };
+
+function basculerChampsOptionsOcr() {
+  const serveur = $('#opt-serveur').checked;
+  $('#aide-serveur').hidden = !serveur;
+  $('#serveur-url').hidden = !serveur;
+  $('#aide-mistral').hidden = serveur;
+  $('#cle-saisie').hidden = serveur;
+  const messageErreur = $('#cle-erreur');
+  messageErreur.hidden = true;
+  if (serveur) $('#serveur-url').focus();
+  else $('#cle-saisie').focus();
 }
 
-function fermerSaisieCle() {
+function ouvrirOptionsOcr() {
+  $('#cle-erreur').hidden = true;
+  window.atelier.optionsOcr().then((etatOptions) => {
+    optionsOcrEtat = etatOptions || optionsOcrEtat;
+    $('#opt-serveur').checked = optionsOcrEtat.mode === 'serveur';
+    $('#opt-mistral').checked = optionsOcrEtat.mode !== 'serveur';
+    $('#serveur-url').value = optionsOcrEtat.serveurUrl || '';
+    $('#cle-saisie').value = '';
+    basculerChampsOptionsOcr();
+    $('#cle-fond').hidden = false;
+  });
+}
+
+function fermerOptionsOcr() {
   $('#cle-fond').hidden = true;
 }
 
-$('#cle-annuler').addEventListener('click', fermerSaisieCle);
-$('#cle-valider').addEventListener('click', validerSaisieCle);
+$('#opt-serveur').addEventListener('change', basculerChampsOptionsOcr);
+$('#opt-mistral').addEventListener('change', basculerChampsOptionsOcr);
+$('#cle-annuler').addEventListener('click', fermerOptionsOcr);
+$('#cle-valider').addEventListener('click', validerOptionsOcr);
+$('#serveur-url').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') validerOptionsOcr();
+});
 $('#cle-saisie').addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter') validerSaisieCle();
-  else if (ev.key === 'Escape') { ev.stopPropagation(); fermerSaisieCle(); }
+  if (ev.key === 'Enter') validerOptionsOcr();
+  else if (ev.key === 'Escape') { ev.stopPropagation(); fermerOptionsOcr(); }
 });
 
-async function validerSaisieCle() {
-  const cle = nettoyerCle($('#cle-saisie').value);
-  if (!cle) {
-    $('#cle-erreur').textContent = 'Indiquez la clé (elle se trouve sur console.mistral.ai, page « Clés API »).';
-    $('#cle-erreur').hidden = false;
-    return;
+async function validerOptionsOcr() {
+  const erreur = $('#cle-erreur');
+  const options = {};
+  if ($('#opt-serveur').checked) {
+    const url = nettoyerUrlServeur($('#serveur-url').value);
+    if (!url) {
+      erreur.textContent = 'Indiquez l\'adresse du serveur (ex. : http://100.x.y.z:8642/ocr — elle se lit sur le PC qui le fait tourner avec « tailscale ip -4 »).';
+      erreur.hidden = false;
+      return;
+    }
+    options.url = url;
+  } else {
+    // Retour au mode Mistral : l'URL du serveur est retirée ; la clé
+    // saisie remplace l'existante (le champ vide garde la clé en place).
+    options.url = '';
+    const cle = nettoyerCle($('#cle-saisie').value);
+    if (cle) options.cle = cle;
+    else if (!optionsOcrEtat.clePresente) {
+      erreur.textContent = 'Indiquez la clé (elle se trouve sur console.mistral.ai, page « Clés API »).';
+      erreur.hidden = false;
+      return;
+    }
   }
-  const rep = await window.atelier.definirCle(cle);
+  const rep = await window.atelier.enregistrerOptionsOcr(options);
   if (rep.erreur) {
-    $('#cle-erreur').textContent = rep.erreur;
-    $('#cle-erreur').hidden = false;
+    erreur.textContent = rep.erreur;
+    erreur.hidden = false;
     return;
   }
-  fermerSaisieCle();
-  message('Clé API Mistral enregistrée sur cet ordinateur.', 'reussite');
+  fermerOptionsOcr();
+  message($('#opt-serveur').checked
+    ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.`
+    : 'OCR Mistral enregistré pour la lecture LaTeX.', 'reussite');
 }
 
 function ecouterSouris() {
@@ -2801,7 +2845,7 @@ window.atelier.onCommande(async (cmd) => {
   if (cmd.nom === 'copie') enregistrer('timestamped');
   if (cmd.nom === 'annuler') annulerGeste();      // v0.1.13 : menu Édition
   if (cmd.nom === 'retablir') retablirGeste();
-  if (cmd.nom === 'cle-api') ouvrirSaisieCle();   // v0.1.22 : Fichier → clé Mistral
+  if (cmd.nom === 'cle-api' || cmd.nom === 'options-ocr') ouvrirOptionsOcr();   // v0.1.22/v0.1.23 : Fichier → Options OCR LaTeX
 });
 
 $('#btn-ouvrir').addEventListener('click', () => ouvrirDocument());

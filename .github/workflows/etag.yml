@@ -5,13 +5,15 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.22 : reconnaissance des pages scannees (OCR locale
-# tesseract.js embarquee : modele fra livree, aucun telechargement, declenchee
-# a la demande page par page a l'outil Texte — les mots reconnus rejoignent le
-# calque de texte, la selection native et les boutons Surligner/Copier) ;
-# bouton « ƒ LaTeX » de la barre de selection : la zone part a l'OCR Mistral
-# (cle API conservee sur l'ordinateur, menu Fichier → Cle API Mistral), les
-# formules extraites sont copiees dans le presse-papiers.
+# Declencheur de la v0.1.23 : serveur OCR LaTeX personnel — le bouton
+# ƒ LaTeX peut s'appuyer sur un petit serveur que l'utilisateur fait
+# tourner sur son propre ordinateur (serveur-ocr/serveur.py, moteur
+# RapidLaTeXOCR, tout local, joignable par Tailscale) ; le reglage
+# Fichier → Options OCR LaTeX remplace la saisie de la seule cle Mistral
+# (l'URL du serveur, conservee dans config.json, est prioritaire sur la
+# cle) ; le champ latex du serveur est pris tel quel, text et markdown
+# passent par extractionLatex ; la reconnaissance des scans (v0.1.22)
+# reste inchangee.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;

@@ -14,7 +14,7 @@ Fonctionnalités de la phase 1 :
 - Équations LaTeX rendues en vecteurs PDF par MathJax, insérées en un clic, déplacées d'un glissement, supprimées d'une pression de Suppr.
 - Sélection d'une annotation sur la page (liseret) et suppression.
 - Confort à la PDF-XChange : barre à huit outils d'une fonction claire chacun, dont la machine à écrire (v0.1.14) ; outil Main pour faire défiler la page, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste (v0.1.13) outil Main pour faire défiler la page à la main, sélection du texte réel du document (surlignage exact, ligne par ligne, ou copie), et annulation / rétablissement geste par geste, raccourcis affichés au menu sans capter la saisie des champs.
-- Reconnaissance des pages scannées (v0.1.22) : une page sans couche de texte devient sélectionnable — la reconnaissance (tesseract.js, WASM, embarquée dans l'application avec son modèle de langue français, aucun téléchargement ni service en ligne) est déclenchée à la demande, page par page, en armant l'outil Texte ; une fois la page reconnue, Surligner et Copier fonctionnent comme sur un vrai texte ; bouton « ƒ LaTeX » : la zone sélectionnée part à l'OCR Mistral (en ligne, clé API personnelle conservée sur l'ordinateur) et les formules lues sont copiées dans le presse-papiers.
+- Reconnaissance des pages scannées (v0.1.22) : une page sans couche de texte devient sélectionnable — la reconnaissance (tesseract.js, WASM, embarquée dans l'application avec son modèle de langue français, aucun téléchargement ni service en ligne) est déclenchée à la demande, page par page, en armant l'outil Texte ; une fois la page reconnue, Surligner et Copier fonctionnent comme sur un vrai texte ; bouton « ƒ LaTeX » : la zone sélectionnée est lue par l'OCR Latin réglé dans Fichier → Options OCR LaTeX… — votre serveur OCR personnel (v0.1.23, tout local : le petit serveur du dossier serveur-ocr tourne sur votre ordinateur, joint par votre réseau privé Tailscale) ou, à défaut, l'OCR Mistral en ligne (clé API personnelle conservée sur l'ordinateur) — et les formules lues sont copiées dans le presse-papiers.
 - Vue d'ensemble du document (v0.1.15) : colonne de vignettes des pages, ouverte par défaut avec le document, page courante signalée et suivie, un clic y amène ; bouton ▤ pour la masquer ou la remettre.
 - Enregistrement : réécriture complète du fichier (bouton Enregistrer) ou copie horodatée à côté de l'original (nom-AAAA-MM-JJ-HHmmss.pdf) ; jamais d'écrasement silencieux du fichier source en dehors de l'action explicite.
 - Lectures des annotations d'autres logiciels (sans apparence /AP) en lecture seul : affichées mais non éditables.
@@ -22,13 +22,13 @@ Fonctionnalités de la phase 1 :
 
 Développement :
 - Le moteur (dossier engine/) tourne sans Electron, testé par node --test (tests purs partout ; les tests d'intégration — pdf-lib, MathJax, reconnaissance tesseract réelle — s'exécutent dans la CI).
-- Pile : Electron, pdfjs-dist (affichage), pdf-lib 1.17.1 (écriture), MathJax 3.2.2 (équations), tesseract.js (reconnaissance locale des scans), electron-builder + GitHub Actions (livraison Windows).
+- Pile : Electron, pdfjs-dist (affichage), pdf-lib 1.17.1 (écriture), MathJax 3.2.2 (équations), tesseract.js (reconnaissance locale des scans), electron-builder + GitHub Actions (livraison Windows). Le serveur OCR LaTeX personnel (dossier serveur-ocr/, facultatif) est un script Python autonome : il n'est pas embarqué dans l'application.
 
 ## Démarrage rapide
 
 ### Installer (utilisateur)
 
-Téléchargez l'installateur ou le portable de la dernière Release (Windows 64 bits) : double-clic, c'est tout. Tout fonctionne hors ligne après l'installation — y compris la reconnaissance des pages scannées (modèle de langue embarqué) ; seule la lecture LaTeX des formules (bouton ƒ LaTeX) s'appuie sur l'OCR Mistral, en ligne, avec votre clé API personnelle.
+Téléchargez l'installateur ou le portable de la dernière Release (Windows 64 bits) : double-clic, c'est tout. Tout fonctionne hors ligne après l'installation — y compris la reconnaissance des pages scannées (modèle de langue embarqué). La lecture LaTeX des formules (bouton ƒ LaTeX) lit par défaut votre serveur OCR personnel si son adresse est réglée (Fichier → Options OCR LaTeX…, tout local ; voir le guide du dossier serveur-ocr), sinon l'OCR Mistral, en ligne, avec votre clé API personnelle.
 
 ### Construire (développeur)
 
@@ -52,8 +52,8 @@ Livraison d'une version : la version portée par package.json est construite et 
 | Ouvrir un PDF | Ctrl+O, bouton Ouvrir, ou glisser-déposer sur la fenêtre |
 | Prendre la page à la main | outil Main (premier bouton) : cliquer puis faire glisser, la page suit le geste comme une feuille sur la table (v0.1.13) |
 | Sélectionner du texte | outil Texte : glisser sur le texte du document (sélection native), puis Surligner (surlignage exact, un quad par ligne) ou Copier ; sur une page scannée sans texte, la reconnaissance part toute seule et la page devient sélectionnable en quelques secondes (v0.1.22) |
-| Lire le LaTeX d'une formule | outil Texte : sélectionner la formule puis bouton « ƒ LaTeX » de la barre flottante ; le LaTeX extrait est copié dans le presse-papiers (OCR Mistral, en ligne ; aucune modification du fichier) (v0.1.22) |
-| Enregistrer la clé API Mistral | menu Fichier → Clé API Mistral (LaTeX)… : la clé reste sur cet ordinateur, dans le fichier de configuration de l'application (v0.1.22) |
+| Lire le LaTeX d'une formule | outil Texte : sélectionner la formule puis bouton « ƒ LaTeX » de la barre flottante ; le LaTeX extrait est copié dans le presse-papiers (aucune modification du fichier) (v0.1.22) |
+| Régler la lecture LaTeX | menu Fichier → Options OCR LaTeX… : l'adresse de votre serveur OCR personnel (tout local, prioritaire, v0.1.23 — voir serveur-ocr/LISEZMOI.md) ou la clé API Mistral ; tout reste sur cet ordinateur, dans le fichier de configuration de l'application |
 | Voir tout le document d'un coup | colonne Pages (✓ bouton ▤) : miniatures de toutes les pages, la courante signalée, un clic y amène (v0.1.15) |
 | Annuler / Rétablir | Ctrl+Z / Ctrl+Maj+Z, boutons ou menu Édition : geste par geste (pose, déplacement, redimensionnement, correction) ; pendant une saisie dans un champ, Ctrl+Z reste au champ, sortez-en pour annuler un geste (v0.1.13) |
 | Surligner | outil Surligner : glisser sur une ligne de texte |
@@ -80,7 +80,7 @@ Livraison d'une version : la version portée par package.json est construite et 
 
 - **Le texte surligné sur une page tournée est-il aligné ?** Oui : l'alignement des clics sur les pages tournées (/Rotate) est garanti par engine/coords.js (couvert par les tests unitaires et un aller-retour réel dans test/roundtrip.test.js).
 - **Où sont stockées mes annotations ?** Dans le PDF lui-même, au format standard : toute personne recevant le fichier les voit, sans notre application.
-- **La reconnaissance des scans envoie-t-elle mes documents ?** Non : elle est entièrement locale (tesseract.js embarqué). Seul le bouton « ƒ LaTeX » envoie l'image de la zone sélectionnée à l'OCR Mistral, avec votre clé ; la clé reste sur l'ordinateur et le document n'est jamais modifié.
+- **La reconnaissance des scans envoie-t-elle mes documents ?** Non : elle est entièrement locale (tesseract.js embarqué). Le bouton « ƒ LaTeX » envoie l'image de la zone sélectionnée à l'OCR Latin réglé : votre serveur personnel si son adresse existe (tout reste alors entre vos machines, v0.1.23), sinon l'OCR Mistral avec votre clé ; la clé reste sur l'ordinateur et le document n'est jamais modifié.
 - **Puis-je éditer une annotation posée par un autre logiciel ?** Non : l'affichage en est prévu (lecture seule), l'édition reste hors périmètre de la phase 1.
 
 ## Licence

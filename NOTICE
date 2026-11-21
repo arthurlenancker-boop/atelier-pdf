@@ -14,6 +14,10 @@ Il repose sur les composants suivants, dont les licences s'appliquent :
   Reconnaissance locale des pages scannées (cœur WASM embarqué).
 - tessdata_fast fra.traineddata — © tessdata contributors — licence Apache-2.0.
   Modèle de langue français de la reconnaissance (dossier ocr/).
+- RapidLaTeXOCR (serveur-ocr/, script Python FACULTATIF, non embarqué dans
+  l'application Windows) — © RapidAI / SWHL, dérivé de LaTeX-OCR
+  (© Lukas Blecher, licence MIT) — licence MIT.
+  Reconnaissance des formules vers LaTeX sur l'ordinateur de l'utilisateur.
 - Electron — © OpenJS Foundation et contributeurs — licence MIT.
   Coque applicative de bureau.
 - electron-updater / electron-builder — © contributors electron-builder — licence MIT.

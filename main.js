@@ -14,7 +14,9 @@ const { createSession } = require('./engine/session.js');
 const { listAnnots } = require('./engine/reread.js');
 const { mjRender } = require('./engine/mjrender.js');
 const { rejouer } = require('./engine/undo.js');
-const { nettoyerCle, extractionLatex } = require('./engine/ocr.js');
+const {
+  nettoyerCle, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur,
+} = require('./engine/ocr.js');
 
 // ---------------------------------------------------------------------------
 // Dossiers : en développement, tout vit dans le dossier du projet ; empaqueté,
@@ -32,14 +34,26 @@ const dossierOcr = app.isPackaged
 
 const cheminConfig = () => path.join(app.getPath('userData'), 'config.json');
 
-/** Clé API Mistral enregistrée localement, ou '' si absente. */
-function lireCleMistral() {
+/** Configuration locale (config.json du dossier de données) : un objet,
+ *  {} si le fichier est absent ou illisible — jamais d'exception. */
+function lireConfig() {
   try {
     const conf = JSON.parse(fs.readFileSync(cheminConfig(), 'utf8'));
-    return nettoyerCle(conf.cleMistral);
+    return (conf && typeof conf === 'object') && !Array.isArray(conf) ? conf : {};
   } catch {
-    return ''; // absent, illisible : aucune clé
+    return {};
   }
+}
+
+/** Clé API Mistral enregistrée localement, ou '' si absente. */
+function lireCleMistral() {
+  return nettoyerCle(lireConfig().cleMistral);
+}
+
+/** v0.1.23 : URL du serveur OCR personnel (LaTeX), ou '' si absente.
+ *  Son existence SEULE fait passer la lecture LaTeX en mode serveur. */
+function lireServeurOcr() {
+  return nettoyerUrlServeur(lireConfig().serveurOcr);
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -184,10 +198,11 @@ function menuApplication() {
         },
         { type: 'separator' },
         {
-          // v0.1.22 : clé de l'OCR LaTeX, conservée sur cet ordinateur.
-          label: 'Clé API Mistral (LaTeX)…',
+          // v0.1.23 : lecture LaTeX, chez Mistral (clé) ou sur le serveur
+          // OCR personnel de l'utilisateur (tout local).
+          label: 'Options OCR LaTeX…',
           click: () => {
-            if (fenetre) fenetre.webContents.send('app:commande', { nom: 'cle-api' });
+            if (fenetre) fenetre.webContents.send('app:commande', { nom: 'options-ocr' });
           },
         },
         { type: 'separator' },
@@ -239,12 +254,15 @@ function menuApplication() {
               const journal = derniersMessages.length
                 ? derniersMessages.join('\n')
                 : '(aucun message console)';
-              const cle = lireCleMistral();
+              const serveur = lireServeurOcr();
+              const modeLatex = serveur
+                ? `serveur personnel (${serveur})`
+                : (lireCleMistral() ? 'Mistral (clé définie)' : 'Mistral (clé absente, menu Fichier → Options OCR LaTeX…)');
               dialog.showMessageBox(fenetre, {
                 type: 'info',
                 title: 'Diagnostics',
                 message: 'État de l\'application',
-                detail: `${rendu}\nClé API Mistral (LaTeX) : ${cle ? 'définie' : 'absente (menu Fichier → Clé API Mistral…)'}\n\nJournal de la console du rendu :\n${journal}`,
+                detail: `${rendu}\nLecture LaTeX : ${modeLatex}\n\nJournal de la console du rendu :\n${journal}`,
               });
             } catch (err) {
               dialog.showMessageBox(fenetre, {
@@ -440,40 +458,102 @@ ipcMain.handle('mjx:preview', async (_e, { latex, exPt, rgb } = {}) => {
 ipcMain.handle('app:version', () => app.getVersion());
 
 // -------------------------------------------------------------------------
-// v0.1.22 : OCR Mistral pour le LaTeX (bouton ƒ LaTeX) + clé API locale.
+// v0.1.22/v0.1.23 : OCR LaTeX (bouton ƒ LaTeX). Deux modes, réglés par le
+// menu Fichier → Options OCR LaTeX… : le serveur OCR PERSONNEL de
+// l'utilisateur (une URL : tout reste entre ses machines, prioritaire dès
+// qu'elle existe — son PC fait tourner serveur-ocr/serveur.py) ou, à
+// défaut, l'OCR Mistral en ligne (clé API conservée ici, jamais dans le
+// document ni dans le dépôt).
 // -------------------------------------------------------------------------
 
-// Enregistre la clé API sur cet ordinateur (config.json du dossier de
-// données de l'application) — jamais dans le document ni ailleurs.
-ipcMain.handle('conf:cle', async (_e, { cle } = {}) => {
+// Enregistre les options dans config.json (dossier de données de
+// l'application) : { cle } (Mistral) et/ou { url } (serveur, '' pour
+// revenir au mode Mistral).
+ipcMain.handle('conf:ocr', async (_e, { cle, url } = {}) => {
   try {
-    const valeur = nettoyerCle(cle);
-    if (!valeur) return { erreur: 'La clé indiquée est vide.' };
-    let conf = {};
+    let conf;
     try {
       conf = JSON.parse(await fs.promises.readFile(cheminConfig(), 'utf8'));
     } catch { /* première écriture */ }
-    conf.cleMistral = valeur;
+    if (!conf || typeof conf !== 'object' || Array.isArray(conf)) conf = {};
+    if (typeof cle !== 'undefined') {
+      const valeur = nettoyerCle(cle);
+      if (!valeur) return { erreur: 'La clé indiquée est vide.' };
+      conf.cleMistral = valeur;
+    }
+    if (typeof url !== 'undefined') {
+      if (url === null || String(url).trim() === '') {
+        delete conf.serveurOcr; // retour au mode Mistral
+      } else {
+        const adresse = nettoyerUrlServeur(String(url));
+        if (!adresse) {
+          return { erreur: 'Adresse du serveur invalide : elle doit commencer par http:// ou https:// (ex. : http://100.x.y.z:8642/ocr).' };
+        }
+        conf.serveurOcr = adresse;
+      }
+    }
     await fs.promises.writeFile(cheminConfig(), JSON.stringify(conf, null, 2), 'utf8');
     return { ok: true };
   } catch (err) {
-    return { erreur: `Impossible d'enregistrer la clé : ${err.message || String(err)}` };
+    return { erreur: `Impossible d'enregistrer les options : ${err.message || String(err)}` };
   }
 });
 
-// Le rendu n'a besoin que de SAVER si une clé existe — jamais de sa valeur.
-ipcMain.handle('conf:cle:get', () => ({ presente: lireCleMistral() !== '' }));
+// Le rendu affiche l'état ; le SEUL point qui transite est l'URL du
+// serveur (choisie par l'utilisateur), jamais la valeur de la clé.
+ipcMain.handle('conf:ocr:get', () => ({
+  mode: lireServeurOcr() ? 'serveur' : 'mistral',
+  serveurUrl: lireServeurOcr(),
+  clePresente: lireCleMistral() !== '',
+}));
 
-// La zone sélectionnée, redessinée nette par le rendu, part à Mistral ;
-// les formules du Markdown renvoyé sont extraites côté moteur (engine/ocr.js).
+// La zone sélectionnée, redessinée nette par le rendu, part à l'OCR
+// LaTeX en vigueur ; les formules extraites reviennent pour copie.
 ipcMain.handle('ocr:latex', async (_e, { dataUrl } = {}) => {
   try {
     if (typeof dataUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
       return { erreur: 'L\'image de la zone sélectionnée est illisible : requête mal formée.' };
     }
+
+    // v0.1.23 : serveur OCR personnel — tout local, prioritaire.
+    const serveur = lireServeurOcr();
+    if (serveur) {
+      const reponse = await fetch(serveur, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: dataUrl }),
+        signal: AbortSignal.timeout(90000), // un moteur CPU peut être lent
+      });
+      if (!reponse.ok) {
+        let detail = '';
+        try {
+          const corps = await reponse.json();
+          if (corps && typeof corps.erreur === 'string') detail = corps.erreur;
+        } catch { /* corps non JSON */ }
+        if (!detail) {
+          try { detail = (await reponse.text()).slice(0, 200); } catch { /* silencieux */ }
+        }
+        return {
+          erreur: `Le serveur OCR a répondu par une erreur ${reponse.status}${detail ? ` : ${detail}` : '.'}`,
+        };
+      }
+      let contenu = null;
+      try {
+        contenu = await reponse.json();
+      } catch {
+        return { erreur: 'Réponse du serveur illisible : du JSON est attendu, de la forme { "latex": "…" }.' };
+      }
+      const latex = latexDepuisReponseServeur(contenu);
+      if (!latex) {
+        return { erreur: 'Le serveur n\'a reconnu aucune formule dans la zone sélectionnée. Cadrez la seule formule, bien accrée.' };
+      }
+      return { latex };
+    }
+
+    // Mode Mistral (en ligne) : chemin v0.1.22 inchangé.
     const cle = lireCleMistral();
     if (!cle) {
-      return { erreur: 'Aucune clé API Mistral enregistrée. Menu Fichier → Clé API Mistral (LaTeX)…' };
+      return { erreur: 'Aucune clé API Mistral enregistrée. Menu Fichier → Options OCR LaTeX… (ou indiquez l\'adresse de votre serveur OCR).' };
     }
     const reponse = await fetch('https://api.mistral.ai/v1/ocr', {
       method: 'POST',
@@ -488,7 +568,7 @@ ipcMain.handle('ocr:latex', async (_e, { dataUrl } = {}) => {
       signal: AbortSignal.timeout(30000),
     });
     if (reponse.status === 401 || reponse.status === 403) {
-      return { erreur: 'Clé refusée par Mistral : vérifiez-la (menu Fichier → Clé API Mistral…).' };
+      return { erreur: 'Clé refusée par Mistral : vérifiez-la (menu Fichier → Options OCR LaTeX…).' };
     }
     if (!reponse.ok) {
       return { erreur: `Mistral a répondu par une erreur ${reponse.status}${reponse.status === 429 ? ' (quota atteint : patientez un instant)' : ''}.` };
@@ -503,9 +583,13 @@ ipcMain.handle('ocr:latex', async (_e, { dataUrl } = {}) => {
   } catch (err) {
     const nom = String((err && err.name) || err);
     if (/timeout|abort/i.test(nom)) {
-      return { erreur: 'Délai dépassé : l\'OCR Mistral n\'a pas répondu en 30 secondes.' };
+      return { erreur: lireServeurOcr()
+        ? 'Délai dépassé : votre serveur OCR n\'a pas répondu en 90 secondes (vérifiez qu\'il tourne et que la première reconnaissance a bien fini de télécharger les modèles).'
+        : 'Délai dépassé : l\'OCR Mistral n\'a pas répondu en 30 secondes.' };
     }
-    return { erreur: 'Réseau indisponible : la lecture LaTeX exige une connexion à api.mistral.ai.' };
+    return { erreur: lireServeurOcr()
+      ? 'Serveur OCR injoignable : vérifiez son adresse (menu Fichier → Options OCR LaTeX…) et qu\'il tourne bien.'
+      : 'Réseau indisponible : la lecture LaTeX exige une connexion à api.mistral.ai.' };
   }
 });
 
