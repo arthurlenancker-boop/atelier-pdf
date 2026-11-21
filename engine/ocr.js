@@ -123,8 +123,51 @@ function extractionLatex(markdown) {
   return formules.join('\n');
 }
 
+/**
+ * v0.1.23 : vérifie l'URL d'un serveur OCR personnel. La chaîne est
+ * épurée (espaces, barres finales) puis doit être une URL http ou https
+ * sans espace. Renvoie '' si la valeur n'est pas utilisable — le
+ * réglage n'est alors pas enregistré.
+ * @param {*} url
+ * @returns {string}
+ */
+function nettoyerUrlServeur(url) {
+  if (typeof url !== 'string') return '';
+  const u = url.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/\S+$/i.test(u)) return '';
+  return u;
+}
+
+/**
+ * v0.1.23 : lit le LaTeX de la réponse JSON d'un serveur OCR personnel.
+ * - { latex: "…" } : la valeur TELLE QUELLE (le serveur a déjà extrait la
+ *   formule, la repasser par extractionLatex la déformerait) ;
+ * - { text: "…" } ou { markdown: "…" } : les formules y sont repérées
+ *   par extractionLatex ($$…$$ puis $…$).
+ * Renvoie null si la réponse ne contient aucune formule exploitable.
+ * @param {*} contenu réponse JSON déjà analysée
+ * @returns {string|null}
+ */
+function latexDepuisReponseServeur(contenu) {
+  if (!contenu || typeof contenu !== 'object' || Array.isArray(contenu)) return null;
+  if (typeof contenu.latex === 'string' && contenu.latex.trim()) {
+    return contenu.latex.trim();
+  }
+  let source = null;
+  if (typeof contenu.text === 'string' && contenu.text.trim()) source = contenu.text;
+  else if (typeof contenu.markdown === 'string' && contenu.markdown.trim()) source = contenu.markdown;
+  if (source === null) return null;
+  return extractionLatex(source);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { borner, nettoyerCle, motsDepuisBlocs, extractionLatex };
+  module.exports = {
+    borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
+    nettoyerUrlServeur, latexDepuisReponseServeur,
+  };
 } else {
-  globalThis.AtelierOcr = { borner, nettoyerCle, motsDepuisBlocs, extractionLatex };
+  globalThis.AtelierOcr = {
+    borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
+    nettoyerUrlServeur, latexDepuisReponseServeur,
+  };
 }

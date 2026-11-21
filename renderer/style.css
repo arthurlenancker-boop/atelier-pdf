@@ -608,7 +608,19 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   color: var(--ink);
 }
 
-/* ————— v0.1.22 : saisie de la clé API Mistral et mots reconnus ————— */
+/* ————— v0.1.22/v0.1.23 : options OCR LaTeX et mots reconnus ————— */
+.cle-radio {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--ink);
+}
+.cle-radio input {
+  accent-color: var(--accent);
+  margin: 0;
+}
 .cle-aide {
   margin: 0 0 12px;
   font-size: 12.5px;
