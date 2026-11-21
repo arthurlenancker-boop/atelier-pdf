@@ -8,8 +8,10 @@ import '../engine/guides.js'; // expose globalThis.AtelierGuides (v0.1.5)
 import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10)
 import '../engine/texte.js'; // expose globalThis.AtelierTexte (v0.1.11)
 import '../engine/geom.js'; // expose globalThis.AtelierGeom (v0.1.12)
+import '../engine/ocr.js'; // expose globalThis.AtelierOcr (v0.1.22)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
+const { motsDepuisBlocs, nettoyerCle } = globalThis.AtelierOcr;
 
 // v0.1.2 : chargement dynamique de pdf.js. Un import statique qui echoue
 // (fichier absent) tuait silencieusement tout le module : plus aucun bouton
@@ -250,6 +252,8 @@ async function ouvrirDocument(chemin) {
   etat.eqPoint = null;
   etat.remplacement = null;
   etat.opsEquation.clear(); // v0.1.10
+  motsOcrPages.clear();     // v0.1.22 : une autre reconnaissance tout autre document
+  pageMuette = false;
   etat.chemin = rep.resume.chemin;
   etat.page = 1;
   resoudreZoom();
@@ -1023,12 +1027,22 @@ let erreurCalqueTexte = null; // dernier échec du calque (diagnostics)
    se contente de le signaler mais le reste de l'application vit. */
 async function rendCalqueTexte(page, viewport) {
   erreurCalqueTexte = null;
+  calquePage = page; // v0.1.22 : une OCR arrivée pourra reposer les mots
+  calqueViewport = viewport;
   els.calqueTexte.replaceChildren();
   els.calqueTexte.style.width = `${Math.round(viewport.width)}px`;
   els.calqueTexte.style.height = `${Math.round(viewport.height)}px`;
   if (!pdfjsLib) return;
   try {
     const contenu = await page.getTextContent();
+    // v0.1.22 : une page sans couche de texte (scan, photo) reçoit les
+    // mots reconnus par l'OCR locale, posés en fractions de page : ils
+    // héritent de la sélection native, donc de Surligner et Copier.
+    if (!Array.isArray(contenu.items) || contenu.items.length === 0) {
+      await gererPageMuette(page, viewport);
+      return;
+    }
+    pageMuette = false;
     els.calqueTexte.style.setProperty("--scale-factor", String(viewport.scale));
     els.calqueTexte.style.setProperty("--total-scale-factor", String(viewport.scale));
     if (typeof pdfjsLib.TextLayer === 'function') {
@@ -1173,6 +1187,260 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') fermerBarreSelection();
 });
 els.visionneuse.addEventListener('scroll', fermerBarreSelection);
+
+/* ============================================================
+   v0.1.22 : reconnaissance des pages scannées (OCR locale)
+   ============================================================ */
+/* Les scans de cours n'ont AUCUNE couche de texte : l'outil Texte ne
+   pouvait rien sélectionner. Une reconnaissance locale (tesseract.js,
+   WASM, embarquée — aucun téléchargement, aucun service en ligne) est
+   déclenchée À LA DEMANDE, page par page, quand l'outil Texte arme une
+   page muette. Les mots deviennent des <span> invisibles posés en
+   fractions de page dans le calque de texte : la sélection native
+   existe alors, et les boutons Surligner / Copier d'origine, puis le
+   bouton ƒ LaTeX ci-dessous, fonctionnent sans autre changement. */
+let pageMuette = false;       // la page courante n'a pas de couche de texte
+let tesseractModule = null;   // module tesseract chargé au premier besoin
+let erreurTesseract = null;  // dernier échec de chargement (diagnostics)
+let workerOcr = null;         // worker persistant (modèle français en mémoire)
+let ocrEnCours = false;       // une seule reconnaissance à la fois
+let generationOcr = 0;        // invalide un résultat si la page a changé
+let erreurOcr = null;        // dernier échec de reconnaissance (diagnostics)
+const motsOcrPages = new Map(); // n° de page -> mots reconnus (fractions)
+let calquePage = null;        // dernières (page, viewport) passées au calque
+let calqueViewport = null;    // → pour reposer les mots après une OCR
+
+async function chargerTesseract() {
+  // Discipline pdf.js (leçon v0.1.2) : jamais d'import statique pour une
+  // pièce dont dépend un outil ; l'échec s'affiche au lieu de tuer la page.
+  tesseractModule = (await import('app://local/libs/tesseract.js/dist/tesseract.esm.min.js')).default;
+}
+
+async function prendreWorkerOcr() {
+  if (workerOcr) return workerOcr;
+  if (!tesseractModule) {
+    try {
+      await chargerTesseract();
+      erreurTesseract = null;
+    } catch (err) {
+      erreurTesseract = (err && err.message) ? err.message : String(err);
+      throw new Error(`moteur de reconnaissance introuvable (${erreurTesseract})`);
+    }
+  }
+  workerOcr = await tesseractModule.createWorker('fra', 1, {
+    // Tout est servi par le protocole app:// depuis les ressources locales.
+    workerPath: 'app://local/libs/tesseract.js/dist/worker.min.js',
+    // Dossier du cœur WASM : le script choisit seul la variante SIMD.
+    corePath: 'app://local/libs/tesseract.js-core',
+    // Modèle de langue français EMBARQUÉ — aucun téléchargement.
+    langPath: 'app://local/ocr',
+    workerBlobURL: false,
+  });
+  return workerOcr;
+}
+
+/* Pose les mots reconnus dans le calque de texte : des <span> invisibles
+   positionnés en fractions de la page affichée — au zoom près, chaque
+   mot est là où tesseract l'a lu. */
+function poserMotsOcr(mots, viewport) {
+  for (const m of mots) {
+    const s = document.createElement('span');
+    s.textContent = m.t;
+    s.className = 'ocr-mot';
+    const haut = Math.round(m.y * viewport.height);
+    const hauteur = Math.max(6, Math.round(m.h * viewport.height));
+    s.style.left = `${Math.round(m.x * viewport.width)}px`;
+    s.style.top = `${haut}px`;
+    s.style.height = `${hauteur}px`;
+    s.style.fontSize = `${Math.max(7, Math.round(hauteur * 0.92))}px`;
+    els.calqueTexte.appendChild(s);
+  }
+}
+
+/* Page sans couche de texte : mots déjà reconnus posés tels quels ;
+   sinon la reconnaissance part, mais seulement si l'outil Texte est
+   actif — jamais de travail lourd que l'utilisateur n'a pas demandé. */
+async function gererPageMuette(page, viewport) {
+  pageMuette = true;
+  const mots = motsOcrPages.get(page.pageNumber);
+  if (mots) {
+    poserMotsOcr(mots, viewport);
+    if (etat.outil === 'texte') {
+      message('Texte reconnu : sélectionnez, surlignez ou copiez.', 'reussite');
+    }
+    return;
+  }
+  if (etat.outil !== 'texte') return;
+  if (ocrEnCours) {
+    message('Reconnaissance déjà en cours : un instant, elle se pose d\'elle-même.');
+    return;
+  }
+  message('Page scannée sans texte : reconnaissance en cours (quelques secondes)…');
+  lancerOcrPage(page);
+}
+
+async function lancerOcrPage(page) {
+  if (ocrEnCours || !pdfjsLib) return;
+  ocrEnCours = true;
+  generationOcr += 1;
+  const ma = generationOcr;
+  const numero = page.pageNumber;
+  try {
+    const worker = await prendreWorkerOcr();
+    // Rendu hors écran de la page entière à ~1700 px de large : assez
+    // fin pour le texte imprimé d'un cours, pas trop lourd pour un
+    // ordinateur modeste (quelques secondes).
+    const base = page.getViewport({ scale: 1 });
+    const echelle = Math.min(3, Math.max(1, 1700 / base.width));
+    const vp = page.getViewport({ scale: echelle });
+    const toile = document.createElement('canvas');
+    toile.width = Math.max(1, Math.round(vp.width));
+    toile.height = Math.max(1, Math.round(vp.height));
+    const tache = page.render({ canvasContext: toile.getContext('2d'), viewport: vp });
+    await tache.promise;
+    const { data } = await worker.recognize(toile, {}, { blocks: true });
+    if (ma !== generationOcr) return; // la page attendue a changé
+    const mots = motsDepuisBlocs(data.blocks || [], toile.width, toile.height);
+    motsOcrPages.set(numero, mots);
+    erreurOcr = null;
+    // Si l'utilisateur regarde toujours cette page à l'outil Texte,
+    // la couche est reposée avec les mots reconnus.
+    if (calquePage && calquePage.pageNumber === numero && calqueViewport
+        && etat.resume && etat.page === numero && etat.outil === 'texte') {
+      await rendCalqueTexte(calquePage, calqueViewport);
+      message('Texte reconnu : sélectionnez, surlignez ou copiez.', 'reussite');
+    }
+  } catch (err) {
+    erreurOcr = (err && err.message) ? err.message : String(err);
+    if (ma === generationOcr) {
+      message(`Échec de la reconnaissance : ${erreurOcr}. Menu Aide → Diagnostics de l'application.`, 'erreur');
+    }
+  } finally {
+    ocrEnCours = false;
+  }
+}
+
+/* v0.1.22 : bouton ƒ LaTeX de la barre de sélection. La zone retenue
+   est redessinée NETTEMENT hors écran (jusqu'à 6× le zoom), l'image
+   part à l'OCR Mistral via le processus principal (qui détient la clé
+   API), et les formules extraites du Markdown sont copiées. */
+let latexEnCours = false;
+
+/* Inverse exact de deviceToPdf (même structure que pdfVersEcran) mais
+   pour un viewport FOURNI : le redécoupage hors écran ne connaît pas
+   etat.viewport. */
+function pdfVersEcranDans(pt, page, vp) {
+  const rotation = ((vp.rotation % 360) + 360) % 360;
+  const pageW = page.view[2];
+  const pageH = page.view[3];
+  const s = vp.scale;
+  let u; let v;
+  switch (rotation) {
+    case 0: u = pt.x; v = pageH - pt.y; break;
+    case 90: v = pt.x; u = pt.y; break;
+    case 180: u = pageW - pt.x; v = pageH - pt.y; break;
+    default: v = pageW - pt.x; u = pageH - pt.y; break;
+  }
+  return { x: u * s, y: v * s };
+}
+
+$('#sel-latex').addEventListener('click', async () => {
+  if (latexEnCours || !selectionTexte.quads) return;
+  const { rect, page } = selectionTexte;
+  const bouton = $('#sel-latex');
+  latexEnCours = true;
+  bouton.disabled = true;
+  fermerBarreSelection();
+  viderSelectionNative();
+  try {
+    if (!etat.pdfjs) { message('Aucun document ouvert.', 'erreur'); return; }
+    const pg = await etat.pdfjs.getPage(page + 1);
+    // Échelle : la zone coupée doit faire ~1400 px de large pour que
+    // l'OCR Mistral lise les indices et les radicaux ; bornée 1,5–6.
+    const largeurRect = Math.max(rect[2] - rect[0], 1);
+    const echelle = Math.min(6, Math.max(1.5, 1400 / largeurRect));
+    const vp = pg.getViewport({ scale: echelle });
+    const toile = document.createElement('canvas');
+    toile.width = Math.max(1, Math.round(vp.width));
+    toile.height = Math.max(1, Math.round(vp.height));
+    const tache = pg.render({ canvasContext: toile.getContext('2d'), viewport: vp });
+    await tache.promise;
+    // La zone sélectionnée, en pixels du rendu hors écran.
+    const coinA = pdfVersEcranDans({ x: rect[0], y: rect[3] }, pg, vp);
+    const coinB = pdfVersEcranDans({ x: rect[2], y: rect[1] }, pg, vp);
+    const x0 = Math.max(0, Math.floor(Math.min(coinA.x, coinB.x)));
+    const y0 = Math.max(0, Math.floor(Math.min(coinA.y, coinB.y)));
+    const x1 = Math.min(toile.width, Math.ceil(Math.max(coinA.x, coinB.x)));
+    const y1 = Math.min(toile.height, Math.ceil(Math.max(coinA.y, coinB.y)));
+    if (x1 - x0 < 4 || y1 - y0 < 4) {
+      message('La zone lue est trop étroite : sélectionnez davantage autour de la formule.', 'erreur');
+      return;
+    }
+    const coupe = document.createElement('canvas');
+    coupe.width = x1 - x0;
+    coupe.height = y1 - y0;
+    coupe.getContext('2d').drawImage(toile, x0, y0, coupe.width, coupe.height, 0, 0, coupe.width, coupe.height);
+    const dataUrl = coupe.toDataURL('image/png');
+    bouton.textContent = 'ƒ…';
+    const rep = await window.atelier.latexOcr(dataUrl);
+    if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+    if (!rep.latex) {
+      message('Aucune formule détectée dans la zone sélectionnée.', 'info');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(rep.latex);
+      const apercu = rep.latex.length > 70 ? `${rep.latex.slice(0, 70)}…` : rep.latex;
+      message(`LaTeX copié dans le presse-papiers : ${apercu}`, 'reussite');
+    } catch (err) {
+      message('Formule lue, mais copie impossible : le presse-papiers a refusé l\'accès.', 'erreur');
+    }
+  } catch (err) {
+    message(`Conversion LaTeX impossible : ${(err && err.message) || err}`, 'erreur');
+  } finally {
+    latexEnCours = false;
+    bouton.disabled = false;
+    bouton.textContent = 'ƒ LaTeX';
+  }
+});
+
+/* v0.1.22 : clé API Mistral (conversion LaTeX). Saisie locale, simple,
+   menu Fichier → Clé API Mistral (LaTeX)… — la clé reste sur cet
+   ordinateur (config de l'application), jamais dans le document. */
+function ouvrirSaisieCle() {
+  $('#cle-saisie').value = '';
+  $('#cle-erreur').hidden = true;
+  $('#cle-fond').hidden = false;
+  $('#cle-saisie').focus();
+}
+
+function fermerSaisieCle() {
+  $('#cle-fond').hidden = true;
+}
+
+$('#cle-annuler').addEventListener('click', fermerSaisieCle);
+$('#cle-valider').addEventListener('click', validerSaisieCle);
+$('#cle-saisie').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') validerSaisieCle();
+  else if (ev.key === 'Escape') { ev.stopPropagation(); fermerSaisieCle(); }
+});
+
+async function validerSaisieCle() {
+  const cle = nettoyerCle($('#cle-saisie').value);
+  if (!cle) {
+    $('#cle-erreur').textContent = 'Indiquez la clé (elle se trouve sur console.mistral.ai, page « Clés API »).';
+    $('#cle-erreur').hidden = false;
+    return;
+  }
+  const rep = await window.atelier.definirCle(cle);
+  if (rep.erreur) {
+    $('#cle-erreur').textContent = rep.erreur;
+    $('#cle-erreur').hidden = false;
+    return;
+  }
+  fermerSaisieCle();
+  message('Clé API Mistral enregistrée sur cet ordinateur.', 'reussite');
+}
 
 function ecouterSouris() {
   let geste = null; // { outil, depart, point, points[] }
@@ -2367,6 +2635,15 @@ function choisirOutil(outil) {
     equation: 'Cliquez le point d\'insertion sur la page.',
   };
   message(notes[outil] || 'Prêt.');
+  // v0.1.22 : armer l'outil Texte sur une page scannée sans texte, jamais
+  // encore reconnue, lance la reconnaissance — quelques secondes, puis
+  // la page devient sélectionnable. Rien n'est lancé sur les pages qui
+  // ont déjà leur texte, ni tant que l'utilisateur n'a pas demandé.
+  if (outil === 'texte' && etat.resume && pageMuette
+      && !motsOcrPages.has(etat.page) && !ocrEnCours && etat.pdfjs) {
+    message('Page scannée sans texte : reconnaissance en cours (quelques secondes)…');
+    etat.pdfjs.getPage(etat.page).then((p) => lancerOcrPage(p)).catch(() => {});
+  }
 }
 
 document.querySelectorAll('.outil').forEach((b) => {
@@ -2524,6 +2801,7 @@ window.atelier.onCommande(async (cmd) => {
   if (cmd.nom === 'copie') enregistrer('timestamped');
   if (cmd.nom === 'annuler') annulerGeste();      // v0.1.13 : menu Édition
   if (cmd.nom === 'retablir') retablirGeste();
+  if (cmd.nom === 'cle-api') ouvrirSaisieCle();   // v0.1.22 : Fichier → clé Mistral
 });
 
 $('#btn-ouvrir').addEventListener('click', () => ouvrirDocument());
@@ -2558,6 +2836,8 @@ globalThis.__atelierDiagnostics = () => [
   `Zoom : ${Math.round(etat.zoom * 100)} % (rendu en cours : ${gesteZoomActif() ? 'transformation CSS en attendant le rendu net' : 'posé'})`,
   `Dernier échec d'affichage : ${erreurRendu || 'aucun'}`,
   `Annotations connues : ${etat.resume ? etat.resume.annots.length : 0}`,
+  `Reconnaissance des scans : ${tesseractModule ? 'moteur chargé' : 'moteur non chargé (le sera au premier besoin)'}, pages reconnues : ${motsOcrPages.size === 0 ? 'aucune' : [...motsOcrPages.keys()].sort((a, b) => a - b).join(', ')}`,
+  `Dernier échec de reconnaissance : ${erreurOcr || erreurTesseract || 'aucun'}`,
 ].join('\n');
 
 (async function init() {

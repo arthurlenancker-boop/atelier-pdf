@@ -5,3 +5,7 @@ release/
 .DS_Store
 .superpowers/
 test/fixtures/*.pdf
+
+# v0.1.22 : modèle OCR et fixture sont décodés depuis le base64 du dépôt
+ocr/fra.traineddata.gz
+test/fixtures/titre.png

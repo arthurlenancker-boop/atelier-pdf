@@ -14,14 +14,33 @@ const { createSession } = require('./engine/session.js');
 const { listAnnots } = require('./engine/reread.js');
 const { mjRender } = require('./engine/mjrender.js');
 const { rejouer } = require('./engine/undo.js');
+const { nettoyerCle, extractionLatex } = require('./engine/ocr.js');
 
 // ---------------------------------------------------------------------------
 // Dossiers : en développement, tout vit dans le dossier du projet ; empaqueté,
 // pdfjs-dist est copié dans extraResources et sert via app://libs/.
+// v0.1.22 : le modèle de langue de l'OCR (ocr/fra.traineddata.gz) est servi
+// via app://ocr/ depuis les mêmes ressources.
 // ---------------------------------------------------------------------------
 const dossierLibs = app.isPackaged
   ? path.join(process.resourcesPath, 'node_modules')
   : path.join(__dirname, 'node_modules');
+
+const dossierOcr = app.isPackaged
+  ? path.join(process.resourcesPath, 'ocr')
+  : path.join(__dirname, 'ocr');
+
+const cheminConfig = () => path.join(app.getPath('userData'), 'config.json');
+
+/** Clé API Mistral enregistrée localement, ou '' si absente. */
+function lireCleMistral() {
+  try {
+    const conf = JSON.parse(fs.readFileSync(cheminConfig(), 'utf8'));
+    return nettoyerCle(conf.cleMistral);
+  } catch {
+    return ''; // absent, illisible : aucune clé
+  }
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -86,14 +105,23 @@ function initProtocole() {
     const url = new URL(requ.url);
     // app://local/renderer/...  -> fichiers du dossier renderer.
     // app://local/libs/...      -> dependances servies localement (pdfjs-dist).
+    // app://local/ocr/...       -> modele de langue de l'OCR (v0.1.22).
     // v0.1.2 : le prefixe « libs/ » designe l'interieur du dossier des
     // dependances ; il doit etre retire du chemin servi (l'import de pdf.js
     // pointait avant vers node_modules/libs/..., un dossier inexistant).
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-    const racine = rel.startsWith('libs/') ? dossierLibs : __dirname;
-    const cible = rel.startsWith('libs/')
-      ? path.join(dossierLibs, rel.slice('libs/'.length))
-      : path.join(__dirname, rel);
+    let racine;
+    let cible;
+    if (rel.startsWith('libs/')) {
+      racine = dossierLibs;
+      cible = path.join(dossierLibs, rel.slice('libs/'.length));
+    } else if (rel.startsWith('ocr/')) {
+      racine = dossierOcr;
+      cible = path.join(dossierOcr, rel.slice('ocr/'.length));
+    } else {
+      racine = __dirname;
+      cible = path.join(__dirname, rel);
+    }
     // Garde-fou : jamais de remontee hors de la racine servie.
     const resolu = path.resolve(cible);
     if (resolu !== path.resolve(racine) && !resolu.startsWith(path.resolve(racine) + path.sep)) {
@@ -155,6 +183,14 @@ function menuApplication() {
           click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'copie' }); },
         },
         { type: 'separator' },
+        {
+          // v0.1.22 : clé de l'OCR LaTeX, conservée sur cet ordinateur.
+          label: 'Clé API Mistral (LaTeX)…',
+          click: () => {
+            if (fenetre) fenetre.webContents.send('app:commande', { nom: 'cle-api' });
+          },
+        },
+        { type: 'separator' },
         { role: 'quit', label: 'Quitter' },
       ],
     },
@@ -203,11 +239,12 @@ function menuApplication() {
               const journal = derniersMessages.length
                 ? derniersMessages.join('\n')
                 : '(aucun message console)';
+              const cle = lireCleMistral();
               dialog.showMessageBox(fenetre, {
                 type: 'info',
                 title: 'Diagnostics',
                 message: 'État de l\'application',
-                detail: `${rendu}\n\nJournal de la console du rendu :\n${journal}`,
+                detail: `${rendu}\nClé API Mistral (LaTeX) : ${cle ? 'définie' : 'absente (menu Fichier → Clé API Mistral…)'}\n\nJournal de la console du rendu :\n${journal}`,
               });
             } catch (err) {
               dialog.showMessageBox(fenetre, {
@@ -401,6 +438,76 @@ ipcMain.handle('mjx:preview', async (_e, { latex, exPt, rgb } = {}) => {
 });
 
 ipcMain.handle('app:version', () => app.getVersion());
+
+// -------------------------------------------------------------------------
+// v0.1.22 : OCR Mistral pour le LaTeX (bouton ƒ LaTeX) + clé API locale.
+// -------------------------------------------------------------------------
+
+// Enregistre la clé API sur cet ordinateur (config.json du dossier de
+// données de l'application) — jamais dans le document ni ailleurs.
+ipcMain.handle('conf:cle', async (_e, { cle } = {}) => {
+  try {
+    const valeur = nettoyerCle(cle);
+    if (!valeur) return { erreur: 'La clé indiquée est vide.' };
+    let conf = {};
+    try {
+      conf = JSON.parse(await fs.promises.readFile(cheminConfig(), 'utf8'));
+    } catch { /* première écriture */ }
+    conf.cleMistral = valeur;
+    await fs.promises.writeFile(cheminConfig(), JSON.stringify(conf, null, 2), 'utf8');
+    return { ok: true };
+  } catch (err) {
+    return { erreur: `Impossible d'enregistrer la clé : ${err.message || String(err)}` };
+  }
+});
+
+// Le rendu n'a besoin que de SAVER si une clé existe — jamais de sa valeur.
+ipcMain.handle('conf:cle:get', () => ({ presente: lireCleMistral() !== '' }));
+
+// La zone sélectionnée, redessinée nette par le rendu, part à Mistral ;
+// les formules du Markdown renvoyé sont extraites côté moteur (engine/ocr.js).
+ipcMain.handle('ocr:latex', async (_e, { dataUrl } = {}) => {
+  try {
+    if (typeof dataUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
+      return { erreur: 'L\'image de la zone sélectionnée est illisible : requête mal formée.' };
+    }
+    const cle = lireCleMistral();
+    if (!cle) {
+      return { erreur: 'Aucune clé API Mistral enregistrée. Menu Fichier → Clé API Mistral (LaTeX)…' };
+    }
+    const reponse = await fetch('https://api.mistral.ai/v1/ocr', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cle}`,
+      },
+      body: JSON.stringify({
+        model: 'mistral-ocr-latest',
+        document: { type: 'image_url', image_url: dataUrl },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (reponse.status === 401 || reponse.status === 403) {
+      return { erreur: 'Clé refusée par Mistral : vérifiez-la (menu Fichier → Clé API Mistral…).' };
+    }
+    if (!reponse.ok) {
+      return { erreur: `Mistral a répondu par une erreur ${reponse.status}${reponse.status === 429 ? ' (quota atteint : patientez un instant)' : ''}.` };
+    }
+    const contenu = await reponse.json();
+    const markdown = contenu && Array.isArray(contenu.pages) && contenu.pages[0]
+      ? contenu.pages[0].markdown : null;
+    if (typeof markdown !== 'string') {
+      return { erreur: 'Réponse de Mistral inattendue : aucun texte n\'a été reconnu.' };
+    }
+    return { latex: extractionLatex(markdown), markdown };
+  } catch (err) {
+    const nom = String((err && err.name) || err);
+    if (/timeout|abort/i.test(nom)) {
+      return { erreur: 'Délai dépassé : l\'OCR Mistral n\'a pas répondu en 30 secondes.' };
+    }
+    return { erreur: 'Réseau indisponible : la lecture LaTeX exige une connexion à api.mistral.ai.' };
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Cycle de vie.
