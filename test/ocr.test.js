@@ -169,13 +169,19 @@ test('prototype OCR : scan A4 300 dpi rendu interrogeable, tout local', async ()
   assert.ok(trouveres >= 14,
     `OCR best_int : ≥14 mots clés attendus (reçu ${trouveres}/20). Mots : ${JSON.stringify(partieInt.mots.slice(0, 60))}`);
 
-  // --- 4. Couche invisible sur le scan. ---
-  const policeHelv = await docScan.embedFont(StandardFonts.Helvetica);
+  // --- 4. Couche invisible sur une copie RELUE du scan. ---
+  // pdf-lib met le contenu de chaque page en cache au premier save() : poser
+  // sur le document déjà sauvegardé puis re-sauver relirait le flux en cache,
+  // SANS la couche. On recharge donc le scan sauvé dans un document vierge :
+  // même parcours que l'application (ouvrir un PDF existant, poser, enregistrer).
+  const docFinal = await PDFDocument.load(octetsScan);
+  const pageResume = docFinal.getPage(0);
+  const policeHelv = await docFinal.embedFont(StandardFonts.Helvetica);
   const t1 = performance.now();
-  const { nbMots, cle } = poserCoucheInvisible(pageScan, policeHelv, partieInt.lignes, { largeurPx: lPx, hauteurPx: hPx });
+  const { nbMots, cle } = poserCoucheInvisible(pageResume, policeHelv, partieInt.lignes, { largeurPx: lPx, hauteurPx: hPx });
   rapport.etapes.couche = (performance.now() - t1) / 1000;
   assert.ok(nbMots >= 20, `≥20 mots posés dans la couche (reçu ${nbMots})`);
-  const octetsFinaux = await docScan.save();
+  const octetsFinaux = await docFinal.save();
   rapport.facteurs.sortie = `${(octetsFinaux.length / 1024).toFixed(0)} Ko PDF`;
 
   // --- 5a. Sonde : le canal d'extraction (pdf-lib ↔ pdf.js) lit-il un
@@ -183,7 +189,8 @@ test('prototype OCR : scan A4 300 dpi rendu interrogeable, tout local', async ()
   // relecture d'un défaut d'injection dans la couche. ---
   const docSonde = await PDFDocument.create();
   const pageSonde = docSonde.addPage([320, 140]);
-  pageSonde.drawText('SONDEALPHA', { x: 24, y: 70, size: 14, font: policeHelv, color: rgb(0, 0, 0) });
+  const policeSonde = await docSonde.embedFont(StandardFonts.Helvetica);
+  pageSonde.drawText('SONDEALPHA', { x: 24, y: 70, size: 14, font: policeSonde, color: rgb(0, 0, 0) });
   const vueSonde = await ouvrirPdf(await docSonde.save());
   const itemsSonde = await vueSonde.page.getTextContent();
   await vueSonde.fermer();
