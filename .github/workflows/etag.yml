@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.16 : correctif — la vue de document redevient large (la grille figee de la v0.1.15 repliait la page a largeur zero quand la colonne de vignettes etait visible, capture d'Arthur) ; message d'ouverture qui n'ecrase plus un echec de rendu ; bouton Pages en toutes lettres.
+# Declencheur de la v0.1.17 : interface neutre claire — abandon du theme decoratif au profit des conventions des logiciels Windows : gris neutres, panneaux plats bordes sans ombre decorative, accent bleu standard reserve a l'outil actif et a l'action principale, rayons 6/6/4/3, glyphes decoratifs remplaces par des icones vectorielles monochromes, libelles de la barre du haut alignes sur les conventions des logiciels (annuler/retablir/enregistrer en icones, « Copie » pour la copie horodate), carre de logo « Ap » retire, survols neutres en gris clair, pastille « modifie » sobre sans capsule, libelle « Fenetres guidees » epure, cadre d'accueil plat, sans modification de mise en page.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;

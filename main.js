@@ -110,7 +110,7 @@ function creerFenetre() {
     height: 800,
     minWidth: 960,
     minHeight: 640,
-    backgroundColor: '#0C0E13',
+    backgroundColor: '#F3F3F3',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

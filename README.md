@@ -78,4 +78,4 @@ Livraison d'une version : poser un tag v* → le workflow .github/workflows/rele
 
 ## Licence
 
-AGPL-3.0 (voir LICENSE et NOTICE). Interface Glass on Charcoal, dérivée de SpotiKit, même licence.
+AGPL-3.0 (voir LICENSE et NOTICE). Interface claire neutre, standard ; sur la base de SpotiKit, même licence.

@@ -1,8 +1,9 @@
-/* renderer/style.css — thème Glass on Charcoal (dérivé de SpotiKit).
-   Identité : fond Charcoal #0C0E13, surfaces surélevées, remplissages blancs
-   translucides (6 % / survol 9 % / appui 4 %), listels internes qui donnent
-   le bord de verre (1 px clair en haut, 1 px sombre en bas, contour faible),
-   accent doux à 16 %, rayons 20 / 14 / 10 / 6, EaseOutQuint. */
+/* renderer/style.css — interface neutre claire, v0.1.17.
+   Pas de « thème » : les conventions des logiciels Windows suffisent.
+   Gris neutres, panneaux plats et bordés, aucune ombre décorative,
+   accent bleu standard réservé à l'outil actif et à l'action
+   principale, rayons 6 / 6 / 4 / 3. La mise en page ne change pas
+   (v0.1.16). */
 
 /* Correctif v0.1.1 (critique) : l'attribut hidden doit toujours masquer,
    même sur un élément doté d'un display explicite par ailleurs
@@ -10,32 +11,32 @@
 [hidden] { display: none !important; }
 
 :root {
-  --bg: #0C0E13;
-  --surface: #151821;
-  --surface-2: #1B1F2B;
-  --verre: rgba(255, 255, 255, 0.06);
-  --verre-survol: rgba(255, 255, 255, 0.09);
-  --verre-appui: rgba(255, 255, 255, 0.04);
-  --verre-panneau: rgba(21, 24, 33, 0.78);
-  --bord: rgba(167, 175, 192, 0.14);
-  --liseret-clair: rgba(255, 255, 255, 0.1);
-  --liseret-sombre: rgba(0, 0, 0, 0.38);
-  --ink: #F3F5FA;
-  --ink-2: #A7AFC0;
-  --ink-3: #6B7386;
-  --accent: #4C6FFF;
-  --accent-clair: #56A8FF;
-  --accent-doux: rgba(76, 111, 255, 0.16);
-  --reussite: #3DDC97;
-  --alerte: #FFB547;
-  --erreur: #FF5C7A;
+  --bg: #F3F3F3;
+  --surface: #FFFFFF;
+  --surface-2: #FAFAFA;
+  --verre: #FFFFFF;
+  --verre-survol: #F0F0F0;
+  --verre-appui: #EAEAEA;
+  --verre-panneau: #F7F7F7;
+  --bord: #DDDDDD;
+  --liseret-clair: transparent;
+  --liseret-sombre: transparent;
+  --ink: #1A1A1A;
+  --ink-2: #575757;
+  --ink-3: #8C8C8C;
+  --accent: #0067C0;
+  --accent-clair: #005BA1;
+  --accent-doux: #E9F1F9;
+  --reussite: #107C10;
+  --alerte: #8A6D00;
+  --erreur: #A4262C;
   --pause: cubic-bezier(0.22, 1, 0.36, 1);
-  --rayon-grand: 20px;
-  --rayon-carte: 14px;
-  --rayon-controle: 10px;
-  --rayon-menue: 6px;
-  --ombre-verre: inset 0 1px 0 var(--liseret-clair), inset 0 -1px 0 var(--liseret-sombre), 0 10px 30px rgba(0, 0, 0, 0.35);
-  --ombre-verre-faible: inset 0 1px 0 var(--liseret-clair), inset 0 -1px 0 var(--liseret-sombre);
+  --rayon-grand: 6px;
+  --rayon-carte: 6px;
+  --rayon-controle: 4px;
+  --rayon-menue: 3px;
+  --ombre-verre: 0 0 0 0 transparent;
+  --ombre-verre-faible: 0 0 0 0 transparent;
 }
 
 * { box-sizing: border-box; }
@@ -58,23 +59,10 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   align-items: center;
   gap: 16px;
   padding: 10px 14px;
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  background: var(--surface-2);
   border-bottom: 1px solid var(--bord);
-  box-shadow: var(--ombre-verre-faible), 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 .marque { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.logo {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--rayon-controle);
-  background: linear-gradient(135deg, var(--accent), #8E7BFF);
-  font-weight: 700;
-  font-size: 12px;
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 8px rgba(76, 111, 255, 0.35);
-}
 .titre { font-weight: 600; letter-spacing: 0.02em; }
 .nom-fichier {
   color: var(--ink-2);
@@ -86,10 +74,6 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
 .pastille-modifie {
   color: var(--alerte);
   font-size: 12px;
-  border: 1px solid rgba(255, 181, 71, 0.4);
-  border-radius: 999px;
-  padding: 1px 8px;
-  background: rgba(255, 181, 71, 0.08);
 }
 .actions-fichier, .affichage { display: flex; align-items: center; gap: 6px; }
 .affichage { margin-left: auto; }
@@ -105,29 +89,25 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   padding: 6px 12px;
   font: inherit;
   cursor: pointer;
-  box-shadow: var(--ombre-verre-faible), 0 2px 8px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
   transition: background 0.18s var(--pause), border-color 0.18s var(--pause), transform 0.12s var(--pause), box-shadow 0.18s var(--pause);
 }
 .btn:hover {
-  background: var(--accent-doux);
-  border-color: rgba(76, 111, 255, 0.45);
-  box-shadow: inset 0 1px 0 var(--liseret-clair), inset 0 -1px 0 var(--liseret-sombre), 0 4px 14px rgba(76, 111, 255, 0.22);
+  background: #F0F0F0;
+  border-color: #C6C6C6;
 }
 .btn:active { transform: translateY(1px) scale(0.98); background: var(--verre-appui); }
 .btn:disabled { opacity: 0.38; cursor: default; transform: none; box-shadow: var(--ombre-verre-faible); }
 .btn.accent {
-  background: linear-gradient(135deg, #5B79FF, var(--accent));
-  border-color: transparent;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
   font-weight: 600;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 18px rgba(76, 111, 255, 0.35);
 }
 .btn.accent:hover {
-  background: linear-gradient(135deg, #6C8BFF, #4C6FFF);
-  border-color: transparent;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 8px 22px rgba(76, 111, 255, 0.45);
+  background: #005FB8;
 }
-.btn.accent:disabled { background: rgba(76, 111, 255, 0.4); }
+.btn.accent:disabled { background: #B4CDE0; }
 .btn.carre { padding: 6px 9px; min-width: 32px; }
 .btn.plein { width: 100%; padding: 9px; font-size: 14px; }
 
@@ -137,7 +117,7 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   align-items: center;
   gap: 4px;
   padding: 6px 14px;
-  background: rgba(12, 14, 19, 0.6);
+  background: var(--surface-2);
   border-bottom: 1px solid var(--bord);
 }
 .outil {
@@ -154,10 +134,11 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   transition: all 0.18s var(--pause);
 }
 .outil .icone { font-size: 14px; width: 20px; text-align: center; }
+.icone svg, .btn svg { vertical-align: -3px; }
 .outil:hover { background: var(--verre-survol); color: var(--ink); box-shadow: var(--ombre-verre-faible); }
 .outil.actif {
   background: var(--accent-doux);
-  border-color: rgba(76, 111, 255, 0.5);
+  border-color: rgba(0, 103, 192, 0.5);
   color: var(--ink);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 var(--liseret-sombre);
 }
@@ -178,16 +159,14 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   inset: 0;
   display: grid;
   place-items: center;
-  background: radial-gradient(1200px 600px at 50% 20%, rgba(76, 111, 255, 0.08), transparent 60%);
+  background: none;
 }
 .accueil-carte {
   max-width: 440px;
   padding: 28px 32px;
   border-radius: var(--rayon-grand);
-  background: var(--verre);
+  background: var(--surface);
   border: 1px solid var(--bord);
-  box-shadow: var(--ombre-verre);
-  backdrop-filter: blur(22px);
   text-align: center;
 }
 .accueil-titre { font-size: 18px; font-weight: 600; margin: 0 0 10px; }
@@ -199,12 +178,12 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   position: absolute;
   inset: 0;
   overflow: auto;
-  background: #07080B;
+  background: #E9E9E9;
 }
 .conteneur-page {
   position: relative;
   margin: 24px auto;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.20), 0 0 0 1px var(--bord);
 }
 .calque-pdf, .calque-annots, .calque-tampon {
   position: absolute;
@@ -231,11 +210,10 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   flex-direction: column;
   gap: 6px;
   padding: 10px;
-  background: rgba(21, 24, 33, 0.92);
+  background: var(--surface);
   border: 1px solid var(--bord);
   border-radius: var(--rayon-carte);
-  box-shadow: var(--ombre-verre), 0 18px 50px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20);
 }
 .editeur-titre {
   margin: 0;
@@ -255,8 +233,8 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
   padding: 8px 10px;
   outline: none;
 }
-.editeur-texte:focus { border-color: rgba(76, 111, 255, 0.55); }
-.editeur-texte.fiche { background: rgba(37, 51, 125, 0.35); color: var(--ink); }
+.editeur-texte:focus { border-color: rgba(0, 103, 192, 0.55); }
+.editeur-texte.fiche { background: #EAF2FB; color: var(--ink); }
 .editeur-actions {
   display: flex;
   justify-content: flex-end;
@@ -313,8 +291,6 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   padding: 14px 16px 20px;
   background: var(--verre-panneau);
   border-left: 1px solid var(--bord);
-  box-shadow: inset 1px 0 0 var(--liseret-clair);
-  backdrop-filter: blur(18px);
 }
 .panneau-equation h2 { font-size: 16px; margin: 4px 0 10px; }
 .panneau-equation h3 {
@@ -330,9 +306,8 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   gap: 4px;
   padding: 3px;
   border-radius: var(--rayon-controle);
-  background: rgba(7, 8, 11, 0.6);
+  background: #F0F0F0;
   border: 1px solid var(--bord);
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
 }
 .bascule {
   border: none;
@@ -348,26 +323,26 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   background: var(--accent-doux);
   color: var(--ink);
   font-weight: 600;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 2px 8px rgba(76, 111, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 2px 8px rgba(0, 103, 192, 0.3);
 }
 .champ-libelle { display: block; margin: 12px 0 4px; color: var(--ink-3); font-size: 12px; }
 .eq-saisie, .saisie-texte {
   width: 100%;
   resize: vertical;
-  background: rgba(7, 8, 11, 0.72);
+  background: #FFFFFF;
   border: 1px solid var(--bord);
   border-radius: var(--rayon-controle);
   color: var(--ink);
   font-family: "Cambria Math", Georgia, serif;
   font-size: 15px;
   padding: 8px 10px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
   transition: border-color 0.18s var(--pause), box-shadow 0.18s var(--pause);
 }
 .eq-saisie:focus, .saisie-texte:focus {
   outline: none;
-  border-color: rgba(76, 111, 255, 0.55);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 3px var(--accent-doux);
+  border-color: rgba(0, 103, 192, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 3px var(--accent-doux);
 }
 .apercu-cadre {
   margin-top: 10px;
@@ -396,7 +371,7 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   box-shadow: var(--ombre-verre-faible);
   transition: all 0.15s var(--pause);
 }
-.puce:hover { border-color: rgba(76, 111, 255, 0.5); background: var(--accent-doux); color: var(--ink); }
+.puce:hover { background: #F0F0F0; }
 .groupe-title { font-size: 12px; color: var(--ink-2); margin: 8px 0 4px; }
 .grille-struct { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .case-struct {
@@ -419,7 +394,7 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   text-align: center;
   margin-bottom: 2px;
 }
-.case-struct:hover { border-color: rgba(76, 111, 255, 0.5); background: var(--accent-doux); }
+.case-struct:hover { background: #F0F0F0; }
 .grille-symboles { display: flex; flex-wrap: wrap; gap: 4px; }
 .symb {
   width: 30px;
@@ -435,14 +410,13 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   cursor: pointer;
   box-shadow: var(--ombre-verre-faible);
 }
-.symb:hover { border-color: rgba(76, 111, 255, 0.5); background: var(--accent-doux); }
+.symb:hover { background: #F0F0F0; }
 
 /* ————— Fenêtre de saisie : grande carte de verre modale ————— */
 .saisie-fond {
   position: fixed;
   inset: 0;
-  background: rgba(5, 6, 8, 0.55);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.30);
   display: grid;
   place-items: center;
   z-index: 20;
@@ -451,10 +425,9 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   width: 380px;
   padding: 18px;
   border-radius: var(--rayon-grand);
-  background: var(--verre-panneau);
+  background: var(--surface);
   border: 1px solid var(--bord);
-  box-shadow: var(--ombre-verre), 0 24px 70px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(22px);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.22);
 }
 .saisie-carte h3 { margin: 0 0 10px; font-size: 15px; }
 .saisie-texte { font-family: inherit; }
@@ -473,19 +446,19 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
 .guide-champ .lib { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
 .guide-champ input {
   width: 110px;
-  background: rgba(7, 8, 11, 0.72);
+  background: #FFFFFF;
   border: 1px solid var(--bord);
   border-radius: var(--rayon-controle);
   color: var(--ink);
   font-family: "Cambria Math", Georgia, serif;
   font-size: 15px;
   padding: 6px 9px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 .guide-champ input:focus, .guide-champ input:focus-visible {
   outline: none;
-  border-color: rgba(76, 111, 255, 0.55);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 3px var(--accent-doux);
+  border-color: rgba(0, 103, 192, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 3px var(--accent-doux);
 }
 .guide-champ input.vaste { width: 150px; }
 .guide-champ input.etroit { width: 52px; text-align: center; }
@@ -509,9 +482,8 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   padding: 5px 14px;
   font-size: 12px;
   color: var(--ink-2);
-  background: rgba(7, 8, 11, 0.7);
+  background: var(--surface-2);
   border-top: 1px solid var(--bord);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .etat .faible { color: var(--ink-3); }
 
@@ -523,13 +495,13 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   margin-top: 6px;
 }
 .editeur-barre .btn { padding: 3px 10px; font-size: 12px; }
-.editeur-rac { font-size: 11px; color: var(--faible, #9aa3b5); }
+.editeur-rac { font-size: 11px; color: var(--faible, #8C8C8C); }
 .editeur-apercu {
   width: 100%;
   height: auto;
   margin-top: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(122, 162, 224, 0.25);
+  background: var(--surface);
+  border: 1px solid var(--bord);
   border-radius: 4px;
 }
 
@@ -560,7 +532,7 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
 }
 /* Le pdf.js officiel colore la sélection en bleu plein ; ici, un voile
    accent léger, cohérent avec le surlignage posé ensuite. */
-.calque-texte ::selection { background: rgba(84, 160, 255, 0.35); }
+.calque-texte ::selection { background: rgba(0, 103, 192, 0.15); }
 .conteneur-page.outil-texte .calque-tampon { pointer-events: none; }
 
 /* Mini-barre flottante Surligner / Copier, au-dessus de la sélection. */
@@ -570,10 +542,10 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   display: flex;
   gap: 6px;
   padding: 6px;
-  background: rgba(28, 32, 40, 0.96);
-  border: 1px solid var(--bord, #2c3340);
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  background: var(--surface);
+  border: 1px solid var(--bord, #DDDDDD);
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
 .barre-selection[hidden] { display: none; }
 
@@ -585,8 +557,6 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
   padding: 12px 10px 16px;
   background: var(--verre-panneau);
   border-right: 1px solid var(--bord);
-  box-shadow: inset -1px 0 0 var(--liseret-clair);
-  backdrop-filter: blur(18px);
 }
 .panneau-pages h2 { font-size: 16px; margin: 4px 0 10px; }
 .vignettes { display: flex; flex-direction: column; gap: 12px; }
@@ -601,16 +571,16 @@ body.page-tenue .calque-tampon { cursor: grabbing; }
 .vignette figcaption {
   text-align: center;
   font-size: 11px;
-  color: #9aa3b2;
+  color: #8C8C8C;
   margin-top: 4px;
 }
-.vignette:hover { border-color: rgba(76, 111, 255, 0.5); }
-.vignette.actif { border-color: #4C6FFF; }
+.vignette:hover { border-color: #C6C6C6; }
+.vignette.actif { border-color: var(--accent); }
 
 /* v0.1.16 : le bouton Pages en position active (colonne de vignettes
    visible), meme style actif que les boutons d'outil. */
 .btn.actif {
   background: var(--accent-doux);
-  border-color: rgba(76, 111, 255, 0.5);
+  border-color: rgba(0, 103, 192, 0.5);
   color: var(--ink);
 }

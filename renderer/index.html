@@ -10,17 +10,16 @@
   <!-- Barre supérieure : fichier, enregistrement, zoom, pages -->
   <header class="barre">
     <div class="marque">
-      <span class="logo">Ap</span>
       <span class="titre">Atelier PDF</span>
       <span id="nom-fichier" class="nom-fichier">Aucun document ouvert</span>
       <span id="pastille-modifie" class="pastille-modifie" hidden>modifié</span>
     </div>
     <div class="actions-fichier">
       <button id="btn-ouvrir" class="btn accent">Ouvrir</button>
-      <button id="btn-annuler" class="btn" disabled title="Annuler le dernier geste (Ctrl+Z)">Annuler</button>
-      <button id="btn-retablir" class="btn" disabled title="Rétablir (Ctrl+Maj+Z)">Rétablir</button>
-      <button id="btn-enregistrer" class="btn" disabled>Enregistrer</button>
-      <button id="btn-copie" class="btn" disabled>Copie horodatée</button>
+      <button id="btn-annuler" class="btn" disabled title="Annuler le dernier geste (Ctrl+Z)" aria-label="Annuler"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5h7a3 3 0 1 1 0 6H7"/><path d="M5.5 4 3 6.5 5.5 9"/></svg></button>
+      <button id="btn-retablir" class="btn" disabled title="Rétablir (Ctrl+Maj+Z)" aria-label="Rétablir"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 6.5H6a3 3 0 1 0 0 6h3"/><path d="M10.5 4 13 6.5 10.5 9"/></svg></button>
+      <button id="btn-enregistrer" class="btn" disabled title="Enregistrer (Ctrl+S)" aria-label="Enregistrer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v7M5.5 7 8 9.5 10.5 7"/><path d="M3 11.5h10"/></svg></button>
+      <button id="btn-copie" class="btn" disabled title="Enregistrer une copie horodatée (Ctrl+Maj+S)">Copie</button>
     </div>
     <div class="affichage">
       <!-- v0.1.15 : vue d'ensemble, colonne de vignettes des pages -->
@@ -40,28 +39,28 @@
   <!-- Barre d'outils : Main, les cinq annotations + l'équation -->
   <nav class="outils">
     <button data-outil="main" class="outil" title="Main : faire défiler la page à la main">
-      <span class="icone">✋</span><span class="etiquette">Main</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v11M2.5 8h11M8 2.5 6.3 4.2M8 2.5l1.7 1.7M8 13.5l-1.7-1.7M8 13.5l1.7-1.7M2.5 8l1.7-1.7M2.5 8l1.7 1.7M13.5 8l-1.7-1.7M13.5 8l-1.7 1.7"/></svg></span><span class="etiquette">Main</span>
     </button>
     <button data-outil="aucun" class="outil actif" title="Sélection : attraper, déplacer ou redimensionner une annotation posée (Suppr pour retirer)">
-      <span class="icone">✥</span><span class="etiquette">Sélection</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5v9.2l2.3-2.1 1.6 3.5 1.7-.8-1.6-3.4h3.1z"/></svg></span><span class="etiquette">Sélection</span>
     </button>
     <button data-outil="texte" class="outil" title="Texte : sélectionner le vrai texte du document, pour le surligner ou le copier">
-      <span class="icone">I</span><span class="etiquette">Texte</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 3h7M4.5 13h7M8 3v10"/></svg></span><span class="etiquette">Texte</span>
     </button>
     <button data-outil="surligner" class="outil" title="Surligner : tracer un rectangle de surlignage (pages scannées sans texte)">
-      <span class="icone">HB</span><span class="etiquette">Surligner</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.4l.9-2.7L11 3.6l2 2-6.1 6.1zM3 14h10"/></svg></span><span class="etiquette">Surligner</span>
     </button>
     <button data-outil="encadrer" class="outil" title="Encadrer : tracer un cadre">
-      <span class="icone">▢</span><span class="etiquette">Encadrer</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="10" height="10" stroke-dasharray="3 2.2"/></svg></span><span class="etiquette">Encadrer</span>
     </button>
     <button data-outil="encre" class="outil" title="Encre : écrire à main levée">
-      <span class="icone">✎</span><span class="etiquette">Encre</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5l.7-2.6L10.5 3.6l2 2-6.3 6.2zM3.5 12.5l2.7-.6"/></svg></span><span class="etiquette">Encre</span>
     </button>
     <!-- v0.1.14 : la machine à écrire demande par Arthur, fusion des anciens
          outils Note et Fiche : un clic ecrit a cet endroit, un glissement
          trace une zone a la mesure ; les formules s'y insèrent -->
     <button data-outil="ecrire" class="outil" title="Écrire (machine à écrire) : cliquer pour écrire à cet endroit, ou glisser pour tracer la zone ; les formules s'y insèrent">
-      <span class="icone">⌨</span><span class="etiquette">Écrire</span>
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="11" height="7" rx="1"/><path d="M5.4 9.8h5.2M6 6.8h.01M8 6.8h.01M10 6.8h.01"/></svg></span><span class="etiquette">Écrire</span>
     </button>
     <button data-outil="equation" class="outil" title="Équation : cliquer le point d'insertion, composer la formule, puis Insérer dans la page">
       <span class="icone">∑</span><span class="etiquette">Équation</span>
@@ -136,7 +135,7 @@
         <p id="eq-erreur" class="eq-erreur" hidden></p>
       </div>
 
-      <h3>Fenêtres guidées (comme Dmaths)</h3>
+      <h3>Fenêtres guidées</h3>
       <div id="eq-guides" class="grille-petite"></div>
 
       <h3>Préréglages</h3>

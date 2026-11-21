@@ -182,8 +182,8 @@ const els = {
 function message(texte, ton = 'info') {
   const p = $('#message-etat');
   p.textContent = texte;
-  p.style.color = ton === 'erreur' ? '#FF5C7A'
-    : ton === 'reussite' ? '#3DDC97' : '';
+  p.style.color = ton === 'erreur' ? '#A4262C'
+    : ton === 'reussite' ? '#107C10' : '';
 }
 
 function majResume(resume) {
@@ -645,7 +645,7 @@ function dessinerFicheMixte(ctx, a, x, y, w, h) {
     // Ops pas encore chargées (ou formule illisible) : la source reste
     // lisible en attendant, et le calcul se fait au fond.
     ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = 'rgba(167, 175, 192, 0.35)';
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.55)';
     ctx.strokeRect(x, y, w, h);
     ctx.setLineDash([]);
     ctx.font = `${11 * etat.zoom}px sans-serif`;
@@ -896,7 +896,7 @@ async function dessinerAnnots() {
           // Ops pas encore chargées (ou formule illisible) : montrons au
           // moins la source, et demandons le tracé au fond.
           ctx.setLineDash([3, 3]);
-          ctx.strokeStyle = 'rgba(167, 175, 192, 0.35)';
+          ctx.strokeStyle = 'rgba(128, 128, 128, 0.55)';
           ctx.strokeRect(x, y, w, h);
           ctx.setLineDash([]);
           const latex = extraireLatexEquation(a.contents);
@@ -955,7 +955,7 @@ async function dessinerAnnots() {
     // Annotation sans /AP (autrui) : rectangle pointillé gris, lecture seule.
     if (a.hasAP === false) {
       ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = 'rgba(107, 115, 134, 0.6)';
+      ctx.strokeStyle = 'rgba(120, 120, 120, 0.6)';
       ctx.strokeRect(x, y, w, h);
     }
     // Sélection : liseret accentué.
@@ -963,14 +963,14 @@ async function dessinerAnnots() {
       && etat.selection.ref && a.ref
       && etat.selection.ref.objectNumber === a.ref.objectNumber) {
       ctx.setLineDash([]);
-      ctx.strokeStyle = '#4C6FFF';
+      ctx.strokeStyle = '#0067C0';
       ctx.lineWidth = 2;
       ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
       // v0.1.12 : poignées de redimensionnement (croquis validé) — petits
       // carrés blancs liserés d'accent sur le pourtour du rectangle.
       if (redimensionnable(a)) {
         ctx.fillStyle = '#fff';
-        ctx.strokeStyle = '#4C6FFF';
+        ctx.strokeStyle = '#0067C0';
         ctx.lineWidth = 1.25;
         for (const p of poigneesRect(a.rect)) {
           const e = pdfVersEcran(p);
@@ -1287,7 +1287,7 @@ function ecouterSouris() {
       const r0 = pdfVersEcran({ x: rect[0], y: rect[1] });
       const r1 = pdfVersEcran({ x: rect[2], y: rect[3] });
       ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = '#4C6FFF';
+      ctx.strokeStyle = '#0067C0';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(Math.min(r0.x, r1.x), Math.min(r0.y, r1.y),
         Math.abs(r1.x - r0.x), Math.abs(r1.y - r0.y));
@@ -1302,8 +1302,8 @@ function ecouterSouris() {
       const rectPdf = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
       const r0 = pdfVersEcran({ x: rectPdf[0], y: rectPdf[1] });
       const r1 = pdfVersEcran({ x: rectPdf[2], y: rectPdf[3] });
-      ctx.fillStyle = 'rgba(76, 111, 255, 0.12)';
-      ctx.strokeStyle = 'rgba(76, 111, 255, 0.8)';
+      ctx.fillStyle = 'rgba(0, 103, 192, 0.12)';
+      ctx.strokeStyle = 'rgba(0, 103, 192, 0.8)';
       ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 4]);
       ctx.fillRect(Math.min(r0.x, r1.x), Math.min(r0.y, r1.y),
@@ -1313,7 +1313,7 @@ function ecouterSouris() {
       ctx.setLineDash([]);
     } else if (geste.outil === 'encre') {
       geste.points.push(point);
-      ctx.strokeStyle = '#56A8FF';
+      ctx.strokeStyle = '#0067C0';
       ctx.lineWidth = 2;
       ctx.beginPath();
       geste.points.forEach((p, i) => {
@@ -1322,8 +1322,8 @@ function ecouterSouris() {
       });
       ctx.stroke();
     } else {
-      ctx.fillStyle = geste.outil === 'surligner' ? 'rgba(232, 179, 75, 0.35)' : 'rgba(76, 111, 255, 0.15)';
-      ctx.strokeStyle = 'rgba(76, 111, 255, 0.8)';
+      ctx.fillStyle = geste.outil === 'surligner' ? 'rgba(232, 179, 75, 0.35)' : 'rgba(0, 103, 192, 0.15)';
+      ctx.strokeStyle = 'rgba(0, 103, 192, 0.8)';
       const x = Math.min(a.x, b.x); const y = Math.min(a.y, b.y);
       ctx.fillRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
       if (geste.outil !== 'surligner') ctx.strokeRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
@@ -1742,8 +1742,8 @@ function dessinerOpsCanvas(canvas, apercu) {
   );
   const px = (x) => marge + x * k;
   const py = (y) => canvas.height / 2 - ((y - apercu.heightPt / 2) * k);
-  ctx.fillStyle = '#F3F5FA';
-  ctx.strokeStyle = '#F3F5FA';
+  ctx.fillStyle = '#1A1A1A';
+  ctx.strokeStyle = '#1A1A1A';
   let p = new Path2D();
   const mots = ops.split(/\s+/).filter(Boolean);
   let i = 0;
