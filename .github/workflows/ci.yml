@@ -46,6 +46,24 @@ jobs:
       - name: Contrôle des licences des dépendances
         run: node scripts/check-licenses.js
 
+      # Résumé public : le rapport du prototype OCR est affiché sur la page
+      # du run (GITHUB_STEP_SUMMARY), lisible sans session GitHub — les
+      # journaux bruts en exigent une.
+      - name: Rapport public du prototype OCR
+        if: github.ref == 'refs/heads/vibe/proto-ocr'
+        shell: bash
+        run: |
+          rapport=sortir/rapport-ocr.json
+          if [ -f "$rapport" ]; then
+            {
+              echo "### Rapport du prototype OCR"
+              echo '```json'
+              cat "$rapport"
+              echo ''
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Prototype OCR (branche vibe/proto-ocr) : l'échantillon produit par
       # le test (sortir/scan-ocr.pdf) est publié comme artefact de la
       # vérification, téléchargeable depuis la page du run.
