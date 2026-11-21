@@ -1,0 +1,123 @@
+// test/ocr.test.js — v0.1.22 : tests PURS de engine/ocr.js (aucune dépendance,
+// exécutables partout). La reconnaissance réelle (tesseract) est couverte par
+// test/tesseract.test.js, exécuté en CI seulement.
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+
+const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex } = require('../engine/ocr.js');
+
+// ————— borner —————
+test('borner borne un nombre dans l’intervalle', () => {
+  assert.strictEqual(borner(-1, 0, 1), 0);
+  assert.strictEqual(borner(2, 0, 1), 1);
+  assert.strictEqual(borner(0.5, 0, 1), 0.5);
+});
+
+test('borner ramène une valeur non finie à la borne basse', () => {
+  assert.strictEqual(borner(NaN, 0, 1), 0);
+  assert.strictEqual(borner(undefined, 0, 1), 0);
+});
+
+// ————— nettoyerCle —————
+test('nettoyerCle débarrasse les espaces et refuse les non-chaînes', () => {
+  assert.strictEqual(nettoyerCle('  abc123  '), 'abc123');
+  assert.strictEqual(nettoyerCle('   '), '');
+  assert.strictEqual(nettoyerCle(42), '');
+  assert.strictEqual(nettoyerCle(null), '');
+  assert.strictEqual(nettoyerCle(undefined), '');
+});
+
+// ————— motsDepuisBlocs —————
+// Réduction d'une sortie tesseract « blocks » à deux mots « SECOND »
+// (gauche) et « DEGRE » (droite) sur une image 100×50.
+function blocsBidons(bboxA, bboxB) {
+  return [{
+    paragraphs: [{
+      lines: [{
+        words: [
+          { text: 'SECOND', bbox: bboxA },
+          { text: 'DEGRE', bbox: bboxB },
+        ],
+      }],
+    }],
+  }];
+}
+
+test('motsDepuisBlocs convertit les boîtes en fractions de page', () => {
+  const mots = motsDepuisBlocs(blocsBidons({ x0: 10, y0: 5, x1: 40, y1: 15 }, { x0: 50, y0: 5, x1: 90, y1: 15 }), 100, 50);
+  assert.strictEqual(mots.length, 2);
+  assert.deepStrictEqual(mots[0], { t: 'SECOND', x: 0.1, y: 0.1, w: 0.3, h: 0.2 });
+  assert.deepStrictEqual(mots[1], { t: 'DEGRE', x: 0.5, y: 0.1, w: 0.4, h: 0.2 });
+});
+
+test('motsDepuisBlocs borne les débordements et ignore les mots vides', () => {
+  const mots = motsDepuisBlocs(blocsBidons({ x0: -3, y0: 48, x1: 120, y1: 60 }, { x0: 0, y0: 0, x1: 10, y1: 10 }), 100, 50);
+  const par = (t) => mots.find((m) => m.t === t);
+  // Premier mot : tout déborde → x, y et w bornés (la hauteur reste
+  // honnête, 0.24 ; la couche de texte la découpe à la page).
+  assert.deepStrictEqual(par('SECOND'), { t: 'SECOND', x: 0, y: 0.96, w: 1, h: 0.24 });
+  assert.deepStrictEqual(par('DEGRE'), { t: 'DEGRE', x: 0, y: 0, w: 0.1, h: 0.2 });
+});
+
+test('motsDepuisBlocs survit à une entrée vide ou tordue', () => {
+  assert.deepStrictEqual(motsDepuisBlocs(null, 100, 50), []);
+  assert.deepStrictEqual(motsDepuisBlocs([], 100, 50), []);
+  const mots = motsDepuisBlocs([
+    { paragraphs: null },
+    { paragraphs: [{ lines: [{ words: [{ text: '  ', bbox: { x0: 0, y0: 0, x1: 10, y1: 10 } }] }] }] },
+    { paragraphs: [{ lines: [{ words: [{ text: 'OK', bbox: null }] }] }] },
+  ], 100, 50);
+  assert.strictEqual(mots.length, 0); // texte blanc et boîte absente : rien
+  // Dimensions invalides : pas de division par zéro.
+  const motsDeux = motsDepuisBlocs(blocsBidons({ x0: 0, y0: 0, x1: 50, y1: 25 }, { x0: 60, y0: 0, x1: 90, y1: 25 }), 0, 0);
+  assert.strictEqual(motsDeux.length, 2);
+});
+
+test('motsDepuisBlocs trie en ordre de lecture, y puis x', () => {
+  const blocs = [{
+    paragraphs: [{
+      lines: [
+        { words: [{ text: 'DEGRE', bbox: { x0: 50, y0: 10, x1: 90, y1: 15 } }] },
+        { words: [{ text: 'SECOND', bbox: { x0: 10, y0: 10, x1: 40, y1: 15 } }] },
+      ],
+    }],
+  }];
+  const mots = motsDepuisBlocs(blocs, 100, 50);
+  assert.strictEqual(mots[0].t, 'SECOND');
+  assert.strictEqual(mots[1].t, 'DEGRE');
+});
+
+// ————— extractionLatex —————
+test('extractionLatex cueille un bloc $$…$$ sans les dollars', () => {
+  const md = 'Texte avant\n\n$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$\n\nTexte après';
+  assert.strictEqual(extractionLatex(md), 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}');
+});
+
+test('extractionLatex cueille les $…$ inline appariés', () => {
+  const md = 'Le discriminant $\\Delta = b^2 - 4ac$ est positif, donc $x_1 \\ne x_2$.';
+  assert.strictEqual(extractionLatex(md), '\\Delta = b^2 - 4ac\nx_1 \\ne x_2');
+});
+
+test('extractionLatex mêle $$…$$ et $…$ dans l’ordre du texte, puis de la cueillette', () => {
+  const md = 'Si $a > 0$ alors\n\n$$f(x) = ax^2 + bx + c$$\n\nde maximum atteint. Cout $5 \\euro$.';
+  const sortie = extractionLatex(md);
+  assert.ok(sortie.includes('a > 0'));
+  assert.ok(sortie.includes('f(x) = ax^2 + bx + c'));
+  assert.ok(sortie.includes('5 \\euro'));
+  assert.ok(!sortie.includes('$')); // aucune godille ne doit survivre
+});
+
+test('extractionLatex ignore les dollars non appariés et les formules vides', () => {
+  assert.strictEqual(extractionLatex('Il coûte 5\\$ et $ $ rien.'), null);
+  assert.strictEqual(extractionLatex('Pas de formule ici.'), null);
+  assert.strictEqual(extractionLatex('$$$$'), null);
+  assert.strictEqual(extractionLatex(42), null);
+});
+
+test('extractionLatex ne recolle pas les restes des blocs $$ déjà cueillis', () => {
+  const md = '$$x^2$$ et $y^2$';
+  const sortie = extractionLatex(md);
+  assert.strictEqual(sortie, 'x^2\ny^2');
+});
