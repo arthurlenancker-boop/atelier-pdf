@@ -132,9 +132,7 @@ test('prototype OCR : scan A4 300 dpi rendu interrogeable, tout local', async ()
   }));
   const octetsSource = await docSource.save();
 
-  // Position attendue du mot repère « habitants » (3e phrase).
-  const prefixe = "La population française atteint quarante millions d'";
-  const xAttendu = X_TEXTE + policeTexte.widthOfTextAtSize(prefixe, TAILLE_TEXTE);
+  // Position attendue de la ligne repère (3e phrase).
   const yAttendu = Y_PHRASE0 - 2 * ECART_Y;
 
   // --- 2. Rasterisation 300 dpi puis « scan » (PDF image seule). ---
@@ -174,7 +172,7 @@ test('prototype OCR : scan A4 300 dpi rendu interrogeable, tout local', async ()
   // --- 4. Couche invisible sur le scan. ---
   const policeHelv = await docScan.embedFont(StandardFonts.Helvetica);
   const t1 = performance.now();
-  const { nbMots } = poserCoucheInvisible(pageScan, policeHelv, partieInt.lignes, { largeurPx: lPx, hauteurPx: hPx });
+  const { nbMots, cle } = poserCoucheInvisible(pageScan, policeHelv, partieInt.lignes, { largeurPx: lPx, hauteurPx: hPx });
   rapport.etapes.couche = (performance.now() - t1) / 1000;
   assert.ok(nbMots >= 20, `≥20 mots posés dans la couche (reçu ${nbMots})`);
   const octetsFinaux = await docScan.save();
@@ -183,16 +181,26 @@ test('prototype OCR : scan A4 300 dpi rendu interrogeable, tout local', async ()
   // --- 5. Relecture : les mots du scan sont désormais extractibles. ---
   const vueApres = await ouvrirPdf(octetsFinaux);
   const itemsApres = await vueApres.page.getTextContent();
-  const motsApres = itemsApres.items.map((i) => i.str);
-  const clesApres = MOTS_CLES.filter((m) => motsApres.some((s) => norm(s) === m)).length;
+  // pdf.js fusionne en un item les mots posés sur une même ligne : les
+  // vérifications portent donc sur le TEXTE ASSEMBLÉ (espaces conservés =
+  // mots posés à des positions distinctes) et sur la position de l'item.
+  const texteApres = norm(itemsApres.items.map((i) => i.str).join(' '));
+  const clesApres = MOTS_CLES.filter((m) => new RegExp(`\\b${m}\\b`).test(texteApres)).length;
+  NOTICE(`couche : ${nbMots} mots posés (cle ${JSON.stringify(cle)}), extraction ${itemsApres.items.length} items `
+    + `dont mot clé ${clesApres}/${trouveres} ; échantillon ${JSON.stringify(itemsApres.items.slice(0, 4).map((i) => i.str)).slice(0, 220)}`);
   assert.strictEqual(clesApres, trouveres,
-    `les ${trouveres} mots clés reconnus doivent être extractibles après pose (reçu ${clesApres})`);
-  const itemRepere = itemsApres.items.find((i) => norm(i.str) === 'habitants');
-  assert.ok(itemRepere, `le mot repère « habitants » doit figurer dans le texte extrait : ${JSON.stringify(motsApres.slice(0, 60))}`);
-  assert.ok(Math.abs(itemRepere.transform[4] - xAttendu) <= 25,
-    `position x de « habitants » : attendu ${xAttendu.toFixed(1)}±25, reçu ${itemRepere.transform[4].toFixed(1)}`);
+    `les ${trouveres} mots clés reconnus doivent être extraits après pose (reçu ${clesApres}). Texte extrait : « ${texteApres.slice(0, 300)} »`);
+  const itemRepere = itemsApres.items.find((i) => new RegExp('\\bhabitants\\b').test(norm(i.str)));
+  assert.ok(itemRepere, `le mot repère « habitants » doit figurer dans le texte extrait : « ${texteApres.slice(0, 300)} »`);
+  // L'item de ligne part du premier mot (« La ») : attendu à X_TEXTE, ligne 3.
+  assert.ok(Math.abs(itemRepere.transform[4] - X_TEXTE) <= 25,
+    `position x de la ligne repère : attendu ${X_TEXTE}±25, reçu ${itemRepere.transform[4].toFixed(1)}`);
   assert.ok(Math.abs(itemRepere.transform[5] - yAttendu) <= 20,
-    `position y de « habitants » : attendu ${yAttendu}±20, reçu ${itemRepere.transform[5].toFixed(1)}`);
+    `position y de la ligne repère : attendu ${yAttendu}±20, reçu ${itemRepere.transform[5].toFixed(1)}`);
+  // Preuve d'espacement mot à mot : pdf.js n'insère des espaces que si les
+  // mots posés sont réellement écartés sur la ligne.
+  assert.ok(/ population francaise /.test(texteApres),
+    `les mots doivent être posés écartés (« population française » espacé attendu) : « ${texteApres.slice(0, 300)} »`);
 
   // Invisibilité : le raster (1,5x) doit être IDENTIQUE avant/après couche.
   const pngApres = Buffer.from((await rendrePng(vueApres, 1.5)).png);
