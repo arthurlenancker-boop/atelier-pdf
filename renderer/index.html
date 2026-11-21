@@ -128,6 +128,11 @@
       <label class="champ-libelle" id="eq-libelle">LaTeX</label>
       <textarea id="eq-saisie" class="eq-saisie" rows="3" spellcheck="false"
         placeholder="Ex. : x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}"></textarea>
+      <!-- v0.1.24 : zone d'équation structurée MathLive (édition en place,
+           geste 2 de la démo validée). Le champ LaTeX ci-dessus subsiste :
+           c'est la saisie linéaire (UnicodeMath, Espace monte la formule)
+           et le repli complet si le module ne charge pas. -->
+      <math-field id="eq-mathfield" class="eq-mathfield" hidden></math-field>
 
       <div class="apercu-cadre">
         <canvas id="eq-apercu" class="eq-apercu" width="320" height="90"></canvas>

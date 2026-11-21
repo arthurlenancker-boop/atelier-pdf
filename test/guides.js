@@ -121,6 +121,12 @@ test('matrice : composition et bornes des dimensions (v0.1.9)', () => {
   // Dimensions absentes : 2 par défaut ; hors bornes : ramenées dans [1 ; 3].
   assert.strictEqual(composerMatrice({}).dims.lignes, 2);
   assert.strictEqual(composerMatrice({ lignes: '9', colonnes: '0' }).dims.colonnes, 1);
+  // v0.1.24 : matrices étendues, jusqu'à 6 lignes et colonnes (parité
+  // OneNote du ruban) ; au-delà, ramenées dans [1 ; 6].
+  const grande = composerMatrice({ lignes: '4', colonnes: '2', c11: 'a', c12: 'b', c41: 'c', c42: 'd' });
+  assert.strictEqual(ok(grande), '\\begin{pmatrix}a & b \\\\  &  \\\\  &  \\\\ c & d\\end{pmatrix}');
+  assert.strictEqual(grande.dims.lignes, 4);
+  assert.strictEqual(composerMatrice({ lignes: '9' }).dims.lignes, 6);
   // Gabarit déclaratif branché sur la même fonction.
   assert.strictEqual(ok(GUIDES.matrice.composer({ lignes: '1', colonnes: '1', c11: '7' })),
     '\\begin{pmatrix}7\\end{pmatrix}');

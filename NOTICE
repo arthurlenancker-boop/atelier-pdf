@@ -14,6 +14,11 @@ Il repose sur les composants suivants, dont les licences s'appliquent :
   Reconnaissance locale des pages scannées (cœur WASM embarqué).
 - tessdata_fast fra.traineddata — © tessdata contributors — licence Apache-2.0.
   Modèle de langue français de la reconnaissance (dossier ocr/).
+- MathLive 0.102.0 — © Arnold Rochat et contributeurs — licence MIT.
+  Zone d'édition des équations structurée (montée à la frappe et correction
+  en place, v0.1.24) ; le rendu final du PDF reste MathJax.
+  Polices KaTeX (dossier dist/fonts du paquet) — © KaTeX contributors —
+  licence SIL OFL 1.1.
 - RapidLaTeXOCR (serveur-ocr/, script Python FACULTATIF, non embarqué dans
   l'application Windows) — © RapidAI / SWHL, dérivé de LaTeX-OCR
   (© Lukas Blecher, licence MIT) — licence MIT.

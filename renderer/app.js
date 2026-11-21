@@ -9,6 +9,7 @@ import '../engine/latex.js'; // expose globalThis.AtelierLatex (v0.1.10)
 import '../engine/texte.js'; // expose globalThis.AtelierTexte (v0.1.11)
 import '../engine/geom.js'; // expose globalThis.AtelierGeom (v0.1.12)
 import '../engine/ocr.js'; // expose globalThis.AtelierOcr (v0.1.22)
+import '../engine/unicodemath.js'; // expose globalThis.AtelierUniMath (v0.1.24)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
 const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur } = globalThis.AtelierOcr;
@@ -23,6 +24,78 @@ async function chargerPdfjs() {
   pdfjsLib = await import('app://local/libs/pdfjs-dist/build/pdf.min.mjs');
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'app://local/libs/pdfjs-dist/build/pdf.worker.min.mjs';
+}
+
+/* v0.1.24 : MathLive, la zone d'équation structurée (édition en place,
+   validée sur la démo « demo-equation-gestes »). Chargement DYNAMIQUE
+   obligatoire (leçon v0.1.2/v0.1.4 : un import statique raté tue tout le
+   module sans un symptôme) : en cas d'échec, le champ LaTeX de toujours
+   (textarea) prend le relais et l'application reste entièrement usable.
+   Le rendu final du PDF, lui, reste le pipeline MathJax existant, inchangé :
+   l'édition et le rendu sont deux moteurs distincts. */
+let mathlive = null;         // module MathLive chargé ({ MathfieldElement })
+let erreurMathlive = null;   // dernier message d'échec (diagnostics)
+
+function champMath() { return $('#eq-mathfield'); }
+
+async function chargerMathlive() {
+  if (mathlive || erreurMathlive) return;
+  try {
+    const mod = await import('app://local/libs/mathlive/dist/mathlive.min.mjs');
+    try { mod.MathfieldElement.fontsDirectory = 'app://local/libs/mathlive/dist/fonts/'; } catch (e) { /* réglage absent */ }
+    try { mod.MathfieldElement.soundsDirectory = null; } catch (e) { /* pas de sons */ }
+    mathlive = mod;
+    installerMathfield();
+  } catch (err) {
+    erreurMathlive = (err && err.message) ? err.message : String(err);
+    message('Zone d\u2019équation structurée indisponible : ' + erreurMathlive, 'erreur');
+  }
+}
+
+/** Branche la zone structurée une fois le module chargé. */
+function installerMathfield() {
+  const mf = champMath();
+  // Le champ peut déjà contenir du LaTeX saisi avant le chargement.
+  if (!mf.value) mf.value = $('#eq-saisie').value;
+  mf.addEventListener('input', rafraichirApercu);
+  majVisibiliteChamps();
+  if (etat.eqMode === 'pro') {
+    $('#eq-libelle').textContent = 'Zone d\u2019équation, corrigez sur place';
+    mf.focus();
+  }
+  rafraichirApercu();
+}
+
+/** Lequel des deux champs est visible : zone structurée en Professionnel
+    (si MathLive est là), champ de toujours sinon et en Linéaire. */
+function majVisibiliteChamps() {
+  const struct = Boolean(mathlive) && etat.eqMode === 'pro';
+  $('#eq-saisie').hidden = struct;
+  champMath().hidden = !struct;
+}
+
+/** Contenu courant du champ d'équation ACTIF (LaTeX brut, non transcodé). */
+function lireChampEquation() {
+  if (mathlive && etat.eqMode === 'pro') {
+    try { return champMath().getValue('latex'); } catch (e) { return ''; }
+  }
+  return $('#eq-saisie').value;
+}
+
+/** Remplace le contenu du champ d'équation actif (LaTeX brut). */
+function poserChampEquation(latex) {
+  const texte = latex ?? '';
+  if (mathlive && etat.eqMode === 'pro') {
+    try { champMath().value = texte; } catch (e) { $('#eq-saisie').value = texte; }
+  } else {
+    $('#eq-saisie').value = texte;
+  }
+}
+
+/** Donne le focus au champ d'équation actif. */
+function focusChampEquation() {
+  if (mathlive && etat.eqMode === 'pro') champMath().focus();
+  else $('#eq-saisie').focus();
 }
 
 /* ============================================================
@@ -46,6 +119,7 @@ const STRUCTS = [
       { label: 'Exp + ind', tex: '^{}_{}', viz: 'x_a^b' },
       { label: 'Racine', tex: '\\sqrt{}', viz: '\\sqrt{x}' },
       { label: 'Racine n', tex: '\\sqrt[n]{}', viz: '\\sqrt[3]{x}' },
+      { label: 'Préscripts', tex: '{}_{}^{}', viz: '{}_a^b x' },
     ],
   },
   {
@@ -55,6 +129,10 @@ const STRUCTS = [
       { label: 'Produit', tex: '\\prod_{}^{}', viz: '\\prod_{k=1}^{n} k' },
       { label: 'Intégrale', tex: '\\int_{}^{}', viz: '\\int_{0}^{1}' },
       { label: 'Circulaire', tex: '\\oint_{}^{}', viz: '\\oint_{C}' },
+      { label: '∬ double', tex: '\\iint_{}^{}', viz: '\\iint_{0}^{1}' },
+      { label: '∭ triple', tex: '\\iiint_{}^{}', viz: '\\iiint_{0}^{1}' },
+      { label: '⋂ inter', tex: '\\bigcap_{}^{}', viz: '\\bigcap_{i}' },
+      { label: '⋃ union', tex: '\\bigcup_{}^{}', viz: '\\bigcup_{i}' },
     ],
   },
   {
@@ -63,9 +141,10 @@ const STRUCTS = [
       { label: '( )', tex: '( )', viz: '(x)' },
       { label: '[ ]', tex: '[ ]', viz: '[x]' },
       { label: '{ }', tex: '{ }', viz: '{x}' },
-      { label: '| x |', tex: '| |', viz: '|x|' },
-      { label: '‖ x ‖', tex: '\\| \\|', viz: '\\|x\\|' },
+      { label: '| x |', tex: '\\left| \\right|', viz: '\\left|x\\right|' },
+      { label: '‖ x ‖', tex: '\\left\\| \\right\\|', viz: '\\left\\|x\\right\\|' },
       { label: '⟨ x ⟩', tex: '\\langle \\rangle', viz: '\\langle x \\rangle' },
+      { label: 'Encadrer', tex: '\\boxed{}', viz: '\\boxed{x}' },
     ],
   },
   {
@@ -124,17 +203,36 @@ const SYMR = [
       ['\\perp', '⊥'], ['\\angle', '∠'], ['\\equiv', '≡'], ['\\cdots', '⋯'], ['\\ldots', '…'],
     ],
   },
+  {
+    name: 'Grands opérateurs',
+    items: [
+      ['\\iint', '∬'], ['\\iiint', '∭'], ['\\oint', '∮'],
+      ['\\bigcap', '⋂'], ['\\bigcup', '⋃'], ['\\coprod', '∐'],
+    ],
+  },
 ];
 
-/* Transcodage Linéaire -> LaTeX : symboles tapés au clavier ou collés. */
 const LINEAIRE = new Map();
 for (const cat of SYMR) {
   for (const [tex, car] of cat.items) LINEAIRE.set(car, tex);
 }
 LINEAIRE.set('√', '\\sqrt');
+
+/* Transcodage Linéaire -> LaTeX : depuis la v0.1.24, le MOTEUR COMPLET
+   UnicodeMath (engine/unicodemath.js, le « Linéaire » de OneNote, UTN28)
+   décode fractions, scripts, radicaux avec degré, n-aires, accents,
+   matrices, systèmes. La table LINEAIRE reste en FILET : tout symbole
+   encore littéral après le moteur (α, ⋯…) reçoit sa forme LaTeX. */
+const { transcoder: transcoderUniMath } = globalThis.AtelierUniMath;
 function transcoderLineaire(saisie) {
+  let base = saisie;
+  try {
+    base = transcoderUniMath(saisie);
+  } catch (e) {
+    base = saisie; // moteur muet : l'aperçu MathJax signalera la formule
+  }
   let hors = '';
-  for (const car of saisie) hors += LINEAIRE.get(car) ?? car;
+  for (const car of base) hors += LINEAIRE.get(car) ?? car;
   return hors;
 }
 
@@ -752,7 +850,7 @@ function ouvrirInsertionFormule() {
     ? "La formule s\u2019insérera à la position du curseur dans la note."
     : "La formule s\u2019insérera à la position du curseur dans la fiche.";
   note.classList.remove('ok');
-  $('#eq-saisie').focus();
+  focusChampEquation(); // v0.1.24 : zone structurée ou champ de toujours
 }
 
 /** Rétablit le panneau Équation en mode pose-sur-la-page. */
@@ -2106,6 +2204,17 @@ function construirePanneauEquation() {
 }
 
 function insererAuChamp(tex) {
+  // v0.1.24 : en mode Professionnel avec MathLive, l'insertion se fait DANS
+  // la zone structurée, à la position du curseur (le geste validé sur la
+  // démo) ; le repli reste la chirurgie du champ de toujours.
+  if (mathlive && etat.eqMode === 'pro') {
+    const mf = champMath();
+    try {
+      mf.insert(tex, { focus: true });
+      rafraichirApercu();
+      return;
+    } catch (e) { /* repli ci-dessous */ }
+  }
   const champ = $('#eq-saisie');
   const debut = champ.selectionStart ?? champ.value.length;
   const fin = champ.selectionEnd ?? debut;
@@ -2116,7 +2225,7 @@ function insererAuChamp(tex) {
 }
 
 function latexCourant() {
-  const brut = $('#eq-saisie').value.trim();
+  const brut = lireChampEquation().trim();
   if (!brut) return '';
   return etat.eqMode === 'lin' ? transcoderLineaire(brut) : brut;
 }
@@ -2300,7 +2409,7 @@ async function ouvrirRemplacement(a) {
   etat.remplacement = { ref: a.ref, pageIndex: a.page, latex, rect: a.rect.slice() };
   etat.selection = a;
   if (etat.eqMode !== 'pro') $('#eq-pro').click();
-  $('#eq-saisie').value = latex;
+  poserChampEquation(latex); // v0.1.24 : zone structurée ou champ de toujours
   $('#panneau-equation').hidden = false;
   const b = $('#eq-inserer');
   b.textContent = 'Remplacer la formule';
@@ -2315,16 +2424,56 @@ async function ouvrirRemplacement(a) {
 
 $('#eq-inserer').addEventListener('click', insererEquation);
 $('#eq-saisie').addEventListener('input', rafraichirApercu);
+// v0.1.24 : la zone structurée déclenche le même aperçu ; l'écoute se pose
+// d'emblée, avant même que l'élément personnalisé ne soit surclassé.
+champMath().addEventListener('input', rafraichirApercu);
+
+/* v0.1.24 : la MONTÉE À LA FRAPPE, le geste signature de OneNote (validé
+   sur la démo). En saisie linéaire, la barre d'espace transcode la frappe
+   (UnicodeMath -> LaTeX) et monte la formule dans la zone structurée ;
+   la frappe continue ensuite dans la structure. */
+$('#eq-saisie').addEventListener('keydown', (ev) => {
+  if (etat.eqMode !== 'lin' || ev.key !== ' ') return;
+  if (!$('#eq-saisie').value.trim()) return; // premier espace : ordinaire
+  ev.preventDefault();
+  effectuerMontee();
+});
+
+async function effectuerMontee() {
+  const latex = latexCourant();
+  if (!latex) return;
+  // La formule doit être calculable AVANT de monter : on la vérifie.
+  const rep = await window.atelier.previewEquation(latex, etat.eqExPt);
+  if (rep.erreur) {
+    const err = $('#eq-erreur');
+    err.textContent = rep.erreur;
+    err.hidden = false;
+    return;
+  }
+  $('#eq-erreur').hidden = true;
+  if (mathlive) $('#eq-pro').click(); // monte : la saisie devient la zone
+  rafraichirApercu();
+}
 
 for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
   $(id).addEventListener('click', () => {
+    // v0.1.24 : le CONTENU suit la bascule — la zone structurée reçoit le
+    // LaTeX (monté si l'on venait du Linéaire), le champ de toujours le
+    // conserve sinon ; plus jamais de formule perdue en route.
+    const latAvant = latexCourant();
     etat.eqMode = mode;
     $('#eq-pro').classList.toggle('actif', mode === 'pro');
     $('#eq-lin').classList.toggle('actif', mode === 'lin');
-    $('#eq-libelle').textContent = mode === 'pro' ? 'LaTeX' : 'Saisie linéaire (symboles convertis)';
+    $('#eq-libelle').textContent = mode === 'pro'
+      ? (mathlive ? 'Zone d\u2019équation, corrigez sur place' : 'LaTeX')
+      : 'Saisie linéaire (Espace pour monter)';
     $('#eq-saisie').placeholder = mode === 'pro'
       ? 'Ex. : x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}'
-      : 'Ex. : x^2 + α ≥ 3×5';
+      : 'Ex. : a/b puis Espace — \\sqrt(5&a^2) — \\int_0^1 x\\dd x';
+    majVisibiliteChamps();
+    if (mode === 'pro' && mathlive) champMath().value = latAvant;
+    else if (mode === 'lin') $('#eq-saisie').value = latAvant;
+    focusChampEquation();
     rafraichirApercu();
   });
 }
@@ -2409,11 +2558,12 @@ function creerChamp(f) {
   return span;
 }
 
-/* v0.1.9 : fenêtre matrice — après validation des dimensions (1 à 3),
-   les deux cases de réglage sont remplacées par la grille des cellules. */
+/* v0.1.9 : fenêtre matrice — après validation des dimensions, les deux
+   cases de réglage sont remplacées par la grille des cellules (v0.1.24 :
+   jusqu'à 6 lignes et colonnes, la parité OneNote du ruban). */
 function validerDimensionsMatrice() {
-  const l = Math.min(3, Math.max(1, parseInt(valeursGuide.lignes, 10) || 2));
-  const c = Math.min(3, Math.max(1, parseInt(valeursGuide.colonnes, 10) || 2));
+  const l = Math.min(6, Math.max(1, parseInt(valeursGuide.lignes, 10) || 2));
+  const c = Math.min(6, Math.max(1, parseInt(valeursGuide.colonnes, 10) || 2));
   valeursGuide.lignes = String(l);
   valeursGuide.colonnes = String(c);
   const cont = $('#guide-champs');
@@ -2878,6 +3028,7 @@ globalThis.__atelierDiagnostics = () => [
   `Fichier ouvert : ${etat.chemin || 'aucun'}`,
   `Page affichée : ${etat.resume ? `${etat.page} / ${etat.resume.pageCount}` : '–'}`,
   `Zoom : ${Math.round(etat.zoom * 100)} % (rendu en cours : ${gesteZoomActif() ? 'transformation CSS en attendant le rendu net' : 'posé'})`,
+  `Zone d\u2019équation : ${mathlive ? 'structurée (MathLive chargé)' : `champ LaTeX${erreurMathlive ? ` (MathLive manquant : ${erreurMathlive})` : ''}`}`,
   `Dernier échec d'affichage : ${erreurRendu || 'aucun'}`,
   `Annotations connues : ${etat.resume ? etat.resume.annots.length : 0}`,
   `Reconnaissance des scans : ${tesseractModule ? 'moteur chargé' : 'moteur non chargé (le sera au premier besoin)'}, pages reconnues : ${motsOcrPages.size === 0 ? 'aucune' : [...motsOcrPages.keys()].sort((a, b) => a - b).join(', ')}`,
@@ -2895,5 +3046,9 @@ globalThis.__atelierDiagnostics = () => [
   construireBoutonsGuides();
   ecouterSouris();
   choisirOutil('aucun');
+  // v0.1.24 : la zone d'équation structurée se charge en parallèle ; si
+  // elle échoue, le champ LaTeX de toujours prend le relais (message en
+  // barre d'état + Diagnostics).
+  chargerMathlive();
   $('#version-etat').textContent = `Atelier PDF ${await window.atelier.version()}`;
 })();

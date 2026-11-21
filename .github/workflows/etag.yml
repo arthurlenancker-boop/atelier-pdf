@@ -5,15 +5,16 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.23 : serveur OCR LaTeX personnel — le bouton
-# ƒ LaTeX peut s'appuyer sur un petit serveur que l'utilisateur fait
-# tourner sur son propre ordinateur (serveur-ocr/serveur.py, moteur
-# RapidLaTeXOCR, tout local, joignable par Tailscale) ; le reglage
-# Fichier → Options OCR LaTeX remplace la saisie de la seule cle Mistral
-# (l'URL du serveur, conservee dans config.json, est prioritaire sur la
-# cle) ; le champ latex du serveur est pris tel quel, text et markdown
-# passent par extractionLatex ; la reconnaissance des scans (v0.1.22)
-# reste inchangee.
+# Declencheur de la v0.1.24 : la fonction Équation de OneNote — les trois
+# niveaux validés sur la démo interactive : (1) transcodage UnicodeMath
+# complet (engine/unicodemath.js, 58 tests UTN28) du mode Linéaire ;
+# (2) montée à la frappe — la barre d'espace transcode et monte la
+# formule dans la zone structurée ; (3) zone d'équation structurée
+# MathLive 0.102.0 en mode Professionnel (dependencies + extraResources,
+# polices KaTeX du paquet, import dynamique avec repli champ LaTeX),
+# le rendu final du PDF restant le pipeline MathJax inchangé ; ruban
+# enrichi (préscripts, ∬∭⋂⋃, |x| et ‖x‖ extensibles, \boxed, matrice
+# jusqu'à 6×6).
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;
@@ -109,6 +110,8 @@ jobs:
       # v0.1.22 : idem pour l'OCR locale — tesseract.js (module + worker),
       # le coeur WASM (binaire embarque dans le .wasm.js, le script choisit
       # seul son variantes SIMD) et le modele de langue francais.
+      # v0.1.24 : idem pour MathLive — la zone d'équation structurée
+      # (dist/mathlive.min.mjs) et ses polices KaTeX (dist/fonts/).
       - name: Verification des ressources empaquetees (pdf.js, OCR)
         if: steps.version.outputs.existe == 'false'
         shell: pwsh
@@ -121,7 +124,10 @@ jobs:
             "dist/win-unpacked/resources/node_modules/tesseract.js/dist/worker.min.js",
             "dist/win-unpacked/resources/node_modules/tesseract.js-core/tesseract-core-simd.wasm.js",
             "dist/win-unpacked/resources/node_modules/tesseract.js-core/tesseract-core.wasm.js",
-            "dist/win-unpacked/resources/ocr/fra.traineddata.gz"
+            "dist/win-unpacked/resources/ocr/fra.traineddata.gz",
+            "dist/win-unpacked/resources/node_modules/mathlive/dist/mathlive.min.mjs",
+            "dist/win-unpacked/resources/node_modules/mathlive/dist/fonts/KaTeX_Main-Regular.woff2",
+            "dist/win-unpacked/resources/node_modules/mathlive/dist/fonts/KaTeX_Math-Italic.woff2"
           )) {
             if (-not (Test-Path $f)) {
               Write-Error "Ressource absente du paquet Windows : $f"

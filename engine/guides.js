@@ -266,8 +266,8 @@ const GUIDES = {
     bouton: 'Matrice',
     titre: 'Écrire une matrice',
     champs: [
-      { id: 'lignes', libelle: 'Lignes (1 à 3)', place: '2', defaut: '2', etroit: true },
-      { id: 'colonnes', libelle: 'Colonnes (1 à 3)', place: '3', defaut: '3', etroit: true },
+      { id: 'lignes', libelle: 'Lignes (1 à 6)', place: '2', defaut: '2', etroit: true },
+      { id: 'colonnes', libelle: 'Colonnes (1 à 6)', place: '3', defaut: '3', etroit: true },
     ],
     /* Les cases c11..c33 sont créées par la fenêtre (v0.1.9) après
        validation des dimensions ; composerMatrice lit v.lignes/colonnes. */
@@ -409,12 +409,15 @@ function composerSysteme(lignes) {
 /* v0.1.9 : matrice 1 à 3 lignes sur 1 à 3 colonnes. Valeurs lues dans
    v.lignes, v.colonnes et les cases v.c11 … v.c33 (ligne puis colonne).
    Les dimensions hors bornes sont ramenées dans [1 ; 3] ; une case
-   vide reste vide (matrice squelette). */
+   vide reste vide (matrice squelette).
+   v0.1.24 : bornes portées à [1 ; 6] (parité OneNote du ruban, les
+   matrices dépassent 3 lignes/colonnes dans les cours) ; l'appelant
+   crée les cases c11…c66 après validation des dimensions. */
 function composerMatrice(v) {
   const val = v || {};
   const dim = (t, dft) => {
     const n = parseInt(net(t), 10);
-    return Number.isNaN(n) ? dft : Math.min(3, Math.max(1, n));
+    return Number.isNaN(n) ? dft : Math.min(6, Math.max(1, n));
   };
   const l = dim(val.lignes, 2);
   const c = dim(val.colonnes, 2);
