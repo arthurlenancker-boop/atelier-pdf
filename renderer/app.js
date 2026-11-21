@@ -1510,11 +1510,14 @@ function calerAccessoiresEditeur() {
 }
 
 function clicHorsEditeur(ev) {
-  // v0.1.18 : tout clic à l'extérieur pose le texte (façon PDF-XChange).
+  // v0.1.18 : tout clic à l'extérieur pose le texte (façon PDF-XChange)
+  // — mais PAS le panneau Équation ni ses fenêtres guidées : composer une
+  // formule FAIT PARTIE de la saisie de la note. Jusqu'ici, chacun de ces
+  // clics refermait le cadre et perdait l'insertion (rapporté en v0.1.21).
   const carte = $('#editeur-page');
   if (carte.hidden) return;
   for (const el of [carte, $('#editeur-barre'), $('#editeur-apercu'),
-    $('.saisie-fond:not([hidden])')]) {
+    $('#panneau-equation'), $('.saisie-fond:not([hidden])')]) {
     if (el && el.contains(ev.target)) return;
   }
   validerEditeur();
@@ -1661,6 +1664,30 @@ async function validerEditeur() {
     : (estNoteNue ? 'Note posée sur la page.' : 'Texte posé.'), 'reussite');
 }
 
+/** v0.1.21 : l'étiquette clavier du cadre, à la demande d'Arthur —
+ * Échap POSE le texte (plus besoin de viser ailleurs) ; Ctrl+Échap
+ * passe à la ligne. Pour abandonner un brouillon non vide : effacer le
+ * texte puis Échap (l'original réédité reste intact). */
+function toucheEchapEditeur(ev) {
+  if (ev.ctrlKey || ev.metaKey) {
+    ev.preventDefault();
+    const zone = $('#editeur-texte');
+    const d = zone.selectionStart ?? zone.value.length;
+    const f = zone.selectionEnd ?? d;
+    zone.value = `${zone.value.slice(0, d)}\n${zone.value.slice(f)}`;
+    const apres = d + 1;
+    zone.focus();
+    zone.setSelectionRange(apres, apres);
+    zone.style.height = 'auto';
+    zone.style.height = `${zone.scrollHeight}px`;
+    calerAccessoiresEditeur();
+    rafraichirApercuFiche();
+  } else {
+    ev.preventDefault();
+    validerEditeur();
+  }
+}
+
 $('#editeur-texte').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
     ev.preventDefault();
@@ -1671,7 +1698,7 @@ $('#editeur-texte').addEventListener('keydown', (ev) => {
     ouvrirInsertionFormule();
   } else if (ev.key === 'Escape') {
     ev.stopPropagation();
-    fermerEditeur();
+    toucheEchapEditeur(ev);
   }
 });
 $('#editeur-formule').addEventListener('click', ouvrirInsertionFormule);
@@ -1683,9 +1710,16 @@ $('#editeur-texte').addEventListener('input', () => {
   rafraichirApercuFiche();
 });
 $('#editeur-page').addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') fermerEditeur();
+  if (ev.key === 'Escape') toucheEchapEditeur(ev);
 });
 window.addEventListener('keydown', (ev) => {
+  // v0.1.21 : le focus peut être dans le panneau Équation pendant la
+  // saisie de la note (composition d'une formule) ; Échap y vaut
+  // toujours « poser la note », pas « annuler le remplacement ».
+  if (ev.key === 'Escape' && !$('#editeur-page').hidden) {
+    toucheEchapEditeur(ev);
+    return;
+  }
   if (ev.key === 'Escape' && etat.remplacement) {
     annulerRemplacement();
     message('Modification d\'équation abandonnée. Le bouton Insérer reprend son rôle.');
@@ -2286,7 +2320,12 @@ $('#guide-champs').addEventListener('keydown', (ev) => {
   else ecrireGuide();
 });
 $('#guide-fond').addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') fermerGuide();
+  // v0.1.21 : Échap ferme la fenêtre guidée SEULE — il ne pose pas la
+  // note en dessous : la composition de la formule poursuit son cours.
+  if (ev.key === 'Escape') {
+    ev.stopPropagation();
+    fermerGuide();
+  }
 });
 
 /* ============================================================

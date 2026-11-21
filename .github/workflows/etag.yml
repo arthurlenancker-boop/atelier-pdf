@@ -5,7 +5,7 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.20 : la police de OneNote pour la machine a ecrire : la note (saisie comme rendu pose) quitte Cambria Math pour les polices CORPS de OneNote (Aptos, puis Calibri, Segoe UI) ; les formules $...$ de la note restent composees en italique mathematique par le moteur d'equations, le deux-tons des pages OneNote. Tout l'acquis v0.1.19 (notes avec formules, fenetres guidees, note mixte sans carte) est intact. Aucune modification du moteur.
+# Declencheur de la v0.1.21 : reparation de l'insertion de formule dans un cadre de texte (le panneau Equation fait partie de la saisie : cliquer dedans ne pose plus le texte, seuls les clics sur la page posent — defaut introduit en v0.1.18) ; nouvelle etiquette clavier demandee : Echap pose le texte, Ctrl+Echap passe a la ligne, Echap ferme la fenetre guidee seule ; abandon d'un brouillon non vide en effacant puis Echap (original intact). Aucune modification du moteur.
 # apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
 # clic (Remplacer la formule) ; notes et fiches écrites directement sur
 # la page (plus de panneau central), modifiables par double-clic ;
