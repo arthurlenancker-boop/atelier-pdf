@@ -833,3 +833,127 @@ math-field.eq-mathfield:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-doux);
 }
+
+/* ————— v0.1.31 : panneau d'options de l'outil actif (croquis validé) :
+   formes et couleurs du surlignage, formes, traits et teinte des cadres,
+   tailles et mise en forme de l'écriture. Même verre que le panneau
+   Équation, même accent pour l'option active. ————— */
+.panneau-options {
+  flex: 0 0 auto;
+  width: 272px;
+  overflow-y: auto;
+  padding: 12px 14px 20px;
+  background: var(--verre-panneau);
+  border-left: 1px solid var(--bord);
+}
+.panneau-options h2 { font-size: 15px; margin: 2px 0 4px; }
+.panneau-options h3 {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin: 13px 0 6px;
+  letter-spacing: 0.02em;
+}
+.opt-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.opt {
+  border: 1px solid var(--bord);
+  background: var(--surface-2);
+  border-radius: var(--rayon-controle);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.opt:hover { background: #EDEDED; }
+.opt.actif { border-color: var(--accent); background: var(--accent-doux); }
+.opt svg { vertical-align: middle; }
+.sw {
+  width: 23px;
+  height: 23px;
+  border-radius: var(--rayon-controle);
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  padding: 0;
+}
+.sw.actif { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sw.perso {
+  background: conic-gradient(#D13438, #CA5010, #C7A500, #107C10, #0067C0, #5B3FA0, #B0308F, #D13438);
+}
+.sel-coul {
+  margin-top: 8px;
+  padding: 10px 8px 8px;
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon-carte);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.roue {
+  border-radius: 50%;
+  cursor: crosshair;
+  touch-action: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.sel-ligne {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.sel-ligne input[type="range"] { width: 112px; accent-color: var(--accent); }
+.apercu-coul {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--rayon-controle);
+  border: 1px solid #999999;
+  display: inline-block;
+}
+.sel-hex { font-size: 11px; }
+.pan-note {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 10px;
+  line-height: 1.45;
+}
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper .val {
+  font-size: 12.5px;
+  min-width: 52px;
+  text-align: center;
+  border: 1px solid var(--bord);
+  background: var(--surface);
+  border-radius: var(--rayon-controle);
+  padding: 4px 6px;
+}
+.sty-g { font-weight: 700; }
+.sty-i { font-style: italic; }
+.sty-s { text-decoration: underline; }
+.sty-barre { text-decoration: line-through; }
+
+/* ————— v0.1.31 : l'écriture riche sur la page — même pose que le
+   textarea (le cadre posé EST la zone d'écriture), police corps de
+   OneNote pour la note nue ; les styles riche s'appliquent par
+   execCommand styleWithCSS. ————— */
+.editeur-riche {
+  display: block;
+  width: 100%;
+  min-height: 22px;
+  outline: none;
+  overflow: hidden;
+  color: #14161c;
+  font-family: "Aptos", "Calibri", "Segoe UI", sans-serif;
+  font-size: 11px;       /* la taille réelle est posée par le code (zoom) */
+  line-height: 13px;     /* idem : interligne du rendu final */
+  padding: 2px 3px;
+  word-break: break-word;
+}
+.editeur-riche ul,
+.editeur-riche ol { margin: 2px 0 2px 18px; padding: 0; }
+.editeur-riche li { margin: 0; }
+.editeur-page.commentaire .editeur-riche,
+.editeur-page.correction .editeur-riche { display: none; }

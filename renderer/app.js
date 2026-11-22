@@ -10,6 +10,8 @@ import '../engine/texte.js'; // expose globalThis.AtelierTexte (v0.1.11)
 import '../engine/geom.js'; // expose globalThis.AtelierGeom (v0.1.12)
 import '../engine/ocr.js'; // expose globalThis.AtelierOcr (v0.1.22)
 import '../engine/unicodemath.js'; // expose globalThis.AtelierUniMath (v0.1.24)
+import '../engine/couleurs.js'; // expose globalThis.AtelierCouleurs (v0.1.31)
+import '../engine/markup.js'; // expose globalThis.AtelierMarkup (v0.1.31)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
 const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur, estHttpsLocal } = globalThis.AtelierOcr;
@@ -268,6 +270,13 @@ const etat = {
   // v0.1.7 : remplacement d'une équation existante (clic sur l'équation) :
   // tant que rempli, « Insérer » remplace au lieu de poser un nouveau objet.
   remplacement: null,   // { ref, pageIndex, latex }
+  // v0.1.31 : options de pose de chaque outil (croquis validé) —
+  // conservées d'une annotation à l'autre pendant la session.
+  options: {
+    surligner: { forme: 'plein', couleur: '#FFDF3A' },
+    encadrer: { forme: 'rect', trait: 'continu', ep: 'moyen', teinte: false, couleur: '#0067C0' },
+    ecrire: { taille: 11 },
+  },
 };
 
 const els = {
@@ -1049,7 +1058,6 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
 }
 
 const opsFicheEnVol = new Set(); // « cle|latex » en cours de calcul
-
 /** Charge les ops des formules des fiches mixtes de la page courante,
  * depuis le LaTeX embarqué (aucun cache lié à la pose). */
 async function chargerOpsFiches() {
@@ -1057,20 +1065,28 @@ async function chargerOpsFiches() {
   // v0.1.29 : les CORRECTIONS suivent le même chemin que les fiches,
   // mais leurs formules se composent au CORPS de leur marqueur (le bloc
   // reconnu), pas au corps fixe des fiches.
+  // v0.1.31 : les NOTES RICHES suivent le même chemin, au corps de leur
+  // marqueur (la taille posée à l'écriture), leur source étant canonique
+  // (seules les formules $...$ sont découpées ; les balises restent).
   const cibles = (etat.resume.annots || []).filter((x) => x.page === etat.page - 1
     && x.ref && ((x.contents || '').startsWith(PREFIXE_FICHE_MIXTE)
-      || (x.contents || '').startsWith(PREFIXE_CORRECTION)));
+      || (x.contents || '').startsWith(PREFIXE_CORRECTION)
+      || (x.contents || '').startsWith(PREFIXE_NOTE_RICHE)));
   let change = false;
   for (const x of cibles) {
     const cle = cleEquation(x);
     let carte = etat.opsFiche.get(cle);
     if (!carte) { carte = new Map(); etat.opsFiche.set(cle, carte); }
     const estCorrection = (x.contents || '').startsWith(PREFIXE_CORRECTION);
-    const source = estCorrection
-      ? extraireSourceCorrection(x.contents) : extraireSourceFiche(x.contents);
+    const estRiche = (x.contents || '').startsWith(PREFIXE_NOTE_RICHE);
+    const source = estCorrection ? extraireSourceCorrection(x.contents)
+      : estRiche ? extraireSourceNoteRiche(x.contents)
+        : extraireSourceFiche(x.contents);
     const exCible = estCorrection
       ? exPourCorps(extraireTailleCorrection(x.contents) || FS_FICHE)
-      : exPourCorps(FS_FICHE);
+      : estRiche
+        ? exPourCorps(extraireTailleNoteRiche(x.contents) || FS_FICHE)
+        : exPourCorps(FS_FICHE);
     for (const seg of decouperMelange(source)) {
       if (seg.type !== 'formule' || carte.has(seg.valeur)) continue;
       const cleVol = `${cle}|${seg.valeur}`;
@@ -1101,7 +1117,8 @@ async function chargerOpsFiches() {
  * Équation passe en mode insertion-dans-la-fiche. */
 function ouvrirInsertionFormule() {
   const attente = etat.saisieAttente;
-  if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) return;
+  if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee'
+    && attente.kind !== 'noteRiche')) return;
   // v0.1.19 : la machine à écrire accepte les formules — une note
   // (outil Écrire) devient une note mixte, posée sans fond, comme la
   // fiche mixte l'est sur carte. Plus de renvoi vers l'outil Fiche.
@@ -1139,17 +1156,24 @@ function rafraichirApercuFiche() {
   sablierFiche = setTimeout(async () => {
     sablierFiche = null;
     const attente = etat.saisieAttente;
-    if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) {
+    const estRiche = !!(attente && (attente.kind === 'freeText'
+      || attente.kind === 'ficheMelangee' || attente.kind === 'noteRiche'));
+    if (!estRiche && !(attente && attente.kind === 'correction')) {
       $('#editeur-apercu').hidden = true;
       return;
     }
-    const source = $('#editeur-texte').value;
-    if (!contientFormule(source)) {
+    // v0.1.31 : le texte riche se relit depuis le contenteditable, le
+    // textarea ne porte plus que les corrections des blocs reconnus.
+    const zone = $('#editeur-texte');
+    const riche = $('#editeur-riche');
+    const estEditeurRiche = !riche.hidden;
+    const source = estEditeurRiche ? serialiserEditeurRiche() : zone.value;
+    if (!source || !contientFormule(source)) {
       $('#editeur-apercu').hidden = true;
       return;
     }
     const manquantes = [];
-    for (const sg of decouperMelange(source)) {
+    for (const sg of decouperMelange(estEditeurRiche ? source : zone.value)) {
       if (sg.type === 'formule' && !etat.apercuEditeur.has(sg.valeur)) manquantes.push(sg.valeur);
     }
     if (manquantes.length) {
@@ -1161,7 +1185,11 @@ function rafraichirApercuFiche() {
         } catch (e) { /* reste null */ }
       }
     }
-    dessinerApercuFiche(source);
+    if (estEditeurRiche) {
+      dessinerApercuRiche(source);
+    } else {
+      dessinerApercuFiche(estEditeurRiche ? source : zone.value);
+    }
     calerAccessoiresEditeur();
   }, 250);
 }
@@ -1222,6 +1250,409 @@ function dessinerApercuFiche(source) {
   }
 }
 
+/* ============================================================
+   v0.1.31 : peintres écran des annotations riches — chaque note est
+   repeinte comme elle est dans le fichier (couleurs, formes, traits,
+   teintes), à partir de ce que listAnnots relit (/C, /IC, /BS, quads,
+   marqueur des options).
+   ============================================================ */
+
+/** Couleur en rgba() depuis un triplet {c: [r,g,b]} de fractions, sinon défaut. */
+function rgbaCouleurAnnot(c01, alpha, defaut) {
+  const c = (Array.isArray(c01) && c01.length === 3
+    && c01.every((v) => Number.isFinite(v)))
+    ? c01.map((v) => Math.min(1, Math.max(0, v)))
+    : defaut;
+  return `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, `
+    + `${Math.round(c[2] * 255)}, ${alpha})`;
+}
+
+/** Rectangles de texte (points PDF) des QuadPoints d'un surlignage —
+ * chaque quad vaut [gx1, yHaut1, gx2, yHaut2, gx1, yBas1, gx2, yBas2] —
+ * sinon le /Rect entier (annotation sans /QuadPoints). */
+function zonesSurlignage(a) {
+  if (Array.isArray(a.quads) && a.quads.length >= 8 && a.quads.length % 8 === 0) {
+    const zones = [];
+    for (let i = 0; i < a.quads.length; i += 8) {
+      const q = a.quads.slice(i, i + 8);
+      zones.push({
+        gx: Math.min(q[0], q[4]),
+        gw: Math.max(q[2], q[6]) - Math.min(q[0], q[4]),
+        gy: Math.min(q[5], q[7]),
+        hc: Math.max(q[1], q[3]) - Math.min(q[5], q[7]),
+      });
+    }
+    return zones;
+  }
+  return [{
+    gx: a.rect[0],
+    gw: a.rect[2] - a.rect[0],
+    gy: a.rect[1],
+    hc: a.rect[3] - a.rect[1],
+  }];
+}
+
+/** Repeint un surlignage (plein, soulignement, barré ou ondulé) comme
+ * son apparence est composée dans le fichier (engine/annots.js). */
+function dessinerSurlignage(ctx, a) {
+  const zones = zonesSurlignage(a);
+  const st = a.subtype || 'Highlight';
+  for (const z of zones) {
+    if (z.gw <= 0) continue;
+    const bas = pdfVersEcran({ x: z.gx, y: z.gy });
+    const haut = pdfVersEcran({ x: z.gx + z.gw, y: z.gy + Math.max(z.hc, 1) });
+    const x = Math.min(bas.x, haut.x);
+    const w = Math.abs(haut.x - bas.x);
+    if (st === 'Underline') {
+      // Trait plein dans le bas du rectangle (hauteur 1.8 pt dans le fichier).
+      const ep = Math.max(1, 1.8 * etat.zoom);
+      ctx.fillStyle = rgbaCouleurAnnot(a.c, 1, [0.91, 0.7, 0.29]);
+      ctx.fillRect(x, bas.y - ep, w, ep);
+    } else if (st === 'StrikeOut') {
+      // Trait plein au milieu du rectangle (hauteur 1.4 pt dans le fichier).
+      const ep = Math.max(1, 1.4 * etat.zoom);
+      const yc = bas.y - (Math.max(z.hc, 1) / 2) * etat.zoom;
+      ctx.fillStyle = rgbaCouleurAnnot(a.c, 1, [0.91, 0.7, 0.29]);
+      ctx.fillRect(x, yc - ep / 2, w, ep);
+    } else if (st === 'Squiggly') {
+      // Sinusoïde régulière sous la ligne (pas 0.8 pt, amplitude 1 pt).
+      ctx.strokeStyle = rgbaCouleurAnnot(a.c, 1, [0.91, 0.7, 0.29]);
+      ctx.lineWidth = Math.max(0.75, 0.9 * etat.zoom);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const y0 = bas.y - 1.5 * etat.zoom;
+      const pas = 0.8 * etat.zoom;
+      for (let px = 0; px <= w + 1e-6; px += pas) {
+        const y = y0 + Math.sin((px / (5 * etat.zoom)) * 2 * Math.PI) * 1.0 * etat.zoom;
+        if (px === 0) ctx.moveTo(x + px, y); else ctx.lineTo(x + px, y);
+      }
+      ctx.stroke();
+    } else {
+      // Highlight plein : aplat semi-transparent (0.42 à l'écran, comme
+      // le rendu historique ; le fichier écrit 0.35 dans l'apparence).
+      ctx.fillStyle = rgbaCouleurAnnot(a.c, 0.42, [0.91, 0.7, 0.29]);
+      ctx.fillRect(x, Math.min(bas.y, haut.y), w, Math.abs(bas.y - haut.y));
+    }
+  }
+}
+
+/** Options de pose relues du marqueur « Cadre forme,trait,ep[,teinte] »
+ * (miroir exact de engine/annots.js), ou null si le cadre est nu. */
+function optionsCadreEcran(a) {
+  const m = (a.contents || '')
+    .match(/^Cadre (rect|arrondi|ellipse|nuage),(continu|tirets|points),([0-9]+(?:[.,][0-9]+)?)(,teinte)?(?:\s|$)/);
+  if (!m) return null;
+  return {
+    forme: m[1],
+    trait: m[2],
+    borderWidth: Number(m[3].replace(',', '.')) || 1.5,
+    teinte: !!m[4],
+  };
+}
+
+/** Repeint un cadre (rect, arrondi, ellipse, nuage) comme son apparence
+ * est composée dans le fichier : couleur de /C, épaisseur et tirets de
+ * /BS, teinte de /IC. L'équation et la correction restent à part. */
+function dessinerCadreEcran(ctx, a, x, y, w, h) {
+  const opts = optionsCadreEcran(a);
+  const forme = opts ? opts.forme : (a.subtype === 'Circle' ? 'ellipse' : 'rect');
+  const bwPdf = (a.bs && Number.isFinite(a.bs.w) && a.bs.w > 0) ? a.bs.w
+    : (opts ? opts.borderWidth : 1.5);
+  const bw = bwPdf * etat.zoom;
+  const coul = rgbaCouleurAnnot(a.c, 1, [0.75, 0.22, 0.17]);
+  const teinte = a.ic || (opts && opts.teinte);
+  // Nettoyage des plumes pour éviter que le nuage garde les tirets.
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  if (a.bs && Array.isArray(a.bs.d) && a.bs.d.length >= 2) {
+    ctx.setLineDash(a.bs.d.map((v) => v * etat.zoom));
+  } else {
+    ctx.setLineDash([]);
+  }
+  ctx.lineWidth = Math.max(0.5, bw);
+  ctx.strokeStyle = coul;
+  const teinteFill = teinte
+    ? rgbaCouleurAnnot(a.ic || a.c, 0.13, [0, 0.4, 0.75]) : null;
+  function tracer(pas) {
+    if (teinteFill) {
+      ctx.fillStyle = teinteFill;
+      pas(true);
+      ctx.fill();
+      pas(false);
+      ctx.stroke();
+    } else {
+      pas(false);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+  if (forme === 'ellipse') {
+    // Ellipse inscrite, comme dans le fichier : demi-axes réduits de la
+    // moitié du trait.
+    const rx = Math.max(2, w / 2 - bw / 2);
+    const ry = Math.max(2, h / 2 - bw / 2);
+    tracer((rempl) => {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, rx, ry, 0, 0, Math.PI * 2);
+    });
+  } else if (forme === 'arrondi') {
+    const r = Math.min(12, w / 4, h / 4) * etat.zoom;
+    tracer(() => {
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x, y, w, h, r)
+        : ctx.rect(x, y, w, h);
+    });
+  } else if (forme === 'nuage') {
+    // Bosses en arcs le long d'un rectangle rentré, comme engine/annots.js
+    // (marge proportionnelle au trait, cordes d'environ 15 pt). Les
+    // quadratiques avec contrôle au milieu poussé vers l'extérieur
+    // donnent des bosses de demi-cercle, comme dans le fichier.
+    tracer(() => {
+      const m = Math.max(6, bwPdf * 2.4) * etat.zoom;
+      const nx = x + m;
+      const ny = y + m;
+      const nw = Math.max(4, w - 2 * m);
+      const nh = Math.max(4, h - 2 * m);
+      const pas = 15 * etat.zoom;
+      ctx.beginPath();
+      ctx.moveTo(nx, ny);
+      const cote = (ax, ay, bx, by, ox, oy) => {
+        const dx = bx - ax; const dy = by - ay;
+        const L = Math.hypot(dx, dy);
+        const n = Math.max(2, Math.round(L / pas));
+        const r = L / (n * 2);
+        for (let i = 1; i <= n; i += 1) {
+          const px = ax + (dx * (i - 1)) / n;
+          const py = ay + (dy * (i - 1)) / n;
+          const qx = ax + (dx * i) / n;
+          const qy = ay + (dy * i) / n;
+          ctx.quadraticCurveTo((px + qx) / 2 + ox * 2 * r,
+            (py + qy) / 2 + oy * 2 * r, qx, qy);
+        }
+      };
+      cote(nx, ny, nx + nw, ny, 0, 1);                // bas, bosse vers le bas
+      cote(nx + nw, ny, nx + nw, ny + nh, 1, 0);      // droite
+      cote(nx + nw, ny + nh, nx, ny + nh, 0, -1);     // haut
+      cote(nx, ny + nh, nx, ny, -1, 0);               // gauche
+      ctx.closePath();
+    });
+  } else {
+    tracer(() => {
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+    });
+  }
+  ctx.setLineDash([]);
+}
+
+/** Repeint une note riche (« Note riche taille : source ») comme son
+ * apparence est composée dans le fichier : même analyse, même
+ * compositeur (engine/markup.js), formules rendues par le moteur
+ * d'équations comme les fiches mixtes. */
+function dessinerNoteRiche(ctx, a, x, y, w, h) {
+  const source = extraireSourceNoteRiche(a.contents);
+  if (!source) return;
+  const fs = extraireTailleNoteRiche(a.contents) || 11;
+  const blocs = analyserSource(source);
+  const formules = new Set();
+  for (const b of blocs) {
+    for (const r of b.runs) {
+      if (r.type === 'formule') formules.add(r.valeur);
+    }
+  }
+  const carte = etat.opsFiche.get(cleEquation(a));
+  const pret = [...formules].every((v) => carte && carte.has(v));
+  if (!pret) {
+    // Ops pas encore chargées (ou formule illisible) : la source reste
+    // lisible en attendant, et le calcul se fait au fond.
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.55)';
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.font = `${fs * etat.zoom}px sans-serif`;
+    ecrireCarteCommentaire(ctx, source.replace(/<[^>]+>/g, ''),
+      x + w + 8 * etat.zoom, y, etat.zoom);
+    chargerOpsFiches();
+    return;
+  }
+  const dims = (latex) => {
+    const ap = carte.get(latex);
+    return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
+      : { widthPt: 0, heightPt: 0, depthPt: 0 };
+  };
+  const policeDe = (styles) => `${styles.gras ? 'bold ' : ''}${styles.italique ? 'italic ' : ''}`;
+  const tailleDe = (styles) => (styles && (styles.sup || styles.sub)
+    ? fs * FACTEUR_EXPOSANT : fs);
+  const mesurer = (styles, texte) => {
+    mesureCtx.font = `${policeDe(styles)}${tailleDe(styles)}px sans-serif`;
+    return mesureCtx.measureText(String(texte)).width / etat.zoom;
+  };
+  const layout = composerLignesRiche(blocs, {
+    mesurer,
+    dimsFormule: dims,
+    largeurMax: (a.rect[2] - a.rect[0]) - 4, // MARGE 2 pt de chaque côté
+    fontSize: fs,
+  });
+  const retraitListe = layout.retraitListe;
+  const interbase = 0.45 * fs; // INTERBASE du moteur
+  ctx.textBaseline = 'alphabetic';
+  let curseur = a.rect[3] - 3; // MARGE_VERTICALE du moteur
+  for (let li = 0; li < layout.lignes.length; li += 1) {
+    const ligne = layout.lignes[li];
+    if (!ligne.vide) {
+      const utileLigne = (a.rect[2] - a.rect[0]) - 4
+        - (ligne.type === 'p' ? 0 : retraitListe);
+      const decal = ligne.align === 'centre' ? (utileLigne - ligne.w) / 2
+        : ligne.align === 'droite' ? (utileLigne - ligne.w) : 0;
+      let penX = a.rect[0] + 2 + (ligne.type === 'p' ? 0 : retraitListe)
+        + Math.max(0, decal);
+      if (ligne.type !== 'p' && ligne.debutBloc) {
+        // Puce ou numéro : posé dans le retrait, sur la première ligne du bloc.
+        const etiquette = ligne.type === 'puce' ? '\u2022' : `${ligne.numero}.`;
+        ctx.font = `${fs * etat.zoom}px sans-serif`;
+        ctx.fillStyle = '#14161c';
+        const ePuce = pdfVersEcran({
+          x: a.rect[0] + 2 + retraitListe - 10,
+          y: curseur - ligne.hDessus - fs * 0.05,
+        });
+        ctx.fillText(etiquette, ePuce.x, ePuce.y);
+      }
+      for (const m of ligne.morceaux) {
+        const base = curseur - ligne.hDessus;
+        if (m.type === 'formule') {
+          const ap = carte.get(m.valeur);
+          if (ap) {
+            const ecr = pdfVersEcran({ x: penX, y: base });
+            tracerOpsPlacé(ctx, ap, ecr.x, ecr.y, etat.zoom);
+          }
+        } else {
+          const taille = (m.styles.sup || m.styles.sub) ? fs * FACTEUR_EXPOSANT : fs;
+          let basePos = base;
+          if (m.styles.sup) basePos += fs * 0.35;
+          if (m.styles.sub) basePos -= fs * 0.12;
+          const ecr = pdfVersEcran({ x: penX, y: basePos });
+          ctx.font = `${policeDe(m.styles)}${taille * etat.zoom}px "Aptos", "Calibri", sans-serif`;
+          const affiche = decoderEntites(m.texte);
+          if (affiche) {
+            // Fond du morceau d'abord (0.6 d'alpha comme le fichier) :
+            // de base - 0.25 taille à + 0.95 corps, comme engine/riche.js.
+            if (m.styles.fond) {
+              ctx.fillStyle = rgbaHex(m.styles.fond, 0.6);
+              const eHaut = pdfVersEcran({
+                x: penX, y: base - taille * 0.25 + fs * 0.95,
+              });
+              ctx.fillRect(eHaut.x, eHaut.y, m.largeur * etat.zoom,
+                fs * 0.95 * etat.zoom);
+            }
+            ctx.fillStyle = m.styles.couleur ? m.styles.couleur : '#14161c';
+            ctx.fillText(affiche, ecr.x, ecr.y);
+            if (m.styles.souligne || m.styles.barre) {
+              ctx.fillStyle = m.styles.couleur ? m.styles.couleur : '#14161c';
+              const eBas = pdfVersEcran({ x: penX, y: base });
+              if (m.styles.souligne) {
+                ctx.fillRect(ecr.x, eBas.y - taille * 0.12 * etat.zoom,
+                  m.largeur * etat.zoom, Math.max(0.4, fs * 0.055) * etat.zoom);
+              }
+              if (m.styles.barre) {
+                const eMil = pdfVersEcran({ x: penX, y: base + taille * 0.24 });
+                ctx.fillRect(ecr.x, eMil.y, m.largeur * etat.zoom,
+                  Math.max(0.4, fs * 0.06) * etat.zoom);
+              }
+            }
+          }
+        }
+        penX += m.largeur;
+      }
+    }
+    curseur -= ligne.hDessus + ligne.hDes + interbase;
+  }
+}
+
+/** #hex + alpha -> rgba(), repli sombre. */
+function rgbaHex(hex, alpha) {
+  const v = hexVersRgb01(String(hex || ''));
+  return `rgba(${Math.round((v ? v[0] : 0.08) * 255)}, `
+    + `${Math.round((v ? v[1] : 0.09) * 255)}, `
+    + `${Math.round((v ? v[2] : 0.1) * 255)}, ${alpha})`;
+}
+
+const { analyserSource, composerLignesRiche, FACTEUR_EXPOSANT,
+  echapperTexte } = globalThis.AtelierMarkup;
+const { decoderEntites } = globalThis.AtelierMarkup;
+
+/** v0.1.31 : aperçu du texte riche en cours de saisie — mêmes analyse
+ * et compositeur que la pose (styles simplifiés : gras, italique,
+ * couleurs ; les listes et alignements suivent le compositeur). */
+function dessinerApercuRiche(source) {
+  const canvas = $('#editeur-apercu');
+  const c = canvas.getContext('2d');
+  const FS = 12;                      // taille d'affichage de l'aperçu
+  const fsCorps = (etat.saisieAttente && etat.saisieAttente.fontSize)
+    || etat.options.ecrire.taille || 11;
+  const k = FS / fsCorps;             // échelle du corps réel -> aperçu
+  const blocs = analyserSource(source);
+  const dims = (latex) => {
+    const ap = etat.apercuEditeur.get(latex);
+    return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
+      : { widthPt: 10, heightPt: fsCorps * 0.75, depthPt: 0 };
+  };
+  const mesurer = (styles, t) => {
+    c.font = `${styles.gras ? 'bold ' : ''}${styles.italique ? 'italic ' : ''}`
+      + `${(styles.sup || styles.sub ? fsCorps * FACTEUR_EXPOSANT : fsCorps)}px sans-serif`;
+    return c.measureText(String(t)).width / k;
+  };
+  const layout = composerLignesRiche(blocs, {
+    mesurer,
+    dimsFormule: dims,
+    largeurMax: (canvas.width - 12) / k,
+    fontSize: fsCorps,
+  });
+  const interbase = 0.45 * fsCorps;
+  let hauteur = 16;
+  for (let li = 0; li < layout.lignes.length; li += 1) {
+    hauteur += (layout.lignes[li].hDessus + layout.lignes[li].hDes
+      + (li ? interbase : 0)) * k;
+  }
+  canvas.height = Math.max(24, Math.round(hauteur));
+  canvas.hidden = false;
+  c.clearRect(0, 0, canvas.width, canvas.height);
+  c.textBaseline = 'alphabetic';
+  let basePx = 12 + layout.lignes[0].hDessus * k;
+  for (const ligne of layout.lignes) {
+    if (!ligne.vide) {
+      let penX = 6;
+      for (const m of ligne.morceaux) {
+        if (m.type === 'formule') {
+          const ap = etat.apercuEditeur.get(m.valeur);
+          c.font = `${FS}px sans-serif`;
+          if (ap) {
+            tracerOpsPlacé(c, ap, penX, basePx, k);
+          } else {
+            c.fillStyle = '#b04a2e';
+            c.font = `${FS}px sans-serif`;
+            c.fillText(`$${m.valeur}$`, penX, basePx);
+          }
+        } else {
+          const taille = (m.styles.sup || m.styles.sub)
+            ? fsCorps * FACTEUR_EXPOSANT : fsCorps;
+          c.font = `${m.styles.gras ? 'bold ' : ''}${m.styles.italique ? 'italic ' : ''}`
+            + `${taille * k}px "Aptos", "Calibri", sans-serif`;
+          c.fillStyle = m.styles.couleur || '#14161c';
+          if (m.styles.fond) {
+            c.fillStyle = m.styles.fond;
+            c.fillRect(penX - 1, basePx - ligne.hDessus * k,
+              m.largeur * k + 2, (ligne.hDessus + ligne.hDes) * k);
+            c.fillStyle = m.styles.couleur || '#14161c';
+          }
+          c.fillText(decoderEntites(m.texte), penX, basePx);
+        }
+        penX += m.largeur * k;
+      }
+    }
+    basePx += (ligne.hDes + interbase) * k;
+  }
+}
+
 async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
@@ -1239,10 +1670,13 @@ async function dessinerAnnots() {
     const w = Math.abs(c1.x - c0.x);
     const h = Math.abs(c1.y - c0.y);
     ctx.save();
-    if (a.subtype === 'Highlight') {
-      ctx.fillStyle = 'rgba(232, 179, 75, 0.42)';
-      ctx.fillRect(x, y, w, h);
-    } else if (a.subtype === 'Square') {
+    if (a.subtype === 'Highlight' || a.subtype === 'Underline'
+      || a.subtype === 'StrikeOut' || a.subtype === 'Squiggly') {
+      // v0.1.31 : les quatre formes de surlignage (plein, soulignement,
+      // barré, ondulé), repeintes avec LEUR couleur (/C) et leurs
+      // rectangles (/QuadPoints), comme le fichier les compose.
+      dessinerSurlignage(ctx, a);
+    } else if (a.subtype === 'Square' || a.subtype === 'Circle') {
       // v0.1.7 : les équations ne sont PLUS tracées sur ce calque. Leur
       // apparence /AP (dessin vectoriel MathJax, écrite dans le fichier)
       // est rendue par pdf.js dans la page elle-même : un second tracé
@@ -1267,9 +1701,11 @@ async function dessinerAnnots() {
       } else if ((a.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
         dessinerFicheMixte(ctx, a, x, y, w, h);
       } else if (!(a.contents || '').startsWith(PREFIXE_EQUATION)) {
-        ctx.strokeStyle = '#c0392b';
-        ctx.lineWidth = 1.5 * etat.zoom;
-        ctx.strokeRect(x, y, w, h);
+        // v0.1.31 : le cadre est repeint comme il est dans le fichier :
+        // forme du marqueur (rect, arrondi, ellipse, nuage), couleur
+        // de /C, épaisseur et tirets de /BS, teinte de /IC. Les cadres
+        // des versions antérieures restent des rectangles.
+        dessinerCadreEcran(ctx, a, x, y, w, h);
       } else {
         const apercu = etat.opsEquation.get(cleEquation(a));
         if (apercu) {
@@ -1303,6 +1739,12 @@ async function dessinerAnnots() {
         ctx.font = `${11 * etat.zoom}px sans-serif`;
         ecrireCarteCommentaire(ctx, a.contents, x + Math.max(w, 14) + 8 * etat.zoom, y, etat.zoom);
       }
+    } else if (a.subtype === 'FreeText'
+      && (a.contents || '').startsWith(PREFIXE_NOTE_RICHE)) {
+      // v0.1.31 : la note riche se recompose à l'écran depuis sa source
+      // embarquée (même analyse, même compositeur que le fichier), les
+      // formules rendues par le moteur d'équations comme les fiches.
+      dessinerNoteRiche(ctx, a, x, y, w, h);
     } else if (a.subtype === 'FreeText') {
       // v0.1.12 : une note nue (Subject « Note », posée par un clic de
       // l'outil Note) s'écrit DIRECTEMENT sur la page — texte sombre, sans
@@ -1528,12 +1970,18 @@ $('#sel-surligner').addEventListener('click', async () => {
   const { quads, rect, page } = selectionTexte;
   fermerBarreSelection();
   viderSelectionNative();
+  // v0.1.31 : le surlignage du VRAI texte suit les mêmes formes et couleurs
+  // que l'outil Surligner (plein, soulignement, barré, ondulé ; palette
+  // ou cercle chromatique).
+  const opts = etat.options.surligner;
   const rep = await appliquer({
     kind: 'highlight',
     pageIndex: page,
     args: {
       rect: rect.map((v) => Math.round(v * 100) / 100),
       quadPoints: quads.map((q) => q.map((v) => Math.round(v * 100) / 100)),
+      forme: opts.forme,
+      couleur: opts.couleur,
     },
   });
   if (rep) message('Texte sélectionné surligné.', 'reussite');
@@ -2321,7 +2769,10 @@ function ecouterSouris() {
       // v0.1.11 : cliquer une FICHE MIXTE l'ouvre pour correction ; la
       // v0.1.7 : cliquer une équation EXISTANTE l'ouvre pour correction.
       const cible = annotationSous(point);
-      if (cible && (cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
+      if (cible && ((cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE)
+        || (cible.contents || '').startsWith(PREFIXE_NOTE_RICHE))) {
+        // v0.1.11/v0.1.31 : cliquer une note riche (ou une fiche mixte
+        // des versions antérieures) l'ouvre pour correction.
         ouvrirEditeur('fiche', null, cible);
         return;
       }
@@ -2466,11 +2917,26 @@ function ecouterSouris() {
         const A = geste.depart; const B = geste.point;
         const rect = [Math.min(A.x, B.x), Math.min(A.y, B.y), Math.max(A.x, B.x), Math.max(A.y, B.y)];
         if (geste.outil === 'surligner') {
+          // v0.1.31 : la forme (plein, soulignement, barré, ondulé) et la
+          // couleur choisies voyagent avec la pose (croquis validé).
+          const opts = etat.options.surligner;
           const quadPoints = quadPointsForRange(A, B);
-          await appliquer({ kind: 'highlight', pageIndex, args: { rect, quadPoints } });
+          await appliquer({
+            kind: 'highlight', pageIndex,
+            args: { rect, quadPoints, forme: opts.forme, couleur: opts.couleur },
+          });
           message('Surlignage posé.', 'reussite');
         } else if (geste.outil === 'encadrer') {
-          await appliquer({ kind: 'square', pageIndex, args: { rect } });
+          // v0.1.31 : forme, trait, épaisseur, teinte et couleur du cadre.
+          const opts = etat.options.encadrer;
+          await appliquer({
+            kind: 'square', pageIndex,
+            args: {
+              rect, forme: opts.forme, trait: opts.trait,
+              borderWidth: EPAISSEURS_CADRE[opts.ep] || 2.2,
+              teinte: opts.teinte, couleur: opts.couleur,
+            },
+          });
           message('Encadré posé.', 'reussite');
         } else if (geste.outil === 'ecrire') {
           // v0.1.14 : machine à écrire. Un VRAI glissement (plus de 5 pt
@@ -2611,6 +3077,176 @@ function clicHorsEditeur(ev) {
   validerEditeur();
 }
 
+/* ============================================================
+   v0.1.31 : sérialiseur du texte riche — le contenteditable parle le
+   sous-ensemble HTML canonique du moteur (b, i, u, s, sup, sub, span
+   style couleur/fond, div text-align, ul, ol, li). Chaque édition
+   existante revisite ce chemin : la source relue au double-clic est
+   IDENTIQUE au caractère près.
+   ============================================================ */
+
+/** Texte nu existant (note ou fiche d'avant la v0.1.31) vers le
+ * canonique : entités échappées, une div par ligne. */
+function texteNuveVersSource(texte) {
+  const t = String(texte ?? '');
+  if (!t) return '';
+  const lignes = t.replace(/\r\n?/g, '\n').split('\n');
+  return lignes.map((l) => `<div>${echapperTexte(l)}</div>`).join('');
+}
+
+/** Couleur CSS (rgb(...) ou #hex) vers #hex, sinon ''. */
+function cssVersHex(coul) {
+  const t = String(coul || '').trim();
+  if (!t) return '';
+  if (t[0] === '#') {
+    if (t.length === 4) return `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}`.toLowerCase();
+    return t.toLowerCase().slice(0, 7);
+  }
+  const m = t.match(/rgba?\(([^)]+)\)/);
+  if (!m) return '';
+  const v = m[1].split(',').map((x) => parseFloat(x));
+  if (v.length < 3) return '';
+  const hex = (i) => Math.max(0, Math.min(255, Math.round(v[i])))
+    .toString(16).padStart(2, '0');
+  return `#${hex(0)}${hex(1)}${hex(2)}`;
+}
+
+/** Sérialise le contenu EN LIGNE d'un noeud en canonique. */
+function serialiserInlineRiche(node) {
+  let out = '';
+  node.childNodes.forEach((enfant) => {
+    if (enfant.nodeType === 3) { out += echapperTexte(enfant.data); return; }
+    if (enfant.nodeType !== 1) return;
+    const bas = (enfant.tagName || '').toLowerCase();
+    if (bas === 'br') return; // traité au niveau des blocs
+    const style = enfant.style || {};
+    const coul = cssVersHex(style.color) || cssVersHex(enfant.getAttribute && enfant.getAttribute('color'));
+    const fond = cssVersHex(style.backgroundColor)
+      || cssVersHex(style.getPropertyValue && style.getPropertyValue('background-color'));
+    if (bas === 'b' || bas === 'strong') {
+      out += `<b>${serialiserInlineRiche(enfant)}</b>`;
+    } else if (bas === 'i' || bas === 'em') {
+      out += `<i>${serialiserInlineRiche(enfant)}</i>`;
+    } else if (bas === 'u') {
+      out += `<u>${serialiserInlineRiche(enfant)}</u>`;
+    } else if (bas === 's' || bas === 'strike' || bas === 'del') {
+      out += `<s>${serialiserInlineRiche(enfant)}</s>`;
+    } else if (bas === 'sup') {
+      out += `<sup>${serialiserInlineRiche(enfant)}</sup>`;
+    } else if (bas === 'sub') {
+      out += `<sub>${serialiserInlineRiche(enfant)}</sub>`;
+    } else if ((bas === 'span' || bas === 'font') && (coul || fond)) {
+      const morceaux = [];
+      if (coul) morceaux.push(`color:${coul}`);
+      if (fond) morceaux.push(`background-color:${fond}`);
+      out += `<span style="${morceaux.join(';')}">${serialiserInlineRiche(enfant)}</span>`;
+    } else {
+      out += serialiserInlineRiche(enfant); // conteneur sans style utile
+    }
+  });
+  return out;
+}
+
+/** Alignement porté par un div (style.text-align ou attribut align). */
+function alignDeBloc(el) {
+  let a = '';
+  try { a = String(el.style.textAlign || '').toLowerCase(); } catch (e) { a = ''; }
+  if (!a && el.getAttribute) a = String(el.getAttribute('align') || '').toLowerCase();
+  if (a === 'center' || a === 'centre') return 'center';
+  if (a === 'right' || a === 'droite') return 'right';
+  if (a === 'justify') return 'left';
+  return ''; // gauche (par défaut) : rien dans le canonique
+}
+
+/** Le contenu du contenteditable SEREIALISE en source canonique :
+ * une div par bloc (alignement porté), ul/ol pour les listes, br = fin
+ * de bloc, lignes vides conservées (<div></div>). */
+function serialiserEditeurRiche() {
+  const racine = $('#editeur-riche');
+  const blocs = [];
+  let courante = null;
+
+  function ouvrirBloc() {
+    if (courante === null) courante = { liste: null, align: '', html: '' };
+    return courante;
+  }
+  function cloreBloc() {
+    if (courante !== null) {
+      // les listes ne passent jamais par ici (ul/ol sont émises telles
+      // quelles dans parcourir) : ce bloc est donc un bloc de texte.
+      blocs.push(courante);
+    }
+    courante = null;
+  }
+
+  function parcourir(conteneur, alignHerite) {
+    conteneur.childNodes.forEach((enfant) => {
+      if (enfant.nodeType === 3) {
+        ouvrirBloc().html += echapperTexte(enfant.data);
+        ouvrirBloc().align = ouvrirBloc().align || alignHerite;
+        return;
+      }
+      if (enfant.nodeType !== 1) return;
+      const bas = (enfant.tagName || '').toLowerCase();
+      if (bas === 'br') {
+        cloreBloc();
+        return;
+      }
+      if (bas === 'ul' || bas === 'ol') {
+        cloreBloc();
+        const items = [];
+        enfant.childNodes.forEach((li) => {
+          if (li.nodeType !== 1 || (li.tagName || '').toLowerCase() !== 'li') return;
+          // Item de liste : br y vaut aussi fin de sous-bloc (rare) ; on
+          // garde le contenu inline, du canonique plat.
+          items.push(serialiserInlineRiche(li));
+        });
+        blocs.push({ liste: bas, items });
+        return;
+      }
+      if (bas === 'div' || bas === 'p') {
+        cloreBloc();
+        const sous = String(alignDeBloc(enfant) || alignHerite || '');
+        const htmlAvant = blocs.length;
+        parcourir(enfant, sous);
+        // L'alignement du div s'applique aux blocs qu'il contient.
+        for (let k = htmlAvant; k < blocs.length; k += 1) {
+          if (!blocs[k].liste) blocs[k].align = blocs[k].align || sous;
+        }
+        cloreBloc();
+        return;
+      }
+      ouvrirBloc().html += serialiserInlineRiche(enfant);
+      ouvrirBloc().align = ouvrirBloc().align || alignHerite;
+    });
+  }
+
+  parcourir(racine, '');
+  cloreBloc();
+
+  let source = '';
+  for (const b of blocs) {
+    if (b.liste) {
+      source += `<${b.liste}>`
+        + b.items.map((it) => `<li>${it}</li>`).join('')
+        + `</${b.liste}>`;
+    } else {
+      const align = b.align ? ` style="text-align:${b.align}"` : '';
+      source += `<div${align}>${b.html}</div>`;
+    }
+  }
+  return source;
+}
+
+/** La source canonique réaffichée dans le contenteditable : elle est
+ * déjà le sous-ensemble HTML du moteur (aucune réécriture), entités
+ * comprises — l'analyseur la relit à l'identique à la pose. */
+function sourceVersHtml(source) {
+  const t = String(source ?? '').trim();
+  if (!t) return '';
+  return t;
+}
+
 function ouvrirEditeur(genre, pointOuRect, cible) {
   if (!etat.resume) return;
   let attente;
@@ -2632,6 +3268,20 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
         ? (extraireTailleCorrection(cible.contents) || 11)
         : (Number.isFinite(bloc.fontSize) && bloc.fontSize > 0 ? bloc.fontSize : 11),
       ref: reprise ? cible.ref : null,
+    };
+  } else if (cible && cible.subtype === 'FreeText'
+    && (cible.contents || '').startsWith(PREFIXE_NOTE_RICHE)) {
+    // v0.1.31 : reprise d'une note riche — la source canonique repart
+    // telle quelle (styles, couleurs, listes, formules), la taille du
+    // marqueur recompose à l'identique.
+    attente = {
+      kind: 'noteRiche',
+      sujet: cible.subject === 'Fiche' ? 'Fiche' : 'Note',
+      pageIndex: cible.page,
+      ref: cible.ref,
+      rect: cible.rect.slice(),
+      contenu: extraireSourceNoteRiche(cible.contents),
+      fontSize: extraireTailleNoteRiche(cible.contents) || 11,
     };
   } else if (cible && (cible.subtype === 'Text' || cible.subtype === 'FreeText' || mixte)) {
     // Modification d'une annotation existante : retirer puis reposer.
@@ -2672,29 +3322,56 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   etat.saisieAttente = attente;
   const carte = $('#editeur-page');
   const zone = $('#editeur-texte');
+  const riche = $('#editeur-riche');
+  // v0.1.31 : la machine à écrire est RICHE — notes et fiches s'écrivent
+  // dans le contenteditable (gras, couleurs, listes, tailles, formules) ;
+  // le textarea ne subsiste que pour le commentaire sur icône et la
+  // correction des blocs reconnus.
+  const estRiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee'
+    || attente.kind === 'noteRiche';
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
-  // v0.1.19 : la note mixte s'édite comme une note — fond transparent.
-  const estNoteMixte = attente.kind === 'ficheMelangee' && attente.sujet === 'Note';
   // v0.1.19 : les formules $...$ vivent aussi dans la machine à écrire,
   // et depuis la v0.1.29 dans la correction des blocs reconnus.
-  const avecFormules = attente.kind === 'freeText' || attente.kind === 'ficheMelangee'
-    || attente.kind === 'correction';
+  const avecFormules = estRiche || attente.kind === 'correction';
   // v0.1.18 : le cadre PREND la mise en forme de l'annotation finale —
   // c'est le futur texte qu'on écrit, à sa place, sous sa forme définitive.
+  // v0.1.31 : la note riche (et la future pose de toute note ou fiche)
+  // s'écrit À MÊME LA PAGE : texte sombre, sans fond ni icône.
   carte.className = 'editeur-page ' + (attente.kind === 'textNote' ? 'commentaire'
     : attente.kind === 'correction' ? 'correction'
-      : estNoteMixte ? 'note'
-        : attente.kind === 'ficheMelangee' ? 'mixte'
+      : attente.kind === 'noteRiche' ? 'note'
+        : estRiche ? 'note'
           : (estNoteNue ? 'note' : 'fiche'));
   editeurCaler(attente);
   // La typographie du cadre est celle du RENDU FINAL, zoom compris. La
-  // correction (v0.1.29) écrit à la taille ESTIMÉE du bloc reconnu.
-  const fsCadre = attente.kind === 'correction' ? attente.fontSize : 11;
+  // correction (v0.1.29) écrit à la taille ESTIMÉE du bloc reconnu ;
+  // la note riche à la taille du marqueur ou du stepper (v0.1.31).
+  const fsCadre = attente.kind === 'correction' ? attente.fontSize
+    : estRiche ? (attente.fontSize || etat.options.ecrire.taille || 11) : 11;
+  if (estRiche) {
+    // Le stepper suit le corps de la note reprise (la validation posera
+    // exactement ce que l'écran montre).
+    etat.options.ecrire.taille = fsCadre;
+    majTailleVal();
+  }
   zone.style.fontSize = `${fsCadre * etat.zoom}px`;
   zone.style.lineHeight = `${Math.round(fsCadre * 1.3 * etat.zoom)}px`;
-  zone.style.padding = `${Math.round((estNoteNue || estNoteMixte ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
+  zone.style.padding = `${Math.round((estNoteNue ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
   zone.style.height = 'auto';
-  zone.value = attente.contenu;
+  zone.value = estRiche ? '' : attente.contenu;
+  zone.hidden = estRiche;
+  riche.hidden = !estRiche;
+  if (estRiche) {
+    riche.style.fontSize = `${fsCadre * etat.zoom}px`;
+    riche.style.lineHeight = `${Math.round(fsCadre * 1.3 * etat.zoom)}px`;
+    riche.style.padding = `${Math.round(etat.zoom)}px ${Math.round(3 * etat.zoom)}px`;
+    // Contenu : la source canonique repart telle quelle (elle EST un
+    // sous-ensemble HTML sûr, écrit par le sérialiseur ou le moteur) ;
+    // un texte nu existant devient des blocs div ligne à ligne.
+    riche.innerHTML = sourceVersHtml(
+      attente.kind === 'noteRiche' || attente.kind === 'ficheMelangee'
+        ? String(attente.contenu || '') : texteNuveVersSource(String(attente.contenu || '')));
+  }
   carte.hidden = false;
   // v0.1.18 : l'original réédité s'efface du calque : le cadre montre le
   // futur, pas le doublon (façon PDF-XChange).
@@ -2705,9 +3382,22 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   $('#editeur-apercu').hidden = !avecFormules || !contientFormule(attente.contenu);
   if (avecFormules && contientFormule(attente.contenu)) rafraichirApercuFiche();
   calerAccessoiresEditeur();
-  zone.focus();
-  zone.setSelectionRange(zone.value.length, zone.value.length);
-  zone.style.height = `${zone.scrollHeight}px`;
+  if (estRiche) {
+    // Curseur à la fin du contenu repris.
+    riche.focus();
+    const sel = window.getSelection();
+    if (sel) {
+      const r = document.createRange();
+      r.selectNodeContents(riche);
+      r.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+  } else {
+    zone.focus();
+    zone.setSelectionRange(zone.value.length, zone.value.length);
+    zone.style.height = `${zone.scrollHeight}px`;
+  }
   // Le clic qui vient d'ouvrir le cadre ne doit pas aussitôt poser :
   // l'écouteur s'arme au tour suivant.
   setTimeout(() => document.addEventListener('pointerdown', clicHorsEditeur, true), 0);
@@ -2716,6 +3406,10 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
 function fermerEditeur() {
   document.removeEventListener('pointerdown', clicHorsEditeur, true);
   $('#editeur-page').hidden = true;
+  const riche = $('#editeur-riche');
+  riche.hidden = true; // v0.1.31 : l'écriture riche se range aussi
+  riche.innerHTML = '';
+  $('#editeur-texte').hidden = false;
   $('#editeur-barre').hidden = true;
   $('#editeur-apercu').hidden = true;
   etat.saisieAttente = null;
@@ -2733,9 +3427,16 @@ function fermerEditeur() {
 
 async function validerEditeur() {
   const attente = etat.saisieAttente;
-  const texte = $('#editeur-texte').value;
-  fermerEditeur();
   if (!attente) return;
+  // v0.1.31 : l'écriture riche (notes, fiches, notes riches) se lit dans
+  // le contenteditable et se SEREIALISE en source canonique ; le
+  // textarea ne subsiste que pour le commentaire sur icône et la
+  // correction des blocs reconnus.
+  const estRiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee'
+    || attente.kind === 'noteRiche';
+  const texte = estRiche ? ($('#editeur-riche').innerText || '') : $('#editeur-texte').value;
+  const source = estRiche ? serialiserEditeurRiche() : texte;
+  fermerEditeur();
   // v0.1.18 : un texte vide NE DÉTRUIT PLUS l'annotation rééditée et ne
   // toaste pas : abandon silencieux du brouillon vide.
   if (!texte.trim()) {
@@ -2747,7 +3448,6 @@ async function validerEditeur() {
   }
   const args = { rect: attente.rect.slice() };
   let kind = attente.kind;
-  const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
   if (attente.kind === 'correction') {
     // v0.1.29 : le bloc corrigé est REPOSA tel quel — le moteur (engine/
@@ -2756,19 +3456,18 @@ async function validerEditeur() {
     kind = 'correction';
     args.source = texte;
     args.fontSize = attente.fontSize;
-  } else if (estFiche && contientFormule(texte)) {
-    // v0.1.11 : une fiche qui contient des formules $...$ devient une
-    // fiche mixte : texte et équations rendus ensemble, une seule annotation.
-    kind = 'ficheMelangee';
-    args.source = texte;
-    args.fontSize = FS_FICHE;
-    args.sujet = attente.sujet || 'Fiche';
+  } else if (estRiche) {
+    // v0.1.31 : notes et fiches se posent en NOTE RICHE — texte mis en
+    // forme (gras, couleurs, listes, alignements) et formules $...$,
+    // composés ensemble dans une seule annotation /FreeText.
+    kind = 'noteRiche';
+    args.source = source;
+    args.fontSize = etat.options.ecrire.taille || 11;
+    args.sujet = attente.sujet || 'Note';
   } else if (attente.kind === 'textNote') {
     args.contents = texte;
   } else {
-    args.text = texte; // note nue ou fiche (ou ex-mixte redevenue texte seul)
-    // v0.1.12 : « Note » (texte nu) ou « Fiche » (carte), relu dans le
-    // /Subject par l'écran, les tests et le moteur de déplacement.
+    args.text = texte; // texte simple hors machine à écrire riche
     args.subject = attente.sujet || 'Fiche';
   }
   edits.push({ kind, pageIndex: attente.pageIndex, args });
@@ -2790,17 +3489,27 @@ async function validerEditeur() {
  * passe à la ligne. Pour abandonner un brouillon non vide : effacer le
  * texte puis Échap (l'original réédité reste intact). */
 function toucheEchapEditeur(ev) {
+  const riche = $('#editeur-riche');
   if (ev.ctrlKey || ev.metaKey) {
+    // Ctrl+Échap : nouvelle ligne (retour à la ligne explicite, le
+    // brouillon reste ouvert jusqu'au « pose »).
     ev.preventDefault();
-    const zone = $('#editeur-texte');
-    const d = zone.selectionStart ?? zone.value.length;
-    const f = zone.selectionEnd ?? d;
-    zone.value = `${zone.value.slice(0, d)}\n${zone.value.slice(f)}`;
-    const apres = d + 1;
-    zone.focus();
-    zone.setSelectionRange(apres, apres);
-    zone.style.height = 'auto';
-    zone.style.height = `${zone.scrollHeight}px`;
+    if (riche.hidden) {
+      const zone = $('#editeur-texte');
+      const d = zone.selectionStart ?? zone.value.length;
+      const f = zone.selectionEnd ?? d;
+      zone.value = `${zone.value.slice(0, d)}\n${zone.value.slice(f)}`;
+      const apres = d + 1;
+      zone.focus();
+      zone.setSelectionRange(apres, apres);
+      zone.style.height = 'auto';
+      zone.style.height = `${zone.scrollHeight}px`;
+    } else {
+      riche.focus();
+      try {
+        document.execCommand('insertLineBreak');
+      } catch (e) { /* repli : le navigateur garde son comportement */ }
+    }
     calerAccessoiresEditeur();
     rafraichirApercuFiche();
   } else {
@@ -2829,6 +3538,19 @@ $('#editeur-texte').addEventListener('input', () => {
   zone.style.height = `${zone.scrollHeight}px`;
   calerAccessoiresEditeur();
   rafraichirApercuFiche();
+});
+$('#editeur-riche').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+    ev.preventDefault();
+    validerEditeur();
+  } else if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'm' || ev.key === 'M')) {
+    // v0.1.11/v0.1.31 : insertion d'une formule à la position du curseur.
+    ev.preventDefault();
+    ouvrirInsertionFormule();
+  } else if (ev.key === 'Escape') {
+    ev.stopPropagation();
+    toucheEchapEditeur(ev);
+  }
 });
 $('#editeur-page').addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') toucheEchapEditeur(ev);
@@ -3008,7 +3730,6 @@ function dessinerOpsCanvas(canvas, apercu) {
       i += 1;
     } else if (!Number.isNaN(Number(t))) {
       pile.push(t);
-      void pile;
       i += 1;
     } else {
       i += 1; // w, gs, BT… ignorés pour l'aperçu
@@ -3026,7 +3747,9 @@ async function insererEquation() {
   // frappe continue juste après. Rien ne se pose sur la page ici.
   if (etat.formuleFiche) {
     const attente = etat.saisieAttente;
-    if (!attente || (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee')) {
+    const estRiche = !!(attente && (attente.kind === 'freeText' || attente.kind === 'ficheMelangee'
+      || attente.kind === 'noteRiche' || attente.kind === 'correction'));
+    if (!estRiche) {
       retablirBoutonEquation();
       message('La saisie n\u2019est plus ouverte : la formule n\u2019a pas été insérée.');
       return;
@@ -3034,6 +3757,26 @@ async function insererEquation() {
     const repF = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
     if (repF.erreur || !repF.apercu) {
       message(repF.erreur || 'La formule n\u2019a pas pu être calculée.');
+      return;
+    }
+    const riche = $('#editeur-riche');
+    if (!riche.hidden && attente.kind !== 'correction') {
+      // v0.1.31 : l'insertion se fait au CURSEUR du texte riche, entre
+      // $...$ ; la formule se composera à la pose (engine/riche.js).
+      riche.focus();
+      const insere = document.execCommand('insertText', false, `$${latex}$`);
+      if (!insere) {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          const n = document.createTextNode(`$${latex}$`);
+          sel.getRangeAt(0).deleteContents();
+          sel.getRangeAt(0).insertNode(n);
+          sel.getRangeAt(0).setStartAfter(n);
+          sel.getRangeAt(0).collapse(true);
+        }
+      }
+      rafraichirApercuFiche();
+      message('Formule insérée dans le texte.', 'reussite');
       return;
     }
     const zone = $('#editeur-texte');
@@ -3196,7 +3939,8 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
 const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
 const { PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
   decouperMelange, contientFormule, exPourCorps, composerLignes,
-  PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection } = globalThis.AtelierTexte;
+  PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+  PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche } = globalThis.AtelierTexte;
 const { poigneesRect, poigneeSousPoint, rectDepuisPoignee } = globalThis.AtelierGeom;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;
 
@@ -3531,14 +4275,26 @@ function choisirOutil(outil) {
   majRecoVue(); // v0.1.29 : les blocs reconnus ne répondent qu'à la Sélection
   fermerBarreSelection();
   $('#panneau-equation').hidden = outil !== 'equation';
+  // v0.1.31 : le panneau d'options suit l'outil (croquis validé) :
+  // Surligner, Encadrer et Écrire ont leurs commandes ; les autres
+  // outils n'en ont pas et le panneau se range.
+  const sectionsOptions = {
+    surligner: 'pan-opt-surligner', encadrer: 'pan-opt-encadrer', ecrire: 'pan-opt-ecrire',
+  };
+  $('#panneau-options').hidden = !sectionsOptions[outil];
+  if (sectionsOptions[outil]) {
+    Object.values(sectionsOptions).forEach((id) => {
+      $(`#${id}`).hidden = id !== sectionsOptions[outil];
+    });
+  }
   const notes = {
     main: 'Faites glisser la page pour la faire défiler.',
     aucun: 'Cliquez une annotation : glissez-la pour la déplacer, tirez une poignée pour la redimensionner (Suppr pour retirer).',
     texte: 'Faites glisser sur le texte du document, puis Surligner ou Copier.',
-    surligner: 'Glissez sur une ligne de texte.',
-    encadrer: 'Glissez pour tracer un cadre.',
+    surligner: 'Glissez sur une ligne de texte : le surlignage prend la forme et la couleur choisies.',
+    encadrer: 'Glissez pour tracer le cadre : il prend la forme, le trait, l\u2019épaisseur et la couleur choisies.',
     encre: 'Tracez à main levée.',
-    ecrire: 'Machine à écrire : cliquez pour écrire à cet endroit, ou glissez pour tracer une zone ; Ctrl+Entrée pose.',
+    ecrire: 'Machine à écrire : cliquez pour écrire à cet endroit, ou glissez pour tracer la zone ; gras, couleurs, listes et formules au panneau de droite.',
     equation: 'Cliquez le point d\'insertion sur la page.',
   };
   message(notes[outil] || 'Prêt.');
@@ -3556,6 +4312,389 @@ function choisirOutil(outil) {
 document.querySelectorAll('.outil').forEach((b) => {
   b.addEventListener('click', () => choisirOutil(b.dataset.outil));
 });
+
+/* ============================================================
+   v0.1.31 : Panneau d'options de l'outil actif (croquis validé) —
+   formes et couleurs du surlignage, formes, traits, épaisseurs et
+   teinte des cadres, tailles et mise en forme de l'écriture. Chaque
+   palette porte sa pastille de couleur personnalisée, ouverte au
+   cercle chromatique (teinte à la roue, clarté au curseur).
+   ============================================================ */
+const COULEURS_SURLIGNER = ['#FFDF3A', '#FFA53A', '#FF7A6B', '#FF7AD9', '#7BE37B', '#7BC8FF', '#B39CFF', '#7BE3D0'];
+const COULEURS_ENCADER = ['#1A1A1A', '#7A7A7A', '#D13438', '#CA5010', '#107C10', '#0067C0', '#8764B8'];
+const TAILLES_ECRITURE = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36];
+const EPAISSEURS_CADRE = { fin: 1.3, moyen: 2.2, epais: 3.4 };
+const { hsvVersRgb, hexVersRgb01 } = globalThis.AtelierCouleurs;
+
+function hsvVersHex(h, s, v) {
+  const [r, g, b] = hsvVersRgb(h, s, v);
+  return `#${[r, g, b].map((x) => `0${x.toString(16)}`.slice(-2)).join('')}`;
+}
+
+function choisirOpt(cont, b) {
+  cont.querySelectorAll('.opt').forEach((x) => x.classList.remove('actif'));
+  b.classList.add('actif');
+}
+
+/* Cercle chromatique : une roue dessinée au pixel, la clarté au curseur.
+   Une seule roue à la fois, sous la palette qui l'a demandée. */
+let roueChromatique = null;
+function dessinerRoue(cv, v) {
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(148, 148);
+  const d = img.data;
+  const R = 74;
+  let i = 0;
+  for (let y = 0; y < 148; y += 1) {
+    for (let x = 0; x < 148; x += 1) {
+      const dx = x - 74 + 0.5;
+      const dy = y - 74 + 0.5;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const a = Math.max(0, Math.min(1, (R - dist) / 1.5));
+      if (a > 0) {
+        const h = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+        const rgb = hsvVersRgb(h, Math.min(1, dist / R), v);
+        d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2];
+        d[i + 3] = Math.round(a * 255);
+      } else {
+        d[i + 3] = 0;
+      }
+      i += 4;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function creerRoue() {
+  const boite = document.createElement('div');
+  boite.className = 'sel-coul';
+  const cv = document.createElement('canvas');
+  cv.width = 148; cv.height = 148;
+  cv.className = 'roue';
+  const ligne1 = document.createElement('div');
+  ligne1.className = 'sel-ligne';
+  const lab = document.createElement('span');
+  lab.textContent = 'Clarté';
+  const lum = document.createElement('input');
+  lum.type = 'range'; lum.min = '10'; lum.max = '100'; lum.value = '90';
+  ligne1.appendChild(lab); ligne1.appendChild(lum);
+  const ligne2 = document.createElement('div');
+  ligne2.className = 'sel-ligne';
+  const apercu = document.createElement('span');
+  apercu.className = 'apercu-coul';
+  const hex = document.createElement('span');
+  hex.className = 'sel-hex';
+  ligne2.appendChild(apercu); ligne2.appendChild(hex);
+  boite.appendChild(cv); boite.appendChild(ligne1); boite.appendChild(ligne2);
+  const pos = { h: 40, s: 0.85, v: 0.9 };
+  dessinerRoue(cv, pos.v);
+  function maj() {
+    const coul = hsvVersHex(pos.h, pos.s, pos.v);
+    apercu.style.background = coul;
+    hex.textContent = coul;
+    if (boite._surChoix) boite._surChoix(coul);
+  }
+  function depuis(e) {
+    const r = cv.getBoundingClientRect();
+    const k = 148 / (r.width || 1);
+    const dx = (e.clientX - r.left) * k - 74;
+    const dy = (e.clientY - r.top) * k - 74;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 74) dist = 74;
+    pos.h = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    pos.s = Math.min(1, dist / 74);
+    maj();
+  }
+  let actif = false;
+  cv.addEventListener('pointerdown', (e) => {
+    actif = true;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* capture absente */ }
+    depuis(e);
+    e.preventDefault();
+  });
+  cv.addEventListener('pointermove', (e) => { if (actif) depuis(e); });
+  cv.addEventListener('pointerup', () => { actif = false; });
+  cv.addEventListener('pointercancel', () => { actif = false; });
+  lum.addEventListener('input', () => {
+    pos.v = lum.value / 100;
+    dessinerRoue(cv, pos.v);
+    maj();
+  });
+  maj();
+  return boite;
+}
+
+function montrerRoue(cont, surChoix) {
+  if (!roueChromatique) roueChromatique = creerRoue();
+  if (roueChromatique._cible === cont) { roueChromatique.remove(); roueChromatique._cible = null; return; }
+  roueChromatique._surChoix = surChoix;
+  roueChromatique._cible = cont;
+  cont.parentElement.insertBefore(roueChromatique, cont.nextSibling);
+}
+
+/** Peuple une palette : pastilles cliquables, pastille personnalisée et
+ * bouton du cercle chromatique. surChoix(hex) reçoit la couleur choisie. */
+function peuplerSw(id, couleurs, actuelle, surChoix) {
+  const cont = $(`#${id}`);
+  couleurs.forEach((c) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'sw'; b.dataset.coul = c;
+    b.style.backgroundColor = c;
+    b.title = c;
+    if (actuelle && c.toLowerCase() === actuelle.toLowerCase()) b.classList.add('actif');
+    b.addEventListener('mousedown', (e) => e.preventDefault()); // garder la sélection
+    b.addEventListener('click', () => {
+      cont.querySelectorAll('.sw').forEach((x) => x.classList.remove('actif'));
+      b.classList.add('actif');
+      surChoix(c);
+    });
+    cont.appendChild(b);
+  });
+  const perso = document.createElement('button');
+  perso.type = 'button'; perso.className = 'sw perso';
+  perso.title = 'Couleur personnalisée (cercle chromatique)';
+  cont.appendChild(perso);
+  function choisirPerso(coul) {
+    cont.dataset.perso = coul;
+    perso.style.background = coul;
+    cont.querySelectorAll('.sw').forEach((x) => x.classList.remove('actif'));
+    perso.classList.add('actif');
+    surChoix(coul);
+  }
+  perso.addEventListener('click', () => {
+    if (cont.dataset.perso) choisirPerso(cont.dataset.perso);
+    else montrerRoue(cont, choisirPerso);
+  });
+  const boutonRoue = document.createElement('button');
+  boutonRoue.type = 'button'; boutonRoue.className = 'opt';
+  boutonRoue.style.width = '100%';
+  boutonRoue.style.marginTop = '6px';
+  boutonRoue.textContent = 'Cercle chromatique';
+  boutonRoue.addEventListener('click', () => montrerRoue(cont, choisirPerso));
+  cont.appendChild(boutonRoue);
+  return { choisirPerso };
+}
+
+/* Surligner : la forme choisie voyage avec chaque pose. */
+document.querySelectorAll('#pan-opt-surligner [data-forme]').forEach((b) => {
+  b.addEventListener('click', () => {
+    choisirOpt(b.parentElement, b);
+    etat.options.surligner.forme = b.dataset.forme;
+  });
+});
+peuplerSw('sw-surligner', COULEURS_SURLIGNER, etat.options.surligner.couleur,
+  (c) => { etat.options.surligner.couleur = c; });
+
+/* Encadrer : formes, traits, épaisseurs et remplissage, aperçus SVG
+   dessinés comme dans le croquis validé (rectangles, ellipse, nuage). */
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function nuagePasD(x, y, w, h, pas) {
+  let d = `M ${x} ${y}`;
+  const nx = Math.max(2, Math.round(w / pas));
+  const ny = Math.max(2, Math.round(h / pas));
+  let r;
+  for (let i = 0; i < nx; i += 1) {
+    r = (w / nx) / 2 + 1;
+    d += ` A ${r} ${r} 0 0 1 ${x + w * (i + 1) / nx} ${y}`;
+  }
+  for (let i = 0; i < ny; i += 1) {
+    r = (h / ny) / 2 + 1;
+    d += ` A ${r} ${r} 0 0 1 ${x + w} ${y + h * (i + 1) / ny}`;
+  }
+  for (let i = 0; i < nx; i += 1) {
+    r = (w / nx) / 2 + 1;
+    d += ` A ${r} ${r} 0 0 1 ${x + w - w * (i + 1) / nx} ${y + h}`;
+  }
+  for (let i = 0; i < ny; i += 1) {
+    r = (h / ny) / 2 + 1;
+    d += ` A ${r} ${r} 0 0 1 ${x} ${y + h - h * (i + 1) / ny}`;
+  }
+  return `${d} Z`;
+}
+function miniCadre(forme) {
+  const s = svgEl('svg', { width: 38, height: 22, viewBox: '0 0 38 22' });
+  const attrs = { fill: 'none', stroke: '#575757', 'stroke-width': 1.4 };
+  if (forme === 'ellipse') {
+    s.appendChild(svgEl('ellipse', { cx: 19, cy: 11, rx: 16, ry: 8.5, ...attrs }));
+  } else if (forme === 'nuage') {
+    s.appendChild(svgEl('path', { d: nuagePasD(4, 4, 30, 14, 8), ...attrs }));
+  } else if (forme === 'arrondi') {
+    s.appendChild(svgEl('rect', { x: 2, y: 2, width: 34, height: 18, rx: 6, ...attrs }));
+  } else {
+    s.appendChild(svgEl('rect', { x: 2, y: 2, width: 34, height: 18, ...attrs }));
+  }
+  return s;
+}
+(function construireOptionsCadre() {
+  const formes = [
+    { id: 'rect', nom: 'Rectangle' }, { id: 'arrondi', nom: 'Arrondi' },
+    { id: 'ellipse', nom: 'Ellipse' }, { id: 'nuage', nom: 'Nuage' },
+  ];
+  const contFormes = $('#opt-formes-cadre');
+  formes.forEach((f, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `opt${i === 0 ? ' actif' : ''}`;
+    b.dataset.forme = f.id;
+    b.title = f.nom;
+    b.appendChild(miniCadre(f.id));
+    b.appendChild(document.createTextNode(` ${f.nom}`));
+    b.addEventListener('click', () => {
+      choisirOpt(contFormes, b);
+      etat.options.encadrer.forme = f.id;
+    });
+    contFormes.appendChild(b);
+  });
+  const contTrait = $('#opt-trait-cadre');
+  [['continu', 'Continu'], ['tirets', 'Tirets'], ['points', 'Pointillés']].forEach((p, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `opt${i === 0 ? ' actif' : ''}`;
+    b.dataset.trait = p[0];
+    const s = svgEl('svg', { width: 34, height: 10, viewBox: '0 0 34 10' });
+    const l = svgEl('line', {
+      x1: 1, y1: 5, x2: 33, y2: 5, stroke: '#575757',
+      'stroke-width': 1.6, 'stroke-linecap': 'round',
+    });
+    if (p[0] === 'tirets') l.setAttribute('stroke-dasharray', '5 4');
+    if (p[0] === 'points') {
+      l.setAttribute('stroke-dasharray', '0.2 4.5');
+      l.setAttribute('stroke-width', 2.4);
+    }
+    s.appendChild(l);
+    b.appendChild(s);
+    b.appendChild(document.createTextNode(` ${p[1]}`));
+    b.addEventListener('click', () => {
+      choisirOpt(contTrait, b);
+      etat.options.encadrer.trait = p[0];
+    });
+    contTrait.appendChild(b);
+  });
+  const contEp = $('#opt-ep-cadre');
+  [['fin', 'Fin'], ['moyen', 'Moyen'], ['epais', 'Épais']].forEach((p) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `opt${p[0] === 'moyen' ? ' actif' : ''}`;
+    b.dataset.ep = p[0];
+    const s = svgEl('svg', { width: 30, height: 12, viewBox: '0 0 30 12' });
+    s.appendChild(svgEl('line', {
+      x1: 1, y1: 6, x2: 29, y2: 6, stroke: '#575757',
+      'stroke-width': EPAISSEURS_CADRE[p[0]], 'stroke-linecap': 'round',
+    }));
+    b.appendChild(s);
+    b.appendChild(document.createTextNode(` ${p[1]}`));
+    b.addEventListener('click', () => {
+      choisirOpt(contEp, b);
+      etat.options.encadrer.ep = p[0];
+    });
+    contEp.appendChild(b);
+  });
+  const contRempl = $('#opt-remplissage-cadre');
+  [['transparent', 'Transparent', false], ['teinte', 'Teinté', true]].forEach((p, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `opt${i === 0 ? ' actif' : ''}`;
+    b.dataset.remplissage = p[0];
+    b.appendChild(document.createTextNode(p[1]));
+    b.addEventListener('click', () => {
+      choisirOpt(contRempl, b);
+      etat.options.encadrer.teinte = p[2];
+    });
+    contRempl.appendChild(b);
+  });
+})();
+peuplerSw('sw-encadrer', COULEURS_ENCADER, etat.options.encadrer.couleur,
+  (c) => { etat.options.encadrer.couleur = c; });
+
+/* Écrire : le stepper de taille règle l'éditeur OUVERT (et la future
+   pose) ; les boutons de mise en forme s'appliquent à la sélection de
+   l'éditeur riche, ou arment le style de la prochaine saisie. */
+function majTailleVal() {
+  $('#taille-val').textContent = `${etat.options.ecrire.taille} pt`;
+}
+function changerTailleEcriture(sens) {
+  const i = TAILLES_ECRITURE.indexOf(etat.options.ecrire.taille);
+  if (i < 0) return;
+  const j = Math.max(0, Math.min(TAILLES_ECRITURE.length - 1, i + sens));
+  etat.options.ecrire.taille = TAILLES_ECRITURE[j];
+  majTailleVal();
+  const riche = $('#editeur-riche');
+  // Comme le marqueur « Note riche taille : », la note n'a QU'UN corps :
+  // le stepper règle l'éditeur entier (la maquette fait de même) ; les
+  // exposants et indices gardent leur facteur propre à la pose.
+  if (!riche.hidden) {
+    riche.style.fontSize = `${etat.options.ecrire.taille * etat.zoom}px`;
+    riche.style.lineHeight = `${Math.round(etat.options.ecrire.taille * 1.3 * etat.zoom)}px`;
+    calerAccessoiresEditeur();
+  }
+}
+$('#taille-moins').addEventListener('mousedown', (e) => e.preventDefault());
+$('#taille-plus').addEventListener('mousedown', (e) => e.preventDefault());
+$('#taille-moins').addEventListener('click', () => changerTailleEcriture(-1));
+$('#taille-plus').addEventListener('click', () => changerTailleEcriture(1));
+
+
+const CMDS_RICHE = {
+  gras: 'bold', italique: 'italic', souligne: 'underline', barre: 'strikeThrough',
+  exposant: 'superscript', indice: 'subscript',
+};
+document.querySelectorAll('#pan-opt-ecrire [data-style]').forEach((b) => {
+  b.addEventListener('mousedown', (e) => e.preventDefault()); // garder la sélection
+  b.addEventListener('click', () => {
+    const riche = $('#editeur-riche');
+    if (riche.hidden) {
+      b.classList.toggle('actif');
+      return; // arme le style de la prochaine saisie (départ de ligne)
+    }
+    riche.focus();
+    try {
+      document.execCommand('styleWithCSS', false, true);
+      document.execCommand(CMDS_RICHE[b.dataset.style], false, null);
+    } catch (e) { /* navigateur sans execCommand : la pose reste texte */ }
+  });
+});
+const CMDS_ALIGN = { gauche: 'justifyLeft', centre: 'justifyCenter', droite: 'justifyRight' };
+document.querySelectorAll('#pan-opt-ecrire [data-align]').forEach((b) => {
+  b.addEventListener('mousedown', (e) => e.preventDefault());
+  b.addEventListener('click', () => {
+    const riche = $('#editeur-riche');
+    if (riche.hidden) return;
+    riche.focus();
+    try {
+      document.execCommand('styleWithCSS', false, true);
+      document.execCommand(CMDS_ALIGN[b.dataset.align], false, null);
+    } catch (e) { /* idem */ }
+  });
+});
+const CMDS_LISTES = { puces: 'insertUnorderedList', numeros: 'insertOrderedList' };
+document.querySelectorAll('#pan-opt-ecrire [data-liste]').forEach((b) => {
+  b.addEventListener('mousedown', (e) => e.preventDefault());
+  b.addEventListener('click', () => {
+    const riche = $('#editeur-riche');
+    if (riche.hidden) return;
+    riche.focus();
+    try {
+      document.execCommand(CMDS_LISTES[b.dataset.liste], false, null);
+    } catch (e) { /* idem */ }
+  });
+});
+peuplerSw('sw-fond', COULEURS_SURLIGNER, null, (c) => {
+  const riche = $('#editeur-riche');
+  if (riche.hidden) return;
+  riche.focus();
+  try {
+    document.execCommand('styleWithCSS', false, true);
+    const v = hexVersRgb01(c);
+    document.execCommand('hiliteColor', false,
+      `rgba(${Math.round(v[0] * 255)}, ${Math.round(v[1] * 255)}, ${Math.round(v[2] * 255)}, 0.6)`);
+  } catch (e) { /* idem */ }
+});
+majTailleVal();
 
 /* ————— Zoom fluide (v0.1.6) —————
    Avant : chaque cran de molette relançait un rendu pdf.js complet, d'où
