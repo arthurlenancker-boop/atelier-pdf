@@ -92,7 +92,34 @@ l'autre, entièrement chez vous.
 - Les pages reconnues restent en mémoire de l'application, rien n'est
   écrit dans le fichier PDF.
 
-## 7. Questions fréquentes
+## 7. Corriger la page reconnue, en place
+
+Depuis la v0.1.29, à l'outil Sélection, les blocs reconnus de la page
+affichée apparaissent soulignés d'un contour discret, à leur position
+et taille réelles.
+
+- Un clic sur un bloc de texte ou un titre ouvre la correction
+  EXACTEMENT à sa place, préremplie du texte reconnu, à la taille
+  estimée du bloc. Corrigez la coquille, cliquez à côté (ou Échap)
+  pour poser ; un texte vidé abandonne la correction.
+- Un bloc de formule s'ouvre pareil, prérempli de son LaTeX entre
+  dollars ($...$) : la formule corrigée est composée par le moteur
+  d'équations, comme une équation posée.
+- À l'enregistrement, la correction fait deux choses dans le
+  fichier : un rectangle blanc opaque COUVRE le scan du bloc, puis
+  le texte corrigé est écrit en texte vectoriel standard. Dans tous
+  les lecteurs, le texte devient sélectionnable et imprimable ; les
+  blocs intacts restent l'image du scan, sans perte.
+- Un bloc déjà corrigé se signale à même la page : le clic le REPREND
+  (au lieu d'en empiler une seconde).
+- Le bouton Reco masque ou remet l'aperçu. Masqué, les annotations
+  posées (corrections comprises) redeviennent saisissables à la
+  Sélection : les déplacer, les redimensionner, ou Suppr pour les
+  retirer.
+- Réserve : la correction écrit dans le rectangle du bloc, sans
+  recomposer le paragraphe entier ni traiter les tableaux reconnus.
+
+## 8. Questions fréquentes
 
 - Mes annotations disparaissent dans un autre logiciel ? Elles y sont :
   surlignage, cadre, encre, note et fiche suivent le format standard des

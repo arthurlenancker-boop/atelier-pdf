@@ -232,6 +232,9 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
 
   const mixte = subtype === 'Square' && contenu.startsWith('Fiche mixte');
   const equation = subtype === 'Square' && contenu.startsWith(PREFIXE_EQUATION);
+  // v0.1.29 : une correction se REPOSE depuis sa source embarquée, comme
+  // une fiche mixte (le masque blanc doit suivre le nouveau rectangle).
+  const correction = subtype === 'Square' && contenu.startsWith('Correction OCR');
 
   if (subtype === 'Text' || subtype === 'Highlight' || subtype === 'Ink') {
     throw new Error('Ce type d\u2019annotation ne se redimensionne pas.');
@@ -251,6 +254,18 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
     const fontSize = extraireTailleFiche(contenu) || 11;
     tableau.remove(i);
     const rep = await addMixedFiche(doc, page, { rect: nouveau, source, fontSize });
+    return { ref: rep.ref, rect: rep.rect };
+  }
+
+  if (correction) {
+    const {
+      extraireSourceCorrection, extraireTailleCorrection,
+    } = require('./texte.js');
+    const { addCorrection } = require('./correction.js');
+    const source = extraireSourceCorrection(contenu);
+    const fontSize = extraireTailleCorrection(contenu) || 11;
+    tableau.remove(i);
+    const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize });
     return { ref: rep.ref, rect: rep.rect };
   }
 

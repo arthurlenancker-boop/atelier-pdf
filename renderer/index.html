@@ -24,6 +24,9 @@
     <div class="affichage">
       <!-- v0.1.15 : vue d'ensemble, colonne de vignettes des pages -->
       <button id="btn-pages" class="btn" title="Pages : montrer ou masquer la colonne de vignettes">Pages</button>
+      <!-- v0.1.29 : blocs reconnus de la page affichée — un clic corrige en
+           place ; masqués, les annotations redeviennent saisissables -->
+      <button id="btn-reco" class="btn" disabled title="Reconnaissance : montrer ou cacher les blocs reconnus de la page affichée (un clic sur un bloc ouvre sa correction en place, formules comprises)">Reco</button>
       <span class="separateur"></span>
       <button id="btn-zoom-moins" class="btn carre" title="Zoom arrière (−)">−</button>
       <span id="etiquette-zoom" class="etiquette-zoom">100 %</span>
@@ -106,6 +109,10 @@
           <!-- v0.1.13 : calque de texte pdf.js pour la sélection native,
                visible et cliquable uniquement à l'outil Texte -->
           <div id="calque-texte" class="calque-texte" hidden></div>
+          <!-- v0.1.29 : blocs reconnus de la page affichée, à leur position
+               et taille réelles ; un clic ouvre la correction en place
+               (masque blanc + texte vectoriel à l'enregistrement) -->
+          <div id="calque-reco" class="calque-reco" hidden></div>
           <!-- v0.1.18 : écriture DIRECTE sur la page, façon PDF-XChange :
                le cadre posé sur la page EST la zone d'écriture. On tape le
                texte final, à sa place définitive, sous sa forme définitive ;

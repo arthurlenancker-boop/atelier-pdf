@@ -63,6 +63,30 @@ function extraireTailleFiche(contenu) {
   return Number.isFinite(t) && t > 0 ? t : null;
 }
 
+/* v0.1.29 : la correction d'un bloc reconnu suit la même convention que la
+ * fiche mixte — la source brute (avec les $formules$ et l'Unicode) voyage
+ * dans /Contents derrière le marqueur « Correction OCR [taille] : », la
+ * taille du corps embarquée pour recomposer à l'identique. */
+const PREFIXE_CORRECTION = 'Correction OCR';
+const MARQUEUR_CORRECTION = /^Correction OCR(?: ([0-9]+(?:[.,][0-9]+)?)?)?\s*:\s*/;
+
+/** Relit la source d'une correction posée sur un bloc reconnu. */
+function extraireSourceCorrection(contenu) {
+  if (typeof contenu !== 'string') return '';
+  const m = contenu.match(MARQUEUR_CORRECTION);
+  if (!m) return '';
+  return contenu.slice(m[0].length);
+}
+
+/** Taille du corps embarquée dans le marqueur de correction, ou null. */
+function extraireTailleCorrection(contenu) {
+  if (typeof contenu !== 'string') return null;
+  const m = contenu.match(MARQUEUR_CORRECTION);
+  if (!m || m[1] === undefined) return null;
+  const t = Number(String(m[1]).replace(',', '.'));
+  return Number.isFinite(t) && t > 0 ? t : null;
+}
+
 /** Découpe une source en segments texte / formule.
  * Seuls des $ APPARIÉS délimitent une formule ; un contenu vide ou
  * blanc ($ $) reste du texte littéral. Retourne [] pour une entrée vide. */
@@ -199,10 +223,12 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
+    PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
   };
 } else {
   globalThis.AtelierTexte = {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
+    PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
   };
 }

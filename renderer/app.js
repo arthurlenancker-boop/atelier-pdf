@@ -279,6 +279,7 @@ const els = {
   calqueTexte: $('#calque-texte'),
   panneauPages: $('#panneau-pages'),
   vignettes: $('#vignettes'),
+  calqueReco: $('#calque-reco'), // v0.1.29 : blocs reconnus de la page affichée
 };
 
 /* ============================================================
@@ -302,6 +303,7 @@ function majResume(resume) {
   $('#btn-annuler').disabled = !(resume && resume.peutAnnuler);
   $('#btn-retablir').disabled = !(resume && resume.peutRefaire);
   dessinerAnnots();
+  majRecoVue(); // v0.1.29 : les états « corrigé » des blocs suivent le document
 }
 
 /* v0.1.13 : annulation et rétablissement, geste par geste. */
@@ -530,6 +532,7 @@ async function rendPage() {
   $('#etiquette-page').textContent = `${etat.page} / ${etat.resume.pageCount}`;
   // v0.1.15 : la page courante se signale dans la colonne de vignettes.
   majVignettesPage();
+  majRecoVue(); // v0.1.29 : l'aperçu suit la page affichée
   $('#etiquette-zoom').textContent = `${Math.round(etat.zoom * 100)} %`;
   // v0.1.7 : une saisie en cours sur la page suit le rendu (zoom, page).
   if (etat.saisieAttente) editeurCaler(etat.saisieAttente);
@@ -800,27 +803,97 @@ function dessinerFicheMixte(ctx, a, x, y, w, h) {
   }
 }
 
+/** v0.1.29 : trace une correction posée — masque blanc opaque du fichier,
+ * recomposé à l'écran, puis la source (texte + formules) à la taille
+ * embarquée du marqueur. Le rendu suit dessinerFicheMixte, à corps variable. */
+function dessinerCorrection(ctx, a, x, y, w, h) {
+  const fs = extraireTailleCorrection(a.contents) || FS_FICHE;
+  const k = fs / FS_FICHE; // les mesures d'Helvétique sont linéaires en corps
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x, y, w, h);
+  const source = extraireSourceCorrection(a.contents);
+  if (!source) return;
+  const segments = decouperMelange(source);
+  const formules = segments.filter((sg) => sg.type === 'formule');
+  const carte = etat.opsFiche.get(cleEquation(a));
+  const pret = !!(carte && formules.every((sg) => carte.has(sg.valeur)));
+  if (!pret) {
+    // Ops pas encore chargées (ou formule illisible) : la source reste
+    // lisible en attendant, et le calcul se fait au fond.
+    ctx.font = `${fs * etat.zoom}px sans-serif`;
+    ctx.fillStyle = '#14161c';
+    ctx.textBaseline = 'alphabetic';
+    const ligne = source.replace(/\n/g, ' ');
+    ctx.fillText(ligne.slice(0, 90), x + 2 * etat.zoom, y + h / 2);
+    chargerOpsFiches();
+    return;
+  }
+  const dims = (latex) => {
+    const ap = carte.get(latex);
+    return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
+      : { widthPt: 0, heightPt: 0, depthPt: 0 };
+  };
+  const layout = composerLignes(segments, {
+    mesurerTexte: (t) => mesurerFicheTexte(t) * k,
+    dimsFormule: dims,
+    largeurMax: (a.rect[2] - a.rect[0]) - 2 * MARGE_FICHE,
+    fontSize: fs,
+  });
+  const interbase = INTERBASE_FICHE * fs;
+  ctx.font = `${fs * etat.zoom}px sans-serif`;
+  ctx.fillStyle = '#14161c';
+  ctx.textBaseline = 'alphabetic';
+  let curseur = a.rect[3] - MARGE_V_FICHE * k; // haut du rectangle, points PDF
+  for (const ligne of layout.lignes) {
+    const base = curseur - ligne.hDessus;
+    let penX = a.rect[0] + MARGE_FICHE;
+    for (const m of ligne.morceaux) {
+      const ecran = pdfVersEcran({ x: penX, y: base });
+      if (m.type === 'texte') {
+        const affiche = translitterMathWinAnsi(m.valeur);
+        if (affiche) ctx.fillText(affiche, ecran.x, ecran.y);
+      } else {
+        // Ops chargées au CORPS de CETTE correction (chargerOpsFiches)
+        // comme les fiches le sont au leur : le tracé suit, zoomé.
+        const ap = carte.get(m.valeur);
+        if (ap) tracerOpsPlacé(ctx, ap, ecran.x, ecran.y, etat.zoom);
+      }
+      penX += m.largeur;
+    }
+    curseur = base - ligne.hDes - interbase;
+  }
+}
+
 const opsFicheEnVol = new Set(); // « cle|latex » en cours de calcul
 
 /** Charge les ops des formules des fiches mixtes de la page courante,
  * depuis le LaTeX embarqué (aucun cache lié à la pose). */
 async function chargerOpsFiches() {
   if (!etat.resume) return;
+  // v0.1.29 : les CORRECTIONS suivent le même chemin que les fiches,
+  // mais leurs formules se composent au CORPS de leur marqueur (le bloc
+  // reconnu), pas au corps fixe des fiches.
   const cibles = (etat.resume.annots || []).filter((x) => x.page === etat.page - 1
-    && x.ref && (x.contents || '').startsWith(PREFIXE_FICHE_MIXTE));
-  const exPt = exPourCorps(FS_FICHE);
+    && x.ref && ((x.contents || '').startsWith(PREFIXE_FICHE_MIXTE)
+      || (x.contents || '').startsWith(PREFIXE_CORRECTION)));
   let change = false;
   for (const x of cibles) {
     const cle = cleEquation(x);
     let carte = etat.opsFiche.get(cle);
     if (!carte) { carte = new Map(); etat.opsFiche.set(cle, carte); }
-    for (const seg of decouperMelange(extraireSourceFiche(x.contents))) {
+    const estCorrection = (x.contents || '').startsWith(PREFIXE_CORRECTION);
+    const source = estCorrection
+      ? extraireSourceCorrection(x.contents) : extraireSourceFiche(x.contents);
+    const exCible = estCorrection
+      ? exPourCorps(extraireTailleCorrection(x.contents) || FS_FICHE)
+      : exPourCorps(FS_FICHE);
+    for (const seg of decouperMelange(source)) {
       if (seg.type !== 'formule' || carte.has(seg.valeur)) continue;
       const cleVol = `${cle}|${seg.valeur}`;
       if (opsFicheEnVol.has(cleVol)) continue;
       opsFicheEnVol.add(cleVol);
       try {
-        const rep = await window.atelier.previewEquation(seg.valeur, exPt);
+        const rep = await window.atelier.previewEquation(seg.valeur, exCible);
         carte.set(seg.valeur, rep.erreur ? null : rep.apercu);
         change = true;
       } catch (e) {
@@ -1001,7 +1074,13 @@ async function dessinerAnnots() {
          même chose que les autres lecteurs. La « correction » de la
          v0.1.7 (suppression du tracé) rendait les équations posées
          totalement invisibles à l'écran. */
-      if ((a.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
+      if ((a.contents || '').startsWith(PREFIXE_CORRECTION)) {
+        // v0.1.29 : une correction posée se recompose comme la fiche mixte
+        // (source embarquée + formules), mais sur son MASQUE BLANC OPAQUE :
+        // l'écran montre ce que les autres lecteurs liront — le scan du
+        // bloc a disparu sous le texte corrigé.
+        dessinerCorrection(ctx, a, x, y, w, h);
+      } else if ((a.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
         dessinerFicheMixte(ctx, a, x, y, w, h);
       } else if (!(a.contents || '').startsWith(PREFIXE_EQUATION)) {
         ctx.strokeStyle = '#c0392b';
@@ -1735,6 +1814,7 @@ function couperReconnaissanceDocument() {
   recoDocument.pageEnCours = 0;
   recoDocument.pages.clear();
   progressionCacher();
+  majRecoVue(); // v0.1.29 : plus de blocs à corriger sur cette vue
 }
 
 /* Le lien « Arrêter » est dans la zone d'état : délégation simple. */
@@ -1790,6 +1870,7 @@ async function reconnaitreDocument() {
       recoDocument.pages.set(n, rep.page);
       faites += 1;
       marquerVignetteReco(n, 'fait');
+      if (n === etat.page) majRecoVue(); // v0.1.29 : la page affichée devient éditable
     } catch (err) {
       if (gen !== recoDocument.generation) return;
       recoDocument.pageEnCours = 0;
@@ -1812,6 +1893,180 @@ async function reconnaitreDocument() {
     empli.style.width = '0';
   }, 900);
 }
+
+/* ============================================================
+   v0.1.29 : la page reconnue éditable en place
+   ============================================================
+   Geste validé sur maquette : un clic sur un bloc reconnu (contour
+   discret à la Sélection) ouvre la correction EXACTEMENT à sa place,
+   préremplie du texte reconnu, à la taille estimée du bloc ; un clic
+   à côté pose, Échap pose aussi, un texte vide abandonne. À
+   l'enregistrement (engine/correction.js), la correction MASQUE le
+   scan du bloc par un rectangle blanc opaque et écrit le texte
+   vectoriel (les $formules$ composées par le moteur d'équations) :
+   lisible et imprimable partout. Les blocs intacts restent l'image du
+   scan, sans perte. Le bouton Reco masque l'aperçu : les annotations
+   posées redeviennent alors saisissables à la Sélection (déplacer,
+   redimensionner, Suppr). */
+const recoVue = { visible: true };
+
+/** Page reconnue affichable (celle de la page courante), ou null. */
+function blocsReconnus() {
+  if (!etat.pdfjs || !etat.resume || !etat.viewport || !recoDocument.pages) return null;
+  const page = recoDocument.pages.get(etat.page);
+  return page && Array.isArray(page.blocs) ? page : null;
+}
+
+/** Rectangle PDF [x0, bas, x1, haut] du bloc reconnu, converti depuis
+ * l'image de reconnaissance (rendue à ~200 points par pouce : la page
+ * PDF de L×L tient dans largeur×hauteur pixels). */
+function rectPdfDeBloc(b, page) {
+  const pageW = etat.viewport.pageW;
+  const pageH = etat.viewport.pageH;
+  const kx = pageW / (page.largeur || 1);
+  const ky = pageH / (page.hauteur || 1);
+  return [
+    b.bbox[0] * kx,
+    pageH - b.bbox[3] * ky, // le bas de l'image devient le bas du PDF
+    b.bbox[2] * kx,
+    pageH - b.bbox[1] * ky, // idem, origine en haut à gauche pour l'une
+  ];
+}
+
+/** Source de correction d'un bloc : le texte reconnu mot à mot (lignes
+ * séparées par \n), ou $latex$ pour une formule. Vide si non corrigeable. */
+function sourceDeBloc(b) {
+  if (b.type === 'formule') {
+    const tex = String(b.latex || '')
+      .replace(/^[\s$]+/, '').replace(/[\s$]+$/, '')
+      .trim();
+    return tex ? `$${tex}$` : '';
+  }
+  if (b.type === 'titre') return String(b.texte || '');
+  if (b.type === 'texte') {
+    return (Array.isArray(b.lignes) ? b.lignes : [])
+      .map((l) => (l && Array.isArray(l.mots) ? l.mots : []).map((m) => m.texte).join(' '))
+      .join('\n');
+  }
+  return '';
+}
+
+/** Taille du corps du bloc, estimée de la hauteur d'UNE ligne de
+ * l'image de reconnaissance (72/200 ramène les pixels en points ; le
+ * cadre utile d'une ligne vaut à peu près 1,4 corps). */
+function tailleEstimeeDeBloc(b) {
+  const nbLignes = b.type === 'texte' && Array.isArray(b.lignes) && b.lignes.length
+    ? b.lignes.length : 1;
+  const hLigne = Math.max(1, b.bbox[3] - b.bbox[1]) / nbLignes;
+  const fs = hLigne * (72 / 200) / 1.4;
+  return Math.min(28, Math.max(6, Math.round(fs * 2) / 2));
+}
+
+/** Correction posée qui recouvre le mieux le rectangle : le clic sur un
+ * bloc corrigé REPREND la correction (au lieu d'en empiler une seconde). */
+function correctionSurRect(rect) {
+  let meilleur = null;
+  let aire = 0;
+  for (const a of (etat.resume ? etat.resume.annots : [])) {
+    if (a.page !== etat.page - 1 || a.subtype !== 'Square' || !a.ref) continue;
+    if (!(a.contents || '').startsWith(PREFIXE_CORRECTION)) continue;
+    const ix = Math.max(0, Math.min(rect[2], a.rect[2]) - Math.max(rect[0], a.rect[0]));
+    const iy = Math.max(0, Math.min(rect[3], a.rect[3]) - Math.max(rect[1], a.rect[1]));
+    if (ix * iy > aire) { aire = ix * iy; meilleur = a; }
+  }
+  return aire > 0 ? meilleur : null;
+}
+
+/** Reconstruit l'aperçu des blocs reconnus de la page affichée.
+ * Calé sur le conteneur en pourcentages, il suit le zoom sans calcul
+ * (le conteneur ET l'image de reconnaissance voient tous deux la page
+ * entière dans le même sens). */
+function majRecoVue() {
+  const calque = els.calqueReco;
+  if (!calque) return;
+  const bouton = $('#btn-reco');
+  if (!bouton) return;
+  const page = blocsReconnus();
+  const montrer = !!page && recoVue.visible && etat.outil === 'aucun' && !etat.saisieAttente;
+  bouton.disabled = !page;
+  bouton.classList.toggle('actif', !!page && recoVue.visible);
+  if (!montrer) {
+    calque.hidden = true;
+    calque.replaceChildren();
+    return;
+  }
+  calque.hidden = false;
+  calque.replaceChildren();
+  page.blocs.forEach((b, i) => {
+    if (!b || !Array.isArray(b.bbox) || b.bbox.length < 4) return;
+    const div = document.createElement('div');
+    const source = sourceDeBloc(b);
+    const corrigeable = source.trim() !== '';
+    div.className = 'reco-bloc'
+      + (b.type === 'titre' ? ' reco-titre' : '')
+      + (corrigeable ? '' : ' reco-tranquille');
+    div.style.left = `${(b.bbox[0] / (page.largeur || 1)) * 100}%`;
+    div.style.top = `${(b.bbox[1] / (page.hauteur || 1)) * 100}%`;
+    div.style.width = `${((b.bbox[2] - b.bbox[0]) / (page.largeur || 1)) * 100}%`;
+    div.style.height = `${((b.bbox[3] - b.bbox[1]) / (page.hauteur || 1)) * 100}%`;
+    div.dataset.i = String(i);
+    if (corrigeable) {
+      const cible = correctionSurRect(rectPdfDeBloc(b, page));
+      if (cible) {
+        div.classList.add('reco-fait');
+        div.title = 'Bloc corrigé : cliquez pour reprendre la correction.';
+      } else {
+        div.title = b.type === 'formule'
+          ? `Formule reconnue ($ ou LaTeX, corrigeable) : ${source.slice(0, 100)}`
+          : `Bloc reconnu (cliquez pour corriger en place) : ${source.slice(0, 100)}`;
+      }
+    } else {
+      div.title = b.type === 'tableau'
+        ? 'Tableau reconnu : non corrigible dans cette version.'
+        : b.type === 'image'
+          ? 'Image reconnue : rien à corriger.'
+          : 'Bloc reconnu.';
+      // Un bloc de texte, un titre ou une formule sans texte reconnu
+      // reste CORRIGEABLE : la reconnaissance a raté, l'écriture
+      // manuelle reprend la main.
+      if (b.type === 'texte' || b.type === 'titre' || b.type === 'formule') {
+        div.classList.remove('reco-tranquille');
+        div.title = 'Bloc reconnu sans texte : cliquez pour en écrire un.';
+      }
+    }
+    calque.append(div);
+  });
+}
+
+/* Un clic sur un bloc reconnu ouvre sa correction en place, préremplie
+ * du texte reconnu ; sur un bloc déjà corrigé, la correction existante
+ * est REPRISE (et reposée à la validation). */
+els.calqueReco.addEventListener('click', (ev) => {
+  const div = ev.target.closest('.reco-bloc');
+  if (!div || div.classList.contains('reco-tranquille')) return;
+  const page = blocsReconnus();
+  if (!page) return;
+  const b = page.blocs[Number(div.dataset.i)];
+  if (!b || !Array.isArray(b.bbox)) return;
+  const rect = rectPdfDeBloc(b, page);
+  const existante = correctionSurRect(rect);
+  if (existante) {
+    ouvrirEditeur('correction', null, existante);
+    return;
+  }
+  ouvrirEditeur('correction', { rect, source: sourceDeBloc(b), fontSize: tailleEstimeeDeBloc(b) });
+});
+
+/* Le bouton Reconnaissance masque ou remet l'aperçu : masqué, les
+ * annotations posées (corrections comprises) redeviennent saisissables
+ * à la Sélection — déplacer, redimensionner, retirer. */
+$('#btn-reco').addEventListener('click', () => {
+  recoVue.visible = !recoVue.visible;
+  majRecoVue();
+  if (etat.outil === 'aucun' && recoVue.visible) {
+    message('Aperçu de la reconnaissance affiché : cliquez un bloc pour le corriger en place.');
+  }
+});
 
 function ecouterSouris() {
   let geste = null; // { outil, depart, point, points[] }
@@ -1915,6 +2170,10 @@ function ecouterSouris() {
       ouvrirEditeur('fiche', null, cible);
     } else if (cible.subtype === 'Square' && (cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE)) {
       ouvrirEditeur('fiche', null, cible);
+    } else if (cible.subtype === 'Square' && (cible.contents || '').startsWith(PREFIXE_CORRECTION)) {
+      // v0.1.29 : reprise d'une correction posée (l'aperçu de la
+      // reconnaissance est masqué : la Sélection voit l'annotation).
+      ouvrirEditeur('correction', null, cible);
     }
   });
 
@@ -2122,7 +2381,13 @@ function editeurCaler(attente) {
   // à sa taille définitive — on écrit à la place exacte du texte posé.
   const geom = positionnerEditeur(attente.rect);
   const carte = $('#editeur-page');
-  carte.style.width = `${Math.round(Math.max(120, geom.largeur))}px`;
+  // v0.1.29 : la correction écrit DANS le bloc reconnu, à SA largeur
+  // réelle (aucun minimum) : ce qu'on tape est ce qui sera composé.
+  if (attente.kind === 'correction') {
+    carte.style.width = `${Math.round(Math.max(36, geom.largeur))}px`;
+  } else {
+    carte.style.width = `${Math.round(Math.max(120, geom.largeur))}px`;
+  }
   carte.style.height = 'auto';
   carte.style.minHeight = `${Math.round(Math.max(26, geom.hauteur))}px`;
   if (attente.kind === 'textNote') {
@@ -2167,7 +2432,24 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   let attente;
   const mixte = !!(cible && cible.subtype === 'Square'
     && (cible.contents || '').startsWith(PREFIXE_FICHE_MIXTE));
-  if (cible && (cible.subtype === 'Text' || cible.subtype === 'FreeText' || mixte)) {
+  if (genre === 'correction') {
+    // v0.1.29 : reprise d'une correction posée (cible = annotation) ou
+    // correction neuve d'un bloc reconnu (pointOuRect = le bloc).
+    const reprise = !!(cible && cible.ref && (cible.contents || '').startsWith(PREFIXE_CORRECTION));
+    const bloc = reprise ? cible : pointOuRect;
+    if (!bloc || !bloc.rect) return;
+    attente = {
+      kind: 'correction',
+      sujet: 'Correction',
+      pageIndex: reprise ? cible.page : etat.page - 1,
+      rect: bloc.rect.slice(),
+      contenu: reprise ? extraireSourceCorrection(cible.contents) : String(bloc.source || ''),
+      fontSize: reprise
+        ? (extraireTailleCorrection(cible.contents) || 11)
+        : (Number.isFinite(bloc.fontSize) && bloc.fontSize > 0 ? bloc.fontSize : 11),
+      ref: reprise ? cible.ref : null,
+    };
+  } else if (cible && (cible.subtype === 'Text' || cible.subtype === 'FreeText' || mixte)) {
     // Modification d'une annotation existante : retirer puis reposer.
     attente = {
       kind: cible.subtype === 'Text' ? 'textNote' : (mixte ? 'ficheMelangee' : 'freeText'),
@@ -2209,18 +2491,23 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
   // v0.1.19 : la note mixte s'édite comme une note — fond transparent.
   const estNoteMixte = attente.kind === 'ficheMelangee' && attente.sujet === 'Note';
-  // v0.1.19 : les formules $...$ vivent aussi dans la machine à écrire.
-  const avecFormules = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
+  // v0.1.19 : les formules $...$ vivent aussi dans la machine à écrire,
+  // et depuis la v0.1.29 dans la correction des blocs reconnus.
+  const avecFormules = attente.kind === 'freeText' || attente.kind === 'ficheMelangee'
+    || attente.kind === 'correction';
   // v0.1.18 : le cadre PREND la mise en forme de l'annotation finale —
   // c'est le futur texte qu'on écrit, à sa place, sous sa forme définitive.
   carte.className = 'editeur-page ' + (attente.kind === 'textNote' ? 'commentaire'
-    : estNoteMixte ? 'note'
-      : attente.kind === 'ficheMelangee' ? 'mixte'
-        : (estNoteNue ? 'note' : 'fiche'));
+    : attente.kind === 'correction' ? 'correction'
+      : estNoteMixte ? 'note'
+        : attente.kind === 'ficheMelangee' ? 'mixte'
+          : (estNoteNue ? 'note' : 'fiche'));
   editeurCaler(attente);
-  // La typographie du cadre est celle du RENDU FINAL, zoom compris.
-  zone.style.fontSize = `${11 * etat.zoom}px`;
-  zone.style.lineHeight = `${13 * etat.zoom}px`;
+  // La typographie du cadre est celle du RENDU FINAL, zoom compris. La
+  // correction (v0.1.29) écrit à la taille ESTIMÉE du bloc reconnu.
+  const fsCadre = attente.kind === 'correction' ? attente.fontSize : 11;
+  zone.style.fontSize = `${fsCadre * etat.zoom}px`;
+  zone.style.lineHeight = `${Math.round(fsCadre * 1.3 * etat.zoom)}px`;
   zone.style.padding = `${Math.round((estNoteNue || estNoteMixte ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
   zone.style.height = 'auto';
   zone.value = attente.contenu;
@@ -2257,6 +2544,7 @@ function fermerEditeur() {
     dessinerAnnots();
   }
   if (etat.formuleFiche) retablirBoutonEquation();
+  majRecoVue(); // v0.1.29 : l'aperçu revient (pose, reprise ou abandon)
 }
 
 async function validerEditeur() {
@@ -2277,10 +2565,14 @@ async function validerEditeur() {
   let kind = attente.kind;
   const estFiche = attente.kind === 'freeText' || attente.kind === 'ficheMelangee';
   const estNoteNue = attente.kind === 'freeText' && attente.sujet === 'Note';
-  // v0.1.19 : le texte mêlé de formules s'applique aussi à la note
-  // (machine à écrire) ; elle reste une note : fond transparent, /Subject
-  // « Note », c'est ce que l'écran lit pour la dessiner sans carte.
-  if (estFiche && contientFormule(texte)) {
+  if (attente.kind === 'correction') {
+    // v0.1.29 : le bloc corrigé est REPOSA tel quel — le moteur (engine/
+    // correction.js) masque le scan du bloc par un rectangle blanc
+    // opaque et écrit le texte vectoriel, les $formules$ composées.
+    kind = 'correction';
+    args.source = texte;
+    args.fontSize = attente.fontSize;
+  } else if (estFiche && contientFormule(texte)) {
     // v0.1.11 : une fiche qui contient des formules $...$ devient une
     // fiche mixte : texte et équations rendus ensemble, une seule annotation.
     kind = 'ficheMelangee';
@@ -2299,6 +2591,12 @@ async function validerEditeur() {
   const rep = await window.atelier.applyEdits(edits);
   if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
   majResume(rep.resume);
+  if (attente.kind === 'correction') {
+    // v0.1.29 : le geste attendu depuis la maquette validée.
+    message(attente.ref ? 'Correction reprise : le scan du bloc est remplacé par le texte.'
+      : 'Bloc corrigé : à l\'enregistrement, le scan est remplacé par le texte.', 'reussite');
+    return;
+  }
   message(attente.ref ? 'Texte modifié.'
     : (estNoteNue ? 'Note posée sur la page.' : 'Texte posé.'), 'reussite');
 }
@@ -2713,7 +3011,8 @@ for (const [id, mode] of [['#eq-pro', 'pro'], ['#eq-lin', 'lin']]) {
    ============================================================ */
 const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
 const { PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
-  decouperMelange, contientFormule, exPourCorps, composerLignes } = globalThis.AtelierTexte;
+  decouperMelange, contientFormule, exPourCorps, composerLignes,
+  PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection } = globalThis.AtelierTexte;
 const { poigneesRect, poigneeSousPoint, rectDepuisPoignee } = globalThis.AtelierGeom;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;
 
@@ -3045,6 +3344,7 @@ function choisirOutil(outil) {
   // l'outil Texte ; ailleurs, il laisserait le tampon passer.
   els.conteneur.classList.toggle('outil-texte', outil === 'texte');
   els.calqueTexte.hidden = outil !== 'texte';
+  majRecoVue(); // v0.1.29 : les blocs reconnus ne répondent qu'à la Sélection
   fermerBarreSelection();
   $('#panneau-equation').hidden = outil !== 'equation';
   const notes = {

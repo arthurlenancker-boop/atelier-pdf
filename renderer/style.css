@@ -733,3 +733,41 @@ math-field.eq-mathfield:focus-within {
 .essai-info { color: var(--ink-2); font-size: 12px; margin: 4px 6px; }
 .essai-erreur { color: var(--erreur); font-size: 12px; margin: 4px 6px; }
 .essai-aide { color: var(--ink-3); font-size: 11.5px; margin: 4px 6px; }
+
+/* ————— v0.1.29 : la page reconnue éditable en place —————
+   Les blocs reconnus de la page affichée se dessinent à leur position
+   et taille réelles, par-dessus la page ; le conteneur laisse passer
+   les clics, seuls les blocs sont cliquables (l'outil Sélection garde
+   la main sur le reste de la page). Un clic ouvre la correction en
+   place : le cadre prend la future forme — blanc opaque, texte du
+   fichier, taille estimée du bloc. À l'enregistrement, la correction
+   masque le scan du bloc et écrit du texte vectoriel. */
+.calque-reco {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.reco-bloc {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px dashed rgba(0, 103, 192, 0.30);
+  border-radius: 1px;
+  box-sizing: border-box;
+}
+.reco-titre { border-style: solid; border-color: rgba(0, 103, 192, 0.38); }
+.reco-bloc:hover {
+  border-color: rgba(0, 103, 192, 0.85);
+  background: rgba(233, 241, 249, 0.20);
+}
+.reco-tranquille { cursor: default; pointer-events: none; border-style: dotted; }
+/* Bloc déjà corrigé : plus de contour (la correction posée couvre le
+   scan), un léger voile au survol rappelle qu'on peut reprendre. */
+.reco-fait { border: 1px solid transparent; }
+.reco-fait:hover { background: rgba(0, 103, 192, 0.06); }
+.editeur-page.correction {
+  background: #FFFFFF;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-doux);
+}

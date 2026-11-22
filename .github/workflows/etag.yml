@@ -5,6 +5,16 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.29 : page reconnue editable en place (geste
+# valide sur maquette canvas par Arthur). Les blocs reconnus de la page
+# affichee apparaissent en contour discret a l'outil Selection ; un clic
+# ouvre la correction EXACTEMENT a sa place, preremplie du texte reconnu,
+# a la taille estimee du bloc (les formules en LaTeX $...$, composees
+# par le moteur d'equations). A l'enregistrement, engine/correction.js
+# COUVRE le scan du bloc d'un rectangle blanc opaque et ecrit le texte
+# vectoriel standard (engine/texte.js porte le marqueur Correction OCR ;
+# engine/bouger.js repose la correction au redimensionnement ; le bouton
+# Reco masque l'apercu pour saisir les annotations posees).
 # Declencheur de la v0.1.28 : barre de progression de la reconnaissance
 # du document a l'ouverture (styles A et D valides par Arthur sur la
 # maquette canvas : barre fine sous la barre d'outils, navette pendant

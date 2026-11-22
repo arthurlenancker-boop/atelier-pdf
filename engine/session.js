@@ -9,6 +9,7 @@ const { PDFName, PDFRef } = require('pdf-lib');
 const { addHighlight, addSquare, addInk, addTextNote, addFreeText } = require('./annots.js');
 const { addEquation } = require('./equation.js');
 const { addMixedFiche } = require('./melange.js');
+const { addCorrection } = require('./correction.js'); // v0.1.29 : bloc reconnu corrigé
 const { deplacerAnnot, redimensionnerAnnot } = require('./bouger.js');
 const { listAnnots } = require('./reread.js');
 
@@ -21,6 +22,7 @@ const REGISTRE = {
   freeText: addFreeText,
   equation: addEquation,
   ficheMelangee: addMixedFiche,
+  correction: addCorrection,
   // v0.1.12 : la fiche mixte n'est plus seule à être asynchrone.
   deplacer: deplacerAnnot,
   redimensionner: redimensionnerAnnot,
