@@ -200,7 +200,7 @@ const SYMR = [
     items: [
       ['\\in', '∈'], ['\\notin', '∉'], ['\\subset', '⊂'], ['\\cap', '∩'], ['\\cup', '∪'],
       ['\\rightarrow', '→'], ['\\Rightarrow', '⇒'], ['\\leftrightarrow', '↔'],
-      // v0.1.25 (retour d'Arthur) : la double flèche ⇔ et ses sœurs.
+      // v0.1.27 (retour d'Arthur) : la double flèche ⇔ et ses sœurs.
       ['\\leftarrow', '←'], ['\\Leftarrow', '⇐'], ['\\Leftrightarrow', '⇔'],
       ['\\Longleftrightarrow', '⟺'],
       ['\\parallel', '∥'], ['\\perp', '⊥'], ['\\angle', '∠'], ['\\equiv', '≡'],
@@ -1510,12 +1510,15 @@ $('#sel-latex').addEventListener('click', async () => {
    le serveur OCR personnel (tout local : son URL suffit, le jour où elle
    est enregistrée le bouton ƒ LaTeX l'utilise) ou l'OCR Mistral (clé
    API conservée sur cet ordinateur). Menu Fichier → Options OCR LaTeX… */
-let optionsOcrEtat = { mode: 'mistral', serveurUrl: '', clePresente: false };
+let optionsOcrEtat = { mode: 'mistral', serveurUrl: '', clePresente: false, jetonPresent: false };
 
 function basculerChampsOptionsOcr() {
   const serveur = $('#opt-serveur').checked;
   $('#aide-serveur').hidden = !serveur;
   $('#serveur-url').hidden = !serveur;
+  $('#serveur-jeton').hidden = !serveur; // v0.1.25 : jeton déclaré au serveur
+  $('#aide-jeton').hidden = !serveur;
+  $('#essai-page').hidden = !serveur; // v0.1.26 : le test /page n'existe qu'en mode serveur
   $('#aide-mistral').hidden = serveur;
   $('#cle-saisie').hidden = serveur;
   const messageErreur = $('#cle-erreur');
@@ -1526,12 +1529,13 @@ function basculerChampsOptionsOcr() {
 
 function ouvrirOptionsOcr() {
   $('#cle-erreur').hidden = true;
+  $('#page-resume').hidden = true; // v0.1.26 : chaque ouverture repart d'un essai vierge
   window.atelier.optionsOcr().then((etatOptions) => {
     optionsOcrEtat = etatOptions || optionsOcrEtat;
     $('#opt-serveur').checked = optionsOcrEtat.mode === 'serveur';
     $('#opt-mistral').checked = optionsOcrEtat.mode !== 'serveur';
     $('#serveur-url').value = optionsOcrEtat.serveurUrl || '';
-    $('#cle-saisie').value = '';
+    $('#serveur-jeton').value = ''; // jamais rappelé : un jeton ne s'affiche pas
     basculerChampsOptionsOcr();
     $('#cle-fond').hidden = false;
   });
@@ -1547,6 +1551,61 @@ $('#cle-annuler').addEventListener('click', fermerOptionsOcr);
 $('#cle-valider').addEventListener('click', validerOptionsOcr);
 $('#serveur-url').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') validerOptionsOcr();
+});
+$('#serveur-jeton').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') validerOptionsOcr();
+});
+
+/* v0.1.26 : bouton « Tester la reconnaissance ». La page COURANTE est
+   rendue hors écran en JPEG ~200 points par pouce (qualité 0,85), envoyée
+   au endpoint /page du serveur personnel, et le résumé lisible s'affiche
+   sous le bouton. Le bouton se désactive pendant l'essai (jusqu'à
+   10 minutes) et se restaure dans TOUS les cas. */
+let pageEssaiEnCours = false;
+$('#tester-page').addEventListener('click', async () => {
+  if (pageEssaiEnCours) return;
+  const bouton = $('#tester-page');
+  const resume = $('#page-resume');
+  if (!etat.pdfjs || !etat.resume) {
+    resume.textContent = "Ouvrez d'abord un document : la page affichée sera reconnue.";
+    resume.className = 'eq-erreur';
+    resume.hidden = false;
+    return;
+  }
+  pageEssaiEnCours = true;
+  bouton.disabled = true;
+  bouton.textContent = 'Reconnaissance en cours…';
+  resume.hidden = true;
+  try {
+    const page = await etat.pdfjs.getPage(etat.page);
+    const vp = page.getViewport({ scale: 200 / 72 }); // ~200 points par pouce
+    const toile = document.createElement('canvas');
+    toile.width = Math.max(1, Math.floor(vp.width));
+    toile.height = Math.max(1, Math.floor(vp.height));
+    await page.render({ canvasContext: toile.getContext('2d'), viewport: vp }).promise;
+    const dataUrl = toile.toDataURL('image/jpeg', 0.85);
+    const rep = await window.atelier.testerPage(dataUrl);
+    if (rep.erreur) {
+      resume.textContent = rep.erreur;
+      resume.className = 'eq-erreur';
+    } else {
+      const blocs = rep.page && Array.isArray(rep.page.blocs) ? rep.page.blocs : [];
+      if (!blocs.length) {
+        resume.textContent = "La page a été reconnue mais aucun bloc exploitable n'a été trouvé.";
+      } else {
+        resume.textContent = rep.resume || 'Page reconnue.';
+      }
+      resume.className = 'cle-aide';
+    }
+  } catch (err) {
+    resume.textContent = `Reconnaissance impossible : ${(err && err.message) || err}`;
+    resume.className = 'eq-erreur';
+  } finally {
+    resume.hidden = false;
+    pageEssaiEnCours = false;
+    bouton.disabled = false;
+    bouton.textContent = 'Tester la reconnaissance';
+  }
 });
 $('#cle-saisie').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') validerOptionsOcr();
@@ -1564,6 +1623,10 @@ async function validerOptionsOcr() {
       return;
     }
     options.url = url;
+    // v0.1.25 : le jeton ne part QUE si l'utilisateur a tapé quelque
+    // chose ; le champ vide laisse le jeton en place (jamais rappelé).
+    const jeton = $('#serveur-jeton').value.trim();
+    if (jeton) options.jeton = jeton;
   } else {
     // Retour au mode Mistral : l'URL du serveur est retirée ; la clé
     // saisie remplace l'existante (le champ vide garde la clé en place).
@@ -1584,7 +1647,7 @@ async function validerOptionsOcr() {
   }
   fermerOptionsOcr();
   message($('#opt-serveur').checked
-    ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.`
+    ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.${options.jeton ? ' Jeton enregistré.' : ''}`
     : 'OCR Mistral enregistré pour la lecture LaTeX.', 'reussite');
 }
 

@@ -71,3 +71,17 @@ lettres droites dans la zone structurée des fragments tels que
 12+ fichiers poussés en un commit par protocole d'empreintes ; flux
 Livraison déclenché par etag.yml ; tag v0.1.25 ; sha512 vérifié contre
 latest.yml.
+
+## Post-scriptum : livré en v0.1.27 (croisement de flux)
+
+Le matin même, un second flux de travail a poussé v0.1.25 (jeton d'accès
+du serveur OCR) puis v0.1.26 (serveur v2) pendant que ces correctifs
+équation étaient préparés sur une base v0.1.24. La poussée a écrasé
+package.json, renderer/app.js, etag.yml et README.md (version redescendue
+à 0.1.25, câblage du serveur v2 et garde-fous de livraison perdus) et la
+Livraison a sauté : le tag v0.1.25 était déjà pris. Le commit v0.1.27
+restaure intégralement le contenu v0.1.26 de ces quatre fichiers,
+ré-applique les correctifs équation (moteur, tests, palette, README) et
+porte la version à 0.1.27. Leçon consignée : relire list_commits AUSSI
+AVANT de pousser, pas seulement après — la tête de main peut avoir
+avancé pendant la préparation.

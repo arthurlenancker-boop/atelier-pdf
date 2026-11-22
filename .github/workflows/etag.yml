@@ -5,20 +5,21 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.25 : correctifs Equation sur retour d'Arthur —
-# (1) garde anti-collage : une commande LaTeX suivi d'un atome ne se
-# colle plus (p \Leftrightarrow ow donnait \Leftrightarrowow, affiché
-# « Leftrightarrowow » par MathLive ; a \times b donnait \timesb) ;
-# (2) filet anti-perte : un symbole inconnu (⇔, ·…) n'efface plus la
-# fin de la saisie (a⇔b donnait « a ») ; (3) couverture des symboles
-# qu'OneNote admet en Linéaire (⇔ ⟺ ⟷ ⇒ ⇐ ∉ ∧ ∨ ⊕ ⊗ ⊙ ± ∓ · ∘ • ↑ ↓
-# ↦…) et correction \supset / \supseteq ; (4) palette enrichie
-# (← ⇐ ⇔ ⟺). La fonte d'édition reste KaTeX (Cambria Math est une
-# police Microsoft, non embarquable) : réponse faite à Arthur.
-# apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
-# clic (Remplacer la formule) ; notes et fiches écrites directement sur
-# la page (plus de panneau central), modifiables par double-clic ;
-# catégories de caractères en menus déroulants.
+# Declencheur de la v0.1.27 : remise en coherence apres croisement de deux
+# flux le meme matin. Les correctifs Equation (garde anti-collage des
+# commandes \ suivies d'un atome, filet anti-perte en seriation, fleches
+# doubles ⇔ ⟺ et palette « Ensembles & fleches » enrichie, correction
+# \supset/\supseteq) avaient ete prepares sur une base v0.1.24 pendant que
+# main avancait sans eux : v0.1.25 (jeton d'acces du serveur OCR) puis
+# v0.1.26 (serveur v2, reconnaissance de pages completes). La pousse a
+# ecrase package.json, renderer/app.js, etag.yml et README.md par des
+# contenus bases sur v0.1.24 : version redescendue a 0.1.25, cablage du
+# serveur v2 et garde-fous de livraison perdus, la Livraison #35 a saute
+# (le tag v0.1.25 etait deja pris). Ce commit restaure integralement le
+# contenu v0.1.26 de ces quatre fichiers, re-applique les correctifs
+# Equation (moteur engine/unicodemath.js, tests, palette de app.js,
+# README) et porte la version a 0.1.27 : les versions 0.1.25 et 0.1.26
+# restent livrees par le flux serveur.
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison
@@ -87,6 +88,19 @@ jobs:
             done
             exit 1
           fi
+
+      # v0.1.25 : le serveur OCR personnel est éprouvé avant construction :
+      # son banc d'essai (bibliothèque standard seule, mode --banc) vérifie
+      # le contrat /ocr, y compris le jeton (200/401) et la rétrocompatibilité.
+      - uses: actions/setup-python@v5
+        if: steps.version.outputs.existe == 'false'
+        with:
+          python-version: '3.12'
+
+      - name: Test serveur OCR (mode banc)
+        if: steps.version.outputs.existe == 'false'
+        shell: bash
+        run: python serveur-ocr/test_serveur.py
 
       - name: Construction de l'installateur et du portable
         if: steps.version.outputs.existe == 'false'
