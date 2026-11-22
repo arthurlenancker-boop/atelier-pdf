@@ -5,16 +5,25 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.25 : le jeton d'acces du serveur OCR personnel —
-# serveur.py option --jeton (ou variable JETON_OCR), reponse 401 « Jeton
-# absent ou refuse. » AVANT lecture du corps (le GET /ocr de diagnostic
-# reste ouvert) ; banc d'essai 9 verifications execute par CE flux et par
-# la CI (test_serveur.py, bibliotheque standard seule) ; Atelier PDF :
-# champ « Jeton » dans Fichier → Options OCR LaTeX… (jamais rappele a
-# l'ecran, envoye seulement s'il est tape), en-tete Authorization:
-# Bearer, message 401 guidant vers le menu ; LISEZMOI v2 du serveur
-# (Python 3.10-3.12 EXIGE, piege 3.13, py -3.12, recettes Ubuntu relais
-# socat et Tailscale Funnel) ; lanceur demarrage-windows.cmd.
+# Declencheur de la v0.1.26 : le serveur v2, reconnaissance de pages
+# completes — serveur.py endpoint POST <…>/page (contract {largeur,
+# hauteur, blocs: titre|texte+lignes+mots|formule latex|tableau html|
+# image bbox seule, JAMAIS de pixels}), option --niveau
+# flash|basic|standard|advanced (defaut basic), verrou d'execution
+# PARTAGE /ocr+/page (un moteur a la fois, 8 Go de VRAM), mode --banc
+# etendu a une page factice complete, passerelle moteur_pages.py vers
+# MinerU 4.x (AGPL, import paresseux, transformateur defensif, jamais
+# d'exception) ; requirements.txt : torch==2.11.0+cu128 +
+# torchvision==0.26.0+cu128 (index cu128, GPU RTX) + mineru[torch]
+# >=4.2.3,<5 — Python 3.12 EXIGE (py -3.12) ; banc d'essai passe a 13
+# verifications dans test_serveur.py (bibliotheque standard seule,
+# execute par CE flux et par la CI) ; test_moteur_pages.py (17
+# verifications, bibliotheque standard) s'execute a cote ;
+# comparatif.py mesure les niveaux sur des pages reelles ; Atelier
+# PDF : bouton « Tester la reconnaissance » dans Fichier → Options OCR
+# LaTeX… (page courante JPEG ~200 ppp, delai 10 min, resume lisible) ;
+# LISEZMOI v3 (installation GPU et repli CPU, recette comparatif,
+# contrat /page, licences AGPL tout local).
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison

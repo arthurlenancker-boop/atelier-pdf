@@ -16,7 +16,7 @@ const { mjRender } = require('./engine/mjrender.js');
 const { rejouer } = require('./engine/undo.js');
 const {
   nettoyerCle, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur,
-  enteteJeton, messageErreurOcr,
+  enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage,
 } = require('./engine/ocr.js');
 
 // ---------------------------------------------------------------------------
@@ -611,6 +611,63 @@ ipcMain.handle('ocr:latex', async (_e, { dataUrl } = {}) => {
     return { erreur: lireServeurOcr()
       ? 'Serveur OCR injoignable : vérifiez son adresse (menu Fichier → Options OCR LaTeX…) et qu\'il tourne bien.'
       : 'Réseau indisponible : la lecture LaTeX exige une connexion à api.mistral.ai.' };
+  }
+});
+
+// v0.1.26 : le bouton « Tester la reconnaissance » des options OCR
+// envoie la page courante (JPEG produit par le rendu, ~200 points par
+// pouce) au endpoint /page du serveur personnel ; la page reconnue et
+// son résumé lisible reviennent pour la carte. Toujours local : rien
+// ne passe par Mistral.
+ipcMain.handle('page:tester', async (_e, { dataUrl } = {}) => {
+  try {
+    if (typeof dataUrl !== 'string' || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
+      return { erreur: 'L\'image de la page est illisible : rendu impossible.' };
+    }
+    const serveur = lireServeurOcr();
+    if (!serveur) {
+      return { erreur: 'Aucun serveur OCR enregistré. Menu Fichier → Options OCR LaTeX…' };
+    }
+    const reponse = await fetch(pageUrlDepuis(serveur), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...enteteJeton(lireJetonOcr()) },
+      body: JSON.stringify({ image_url: dataUrl }),
+      signal: AbortSignal.timeout(600000), // une page complète : 10 minutes
+    });
+    if (reponse.status === 401) {
+      // Le serveur exige un jeton absent ou refusé ; le message guide
+      // vers le réglage, sans lecture du corps.
+      return { erreur: messageErreurOcr(401) };
+    }
+    if (!reponse.ok) {
+      let detail = '';
+      try {
+        const corps = await reponse.json();
+        if (corps && typeof corps.erreur === 'string') detail = corps.erreur;
+      } catch { /* corps non JSON */ }
+      if (!detail) {
+        try { detail = (await reponse.text()).slice(0, 200); } catch { /* silencieux */ }
+      }
+      return {
+        erreur: `Le serveur OCR a répondu par une erreur ${reponse.status}${detail ? ` : ${detail}` : '.'}`,
+      };
+    }
+    let page = null;
+    try {
+      page = await reponse.json();
+    } catch {
+      return { erreur: 'Réponse du serveur illisible : du JSON est attendu, de la forme { "largeur": …, "hauteur": …, "blocs": … }.' };
+    }
+    if (!page || typeof page !== 'object' || !Array.isArray(page.blocs)) {
+      return { erreur: 'Réponse du serveur inattendue : la page reconnue est mal formée.' };
+    }
+    return { page, resume: resumePage(page) };
+  } catch (err) {
+    const nom = String((err && err.name) || err);
+    if (/timeout|abort/i.test(nom)) {
+      return { erreur: 'Délai dépassé : votre serveur OCR n\'a pas reconnu la page en 10 minutes (vérifiez qu\'il tourne et que la première reconnaissance a bien fini de télécharger les modèles).' };
+    }
+    return { erreur: 'Serveur OCR injoignable : vérifiez son adresse (menu Fichier → Options OCR LaTeX…) et qu\'il tourne bien.' };
   }
 });
 

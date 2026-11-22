@@ -1,1 +1,15 @@
+# Moteur de formules (bouton ƒ LaTeX, v0.1.23) — CPU, léger
 rapid-latex-ocr>=0.0.9
+
+# Reconnaissance de pages complètes (v0.1.26) — MinerU
+# Les DEUX lignes torch sont le GPU (CUDA 12.8, cartes RTX).
+# Repli 100 % CPU : les commenter puis relancer
+#   py -3.12 -m pip install -r requirements.txt
+# et redémarrer le serveur : le niveau basic reste fonctionnel via ONNX.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+mineru[torch]>=4.2.3,<5
+
+# Python 3.10 à 3.12 EXACTEMENT (rapid-latex-ocr refuse 3.13) :
+# sous Windows, installez et lancez avec py -3.12.

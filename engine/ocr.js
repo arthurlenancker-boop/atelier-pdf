@@ -194,16 +194,77 @@ function messageErreurOcr(statut) {
   return "Le serveur OCR a répondu une erreur (code " + statut + ").";
 }
 
+/**
+ * v0.1.26 : URL du endpoint /page d'un serveur OCR déjà enregistré.
+ * Un suffixe « /ocr » devient « /page » ; une URL nue reçoit « /page » ;
+ * une URL déjà en « /page » est renvoyée telle quelle (jamais doublée).
+ * Renvoie '' si l'entrée n'est pas une URL http(s) utilisable.
+ * @param {*} url
+ * @returns {string}
+ */
+function pageUrlDepuis(url) {
+  if (typeof url !== 'string') return '';
+  const u = url.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/\S+$/i.test(u)) return '';
+  if (u.endsWith('/page')) return u;
+  if (u.endsWith('/ocr')) return u.slice(0, -4) + '/page';
+  return u + '/page';
+}
+
+/**
+ * v0.1.26 : résumé lisible d'une page reconnue (POST /page du serveur),
+ * affiché dans la carte des options OCR. Les lignes de texte se comptent
+ * en LIGNES (pas en blocs) ; les types absents sont omis ; une page vide
+ * ou tordue donne « aucun bloc » — jamais une exception.
+ * @param {*} page contrat {largeur, hauteur, blocs} du serveur
+ * @returns {string}
+ */
+function resumePage(page) {
+  const blocs = [];
+  if (page && typeof page === 'object' && Array.isArray(page.blocs)) {
+    for (const bloc of page.blocs) {
+      if (bloc && typeof bloc === 'object' && typeof bloc.type === 'string') {
+        blocs.push(bloc);
+      }
+    }
+  }
+  if (!blocs.length) return 'Page reconnue : aucun bloc.';
+  let titres = 0, lignes = 0, formules = 0, tableaux = 0, images = 0;
+  for (const bloc of blocs) {
+    if (bloc.type === 'titre') titres++;
+    else if (bloc.type === 'texte') {
+      lignes += Array.isArray(bloc.lignes) ? bloc.lignes.length : 0;
+    } else if (bloc.type === 'formule') formules++;
+    else if (bloc.type === 'tableau') tableaux++;
+    else if (bloc.type === 'image') images++;
+  }
+  const pluriel = (n, singulier, formePluriel) =>
+    n === 1 ? '1 ' + singulier : n + ' ' + formePluriel;
+  const parties = [];
+  if (titres) parties.push(pluriel(titres, 'titre', 'titres'));
+  if (lignes) parties.push(pluriel(lignes, 'ligne de texte', 'lignes de texte'));
+  if (formules) parties.push(pluriel(formules, 'formule', 'formules'));
+  if (tableaux) parties.push(pluriel(tableaux, 'tableau', 'tableaux'));
+  if (images) parties.push(pluriel(images, 'image', 'images'));
+  if (!parties.length) {
+    return 'Page reconnue : ' + blocs.length + (blocs.length === 1 ? ' bloc.' : ' blocs.');
+  }
+  return 'Page reconnue : ' + blocs.length + (blocs.length === 1 ? ' bloc (' : ' blocs (')
+    + parties.join(', ') + ').';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
     nettoyerUrlServeur, latexDepuisReponseServeur,
     enteteJeton, messageErreurOcr,
+    pageUrlDepuis, resumePage,
   };
 } else {
   globalThis.AtelierOcr = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
     nettoyerUrlServeur, latexDepuisReponseServeur,
     enteteJeton, messageErreurOcr,
+    pageUrlDepuis, resumePage,
   };
 }

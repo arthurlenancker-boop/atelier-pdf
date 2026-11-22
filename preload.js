@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('atelier', {
   enregistrerOptionsOcr: (options) => ipcRenderer.invoke('conf:ocr', options || {}),
   /** v0.1.23 : état de la lecture LaTeX (mode, URL du serveur, clé présente). */
   optionsOcr: () => ipcRenderer.invoke('conf:ocr:get'),
+  /** v0.1.26 : envoie la page courante (JPEG ~200 ppp) au endpoint
+      /page du serveur personnel ; renvoie { page, resume } ou { erreur }. */
+  testerPage: (dataUrl) => ipcRenderer.invoke('page:tester', { dataUrl }),
   /** Chemin réel d'un fichier déposé par glisser-déposer. */
   cheminFichier: (fichier) => webUtils.getPathForFile(fichier),
   /** Signale chaque changement d'état (modifié / enregistré). */

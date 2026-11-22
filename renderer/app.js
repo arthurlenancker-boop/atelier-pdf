@@ -1514,6 +1514,7 @@ function basculerChampsOptionsOcr() {
   $('#serveur-url').hidden = !serveur;
   $('#serveur-jeton').hidden = !serveur; // v0.1.25 : jeton déclaré au serveur
   $('#aide-jeton').hidden = !serveur;
+  $('#essai-page').hidden = !serveur; // v0.1.26 : le test /page n'existe qu'en mode serveur
   $('#aide-mistral').hidden = serveur;
   $('#cle-saisie').hidden = serveur;
   const messageErreur = $('#cle-erreur');
@@ -1524,6 +1525,7 @@ function basculerChampsOptionsOcr() {
 
 function ouvrirOptionsOcr() {
   $('#cle-erreur').hidden = true;
+  $('#page-resume').hidden = true; // v0.1.26 : chaque ouverture repart d'un essai vierge
   window.atelier.optionsOcr().then((etatOptions) => {
     optionsOcrEtat = etatOptions || optionsOcrEtat;
     $('#opt-serveur').checked = optionsOcrEtat.mode === 'serveur';
@@ -1548,6 +1550,58 @@ $('#serveur-url').addEventListener('keydown', (ev) => {
 });
 $('#serveur-jeton').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') validerOptionsOcr();
+});
+
+/* v0.1.26 : bouton « Tester la reconnaissance ». La page COURANTE est
+   rendue hors écran en JPEG ~200 points par pouce (qualité 0,85), envoyée
+   au endpoint /page du serveur personnel, et le résumé lisible s'affiche
+   sous le bouton. Le bouton se désactive pendant l'essai (jusqu'à
+   10 minutes) et se restaure dans TOUS les cas. */
+let pageEssaiEnCours = false;
+$('#tester-page').addEventListener('click', async () => {
+  if (pageEssaiEnCours) return;
+  const bouton = $('#tester-page');
+  const resume = $('#page-resume');
+  if (!etat.pdfjs || !etat.resume) {
+    resume.textContent = "Ouvrez d'abord un document : la page affichée sera reconnue.";
+    resume.className = 'eq-erreur';
+    resume.hidden = false;
+    return;
+  }
+  pageEssaiEnCours = true;
+  bouton.disabled = true;
+  bouton.textContent = 'Reconnaissance en cours…';
+  resume.hidden = true;
+  try {
+    const page = await etat.pdfjs.getPage(etat.page);
+    const vp = page.getViewport({ scale: 200 / 72 }); // ~200 points par pouce
+    const toile = document.createElement('canvas');
+    toile.width = Math.max(1, Math.floor(vp.width));
+    toile.height = Math.max(1, Math.floor(vp.height));
+    await page.render({ canvasContext: toile.getContext('2d'), viewport: vp }).promise;
+    const dataUrl = toile.toDataURL('image/jpeg', 0.85);
+    const rep = await window.atelier.testerPage(dataUrl);
+    if (rep.erreur) {
+      resume.textContent = rep.erreur;
+      resume.className = 'eq-erreur';
+    } else {
+      const blocs = rep.page && Array.isArray(rep.page.blocs) ? rep.page.blocs : [];
+      if (!blocs.length) {
+        resume.textContent = "La page a été reconnue mais aucun bloc exploitable n'a été trouvé.";
+      } else {
+        resume.textContent = rep.resume || 'Page reconnue.';
+      }
+      resume.className = 'cle-aide';
+    }
+  } catch (err) {
+    resume.textContent = `Reconnaissance impossible : ${(err && err.message) || err}`;
+    resume.className = 'eq-erreur';
+  } finally {
+    resume.hidden = false;
+    pageEssaiEnCours = false;
+    bouton.disabled = false;
+    bouton.textContent = 'Tester la reconnaissance';
+  }
 });
 $('#cle-saisie').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') validerOptionsOcr();

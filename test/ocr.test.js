@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur, enteteJeton, messageErreurOcr } = require('../engine/ocr.js');
+const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur, enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage } = require('../engine/ocr.js');
 
 // ————— borner —————
 test('borner borne un nombre dans l’intervalle', () => {
@@ -189,4 +189,64 @@ test('messageErreurOcr dit injoignable au statut 0', () => {
 test('messageErreurOcr cite le code des autres statuts', () => {
   assert.ok(messageErreurOcr(500).includes('500'));
   assert.ok(messageErreurOcr(502).includes('502'));
+});
+
+// ————— v0.1.26 : pageUrlDepuis —————
+test('pageUrlDepuis remplace le suffixe /ocr par /page', () => {
+  assert.strictEqual(pageUrlDepuis('http://127.0.0.1:8642/ocr'), 'http://127.0.0.1:8642/page');
+  assert.strictEqual(pageUrlDepuis('https://pc-arthur.tailxxxx.ts.net/latex-ocr/ocr'), 'https://pc-arthur.tailxxxx.ts.net/latex-ocr/page');
+});
+
+test('pageUrlDepuis ajoute /page à une URL nue, sans jamais doubler', () => {
+  assert.strictEqual(pageUrlDepuis('http://192.168.1.116:8642'), 'http://192.168.1.116:8642/page');
+  assert.strictEqual(pageUrlDepuis('http://127.0.0.1:8642/page'), 'http://127.0.0.1:8642/page');
+  assert.strictEqual(pageUrlDepuis('https://pc-arthur.tailxxxx.ts.net/latex-ocr'), 'https://pc-arthur.tailxxxx.ts.net/latex-ocr/page');
+});
+
+test('pageUrlDepuis renvoie une chaîne vide sur une entrée inutilisable', () => {
+  assert.strictEqual(pageUrlDepuis(''), '');
+  assert.strictEqual(pageUrlDepuis(null), '');
+  assert.strictEqual(pageUrlDepuis(42), '');
+});
+
+// ————— v0.1.26 : resumePage —————
+const PAGE_FACTICE = {
+  largeur: 1654, hauteur: 2339,
+  blocs: [
+    { type: 'titre', bbox: [132, 141, 1522, 199], texte: 'Titre de la page' },
+    { type: 'texte', bbox: [132, 231, 1522, 339], lignes: [
+      { bbox: [132, 231, 1522, 267], mots: [{ bbox: [132, 231, 204, 267], texte: 'Première' }] },
+      { bbox: [132, 303, 1522, 339], mots: [{ bbox: [132, 303, 232, 339], texte: 'Deuxième' }] },
+    ] },
+    { type: 'formule', bbox: [132, 419, 1037, 547], latex: '\\frac{1}{2}' },
+    { type: 'tableau', bbox: [132, 619, 1522, 875], html: '<table></table>' },
+    { type: 'image', bbox: [132, 947, 1522, 1303] },
+  ],
+};
+
+test('resumePage résume la page factice du banc, types dans l’ordre', () => {
+  assert.strictEqual(
+    resumePage(PAGE_FACTICE),
+    'Page reconnue : 5 blocs (1 titre, 2 lignes de texte, 1 formule, 1 tableau, 1 image).'
+  );
+});
+
+test('resumePage accorde les pluriels et omet les types absents', () => {
+  const page = { blocs: [
+    { type: 'formule', bbox: [0, 0, 1, 1], latex: 'a' },
+    { type: 'formule', bbox: [0, 2, 1, 3], latex: 'b' },
+    { type: 'texte', bbox: [0, 4, 1, 5], lignes: [
+      { bbox: [0, 4, 1, 5], mots: [{ bbox: [0, 4, 1, 5], texte: 'un' }] },
+    ] },
+  ] };
+  assert.strictEqual(
+    resumePage(page),
+    'Page reconnue : 3 blocs (1 ligne de texte, 2 formules).'
+  );
+});
+
+test('resumePage dit « aucun bloc » sur une page vide ou tordue', () => {
+  assert.strictEqual(resumePage({ largeur: 10, hauteur: 10, blocs: [] }), 'Page reconnue : aucun bloc.');
+  assert.strictEqual(resumePage(null), 'Page reconnue : aucun bloc.');
+  assert.strictEqual(resumePage({ blocs: 'pas une liste' }), 'Page reconnue : aucun bloc.');
 });
