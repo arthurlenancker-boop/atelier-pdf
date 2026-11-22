@@ -160,14 +160,50 @@ function latexDepuisReponseServeur(contenu) {
   return extractionLatex(source);
 }
 
+/**
+ * v0.1.25 : compose l'en-tête d'autorisation d'un jeton de service.
+ * Chaîne vide, nulle, non-chaîne ou blanches → {} (aucun en-tête :
+ * un serveur sans jeton ignore l'en-tête, rétrocompatible) ; sinon
+ * { "Authorization": "Bearer <jeton épuré>" }.
+ * @param {*} jeton
+ * @returns {{Authorization: string}|{}}
+ */
+function enteteJeton(jeton) {
+  if (typeof jeton !== 'string') return {};
+  const propre = jeton.trim();
+  if (!propre) return {};
+  return { 'Authorization': 'Bearer ' + propre };
+}
+
+/**
+ * v0.1.25 : message français d'échec selon le statut HTTP du serveur
+ * OCR personnel. 401 = refus de jeton (message distinct, l'utilisateur
+ * doit comprendre que le serveur répond mais exige le jeton), 0 =
+ * injoignable (délai, réseau), tout autre statut = erreur citée.
+ * @param {number} statut
+ * @returns {string}
+ */
+function messageErreurOcr(statut) {
+  if (statut === 401) {
+    return "Le serveur exige un jeton : jeton absent ou refusé. "
+      + "Vérifiez le jeton dans Fichier → Options OCR LaTeX…";
+  }
+  if (!statut) {
+    return "Le serveur OCR est injoignable (réseau ou délai dépassé).";
+  }
+  return "Le serveur OCR a répondu une erreur (code " + statut + ").";
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
     nettoyerUrlServeur, latexDepuisReponseServeur,
+    enteteJeton, messageErreurOcr,
   };
 } else {
   globalThis.AtelierOcr = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
     nettoyerUrlServeur, latexDepuisReponseServeur,
+    enteteJeton, messageErreurOcr,
   };
 }

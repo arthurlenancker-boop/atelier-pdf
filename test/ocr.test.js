@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur } = require('../engine/ocr.js');
+const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur, enteteJeton, messageErreurOcr } = require('../engine/ocr.js');
 
 // ————— borner —————
 test('borner borne un nombre dans l’intervalle', () => {
@@ -158,4 +158,35 @@ test('latexDepuisReponseServeur renvoie null quand rien n’est exploitable', ()
   assert.strictEqual(latexDepuisReponseServeur('chaîne'), null);
   assert.strictEqual(latexDepuisReponseServeur({ latex: '   ' }), null);
   assert.strictEqual(latexDepuisReponseServeur({ markdown: 'aucune formule' }), null);
+});
+
+// ————— v0.1.25 : enteteJeton —————
+test('enteteJeton renvoie un objet vide sans jeton', () => {
+  assert.deepStrictEqual(enteteJeton(''), {});
+  assert.deepStrictEqual(enteteJeton(null), {});
+  assert.deepStrictEqual(enteteJeton(undefined), {});
+  assert.deepStrictEqual(enteteJeton(42), {});
+  assert.deepStrictEqual(enteteJeton('   '), {});
+});
+
+test('enteteJeton épure les espaces et compose l’en-tête Bearer', () => {
+  assert.deepStrictEqual(enteteJeton('secret123'), { 'Authorization': 'Bearer secret123' });
+  assert.deepStrictEqual(enteteJeton('  secret123 '), { 'Authorization': 'Bearer secret123' });
+  assert.deepStrictEqual(enteteJeton('\tmon-jeton\n'), { 'Authorization': 'Bearer mon-jeton' });
+});
+
+// ————— v0.1.25 : messageErreurOcr —————
+test('messageErreurOcr distingue le refus de jeton (401)', () => {
+  const message = messageErreurOcr(401);
+  assert.ok(message.includes('jeton'));
+  assert.ok(/Bearer|jeton/i.test(message));
+});
+
+test('messageErreurOcr dit injoignable au statut 0', () => {
+  assert.ok(messageErreurOcr(0).includes('injoignable'));
+});
+
+test('messageErreurOcr cite le code des autres statuts', () => {
+  assert.ok(messageErreurOcr(500).includes('500'));
+  assert.ok(messageErreurOcr(502).includes('502'));
 });

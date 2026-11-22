@@ -201,6 +201,13 @@
       </p>
       <input id="serveur-url" class="cle-champ" type="text" spellcheck="false"
         autocomplete="off" placeholder="http://100.x.y.z:8642/ocr" hidden />
+      <!-- v0.1.25 : jeton déclaré au serveur (option --jeton). Toujours vide
+           à l'ouverture ; ne rien saisir si le serveur n'exige rien. -->
+      <input id="serveur-jeton" class="cle-champ" type="password" spellcheck="false"
+        autocomplete="off" placeholder="Jeton (uniquement si le serveur en exige un)" hidden />
+      <p class="cle-aide" id="aide-jeton" hidden>
+        Laisser vide si le serveur n'exige pas de jeton.
+      </p>
       <label class="cle-radio">
         <input type="radio" name="opt-ocr" id="opt-mistral" value="mistral" />
         L'OCR Mistral (en ligne, clé API)

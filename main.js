@@ -16,6 +16,7 @@ const { mjRender } = require('./engine/mjrender.js');
 const { rejouer } = require('./engine/undo.js');
 const {
   nettoyerCle, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur,
+  enteteJeton, messageErreurOcr,
 } = require('./engine/ocr.js');
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,13 @@ function lireCleMistral() {
  *  Son existence SEULE fait passer la lecture LaTeX en mode serveur. */
 function lireServeurOcr() {
   return nettoyerUrlServeur(lireConfig().serveurOcr);
+}
+
+/** v0.1.25 : jeton déclaré au serveur OCR (--jeton ou JETON_OCR), ou ''
+ *  si aucun. Vide = le serveur n'exige rien, la requête part nue. */
+function lireJetonOcr() {
+  const jeton = lireConfig().jetonOcr;
+  return typeof jeton === 'string' ? jeton.trim() : '';
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -467,9 +475,10 @@ ipcMain.handle('app:version', () => app.getVersion());
 // -------------------------------------------------------------------------
 
 // Enregistre les options dans config.json (dossier de données de
-// l'application) : { cle } (Mistral) et/ou { url } (serveur, '' pour
-// revenir au mode Mistral).
-ipcMain.handle('conf:ocr', async (_e, { cle, url } = {}) => {
+// l'application) : { cle } (Mistral), { url } (serveur, '' pour revenir
+// au mode Mistral) et { jeton } (v0.1.25 : jeton exigé par le serveur
+// personnel ; '' ou null le retire).
+ipcMain.handle('conf:ocr', async (_e, { cle, url, jeton } = {}) => {
   try {
     let conf;
     try {
@@ -480,6 +489,11 @@ ipcMain.handle('conf:ocr', async (_e, { cle, url } = {}) => {
       const valeur = nettoyerCle(cle);
       if (!valeur) return { erreur: 'La clé indiquée est vide.' };
       conf.cleMistral = valeur;
+    }
+    if (typeof jeton !== 'undefined') {
+      const valeur = String(jeton == null ? '' : jeton).trim();
+      if (!valeur) delete conf.jetonOcr; // serveur sans jeton
+      else conf.jetonOcr = valeur;
     }
     if (typeof url !== 'undefined') {
       if (url === null || String(url).trim() === '') {
@@ -499,12 +513,14 @@ ipcMain.handle('conf:ocr', async (_e, { cle, url } = {}) => {
   }
 });
 
-// Le rendu affiche l'état ; le SEUL point qui transite est l'URL du
-// serveur (choisie par l'utilisateur), jamais la valeur de la clé.
+// Le rendu affiche l'état ; les SEULS points qui transitent sont l'URL du
+// serveur (choisie par l'utilisateur) et des PRÉSENCES (clé, jeton), jamais
+// les valeurs.
 ipcMain.handle('conf:ocr:get', () => ({
   mode: lireServeurOcr() ? 'serveur' : 'mistral',
   serveurUrl: lireServeurOcr(),
   clePresente: lireCleMistral() !== '',
+  jetonPresent: lireJetonOcr() !== '',
 }));
 
 // La zone sélectionnée, redessinée nette par le rendu, part à l'OCR
@@ -520,10 +536,15 @@ ipcMain.handle('ocr:latex', async (_e, { dataUrl } = {}) => {
     if (serveur) {
       const reponse = await fetch(serveur, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...enteteJeton(lireJetonOcr()) },
         body: JSON.stringify({ image_url: dataUrl }),
         signal: AbortSignal.timeout(90000), // un moteur CPU peut être lent
       });
+      if (reponse.status === 401) {
+        // v0.1.25 : le serveur exige un jeton absent ou refusé ;
+        // pas de lecture du corps, le message guide vers le réglage.
+        return { erreur: messageErreurOcr(401) };
+      }
       if (!reponse.ok) {
         let detail = '';
         try {

@@ -48,5 +48,17 @@ jobs:
             exit 1
           fi
 
+      # v0.1.25 : le serveur OCR personnel est éprouvé à chaque poussée :
+      # son banc d'essai (bibliothèque standard seule, mode --banc) vérifie
+      # le contrat /ocr, y compris le jeton (200/401 sans, avec et contre
+      # l'en-tête Bearer) et la rétrocompatibilité sans jeton.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test serveur OCR (mode banc)
+        shell: bash
+        run: python serveur-ocr/test_serveur.py
+
       - name: Contrôle des licences des dépendances
         run: node scripts/check-licenses.js

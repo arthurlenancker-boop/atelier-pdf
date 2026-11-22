@@ -7,9 +7,14 @@
 # Usage :
 #   python serveur.py            # écoute sur toutes les interfaces, port 8642
 #   python serveur.py --port 9000
-#   python serveur.py --banc     # mode banc d'essai : réponses fixes, SANS
-#                                # moteur (pour vérifier l'URL, Tailscale et
-#                                # le pare-feu AVANT d'installer le modèle)
+#   python serveur.py --banc      # mode banc d'essai : réponses fixes, SANS
+#                                 # moteur (pour vérifier l'URL, Tailscale et
+#                                 # le pare-feu AVANT d'installer le modèle)
+#   python serveur.py --jeton MONSECRET
+#                                # exige l'en-tête "Authorization: Bearer
+#                                # MONSECRET" sur chaque POST (le GET
+#                                # d'état reste ouvert) ; sinon variable
+#                                # d'environnement JETON_OCR
 #
 # Dépendances (hors mode --banc) : voir requirements.txt.
 # Voir LISEZMOI.md pour l'installation complète.
@@ -17,6 +22,7 @@
 import argparse
 import base64
 import json
+import os
 import re
 import sys
 import threading
@@ -30,6 +36,14 @@ SIGNATURE_JPEG = b"\xff\xd8\xff"
 verrou_moteur = threading.Lock()   # le moteur ONNX est appelé UNE requête à la fois
 moteur = None                      # construit au premier appel (télécharge les
 mode_banc = False                  # modèles la toute première fois)
+jeton_actif = ""                   # vide : aucun verrou ; sinon en-tête exigé
+
+
+def autorise(entete_authorization, jeton):
+    """True si la requête passe : jamais verrouillé, ou Bearer exact."""
+    if not jeton:
+        return True
+    return entete_authorization == "Bearer " + jeton
 
 
 def charger_moteur():
@@ -90,6 +104,9 @@ class Repondeur(BaseHTTPRequestHandler):
         self._repondre(200, {"service": "serveur-ocr", "banc": mode_banc})
 
     def do_POST(self):
+        if not autorise(self.headers.get("Authorization"), jeton_actif):
+            self._repondre(401, {"erreur": "Jeton absent ou refusé."})
+            return
         try:
             longueur = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -121,12 +138,20 @@ class Repondeur(BaseHTTPRequestHandler):
 
 def main():
     global mode_banc
+    global jeton_actif
     analyse = argparse.ArgumentParser(description="Serveur OCR LaTeX personnel d'Atelier PDF.")
     analyse.add_argument("--hote", default="0.0.0.0", help="interface d'écoute (défaut : toutes)")
     analyse.add_argument("--port", type=int, default=8642, help="port d'écoute (défaut : 8642)")
     analyse.add_argument("--banc", action="store_true", help="banc d'essai : moteur factice, réponses fixes")
+    analyse.add_argument(
+        "--jeton",
+        default=os.environ.get("JETON_OCR") or "",
+        help="exiger l'en-tête Authorization: Bearer <jeton> sur les POST "
+        "(défaut : la variable JETON_OCR, vide = aucun verrou)",
+    )
     options = analyse.parse_args()
     mode_banc = options.banc
+    jeton_actif = options.jeton
     service = ThreadingHTTPServer((options.hote, options.port), Repondeur)
     hote_affiche = options.hote if options.hote != "0.0.0.0" else "toutes les interfaces"
     print("Serveur OCR LaTeX personnel — écoute sur %s, port %d." % (hote_affiche, options.port))
@@ -135,6 +160,11 @@ def main():
     else:
         print("Le moteur (RapidLaTeXOCR) se chargera au premier appel ;")
         print("la toute première reconnaissance télécharge les modèles.")
+    if jeton_actif:
+        print("JETON ACTIF : chaque POST doit porter "
+        '"Authorization: Bearer <jeton>" ; GET /ocr reste ouvert.')
+    else:
+        print("Aucun jeton : le serveur répond à toute requête (comme avant).")
     print("Arrêter : Ctrl+C.")
     try:
         service.serve_forever()

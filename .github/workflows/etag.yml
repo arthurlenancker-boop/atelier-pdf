@@ -5,20 +5,16 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.24 : la fonction Équation de OneNote — les trois
-# niveaux validés sur la démo interactive : (1) transcodage UnicodeMath
-# complet (engine/unicodemath.js, 58 tests UTN28) du mode Linéaire ;
-# (2) montée à la frappe — la barre d'espace transcode et monte la
-# formule dans la zone structurée ; (3) zone d'équation structurée
-# MathLive 0.102.0 en mode Professionnel (dependencies + extraResources,
-# polices KaTeX du paquet, import dynamique avec repli champ LaTeX),
-# le rendu final du PDF restant le pipeline MathJax inchangé ; ruban
-# enrichi (préscripts, ∬∭⋂⋃, |x| et ‖x‖ extensibles, \boxed, matrice
-# jusqu'à 6×6).
-# apparence PDF (pdf.js), posées sur le point cliqué et corrigibles par
-# clic (Remplacer la formule) ; notes et fiches écrites directement sur
-# la page (plus de panneau central), modifiables par double-clic ;
-# catégories de caractères en menus déroulants.
+# Declencheur de la v0.1.25 : le jeton d'acces du serveur OCR personnel —
+# serveur.py option --jeton (ou variable JETON_OCR), reponse 401 « Jeton
+# absent ou refuse. » AVANT lecture du corps (le GET /ocr de diagnostic
+# reste ouvert) ; banc d'essai 9 verifications execute par CE flux et par
+# la CI (test_serveur.py, bibliotheque standard seule) ; Atelier PDF :
+# champ « Jeton » dans Fichier → Options OCR LaTeX… (jamais rappele a
+# l'ecran, envoye seulement s'il est tape), en-tete Authorization:
+# Bearer, message 401 guidant vers le menu ; LISEZMOI v2 du serveur
+# (Python 3.10-3.12 EXIGE, piege 3.13, py -3.12, recettes Ubuntu relais
+# socat et Tailscale Funnel) ; lanceur demarrage-windows.cmd.
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison
@@ -87,6 +83,19 @@ jobs:
             done
             exit 1
           fi
+
+      # v0.1.25 : le serveur OCR personnel est éprouvé avant construction :
+      # son banc d'essai (bibliothèque standard seule, mode --banc) vérifie
+      # le contrat /ocr, y compris le jeton (200/401) et la rétrocompatibilité.
+      - uses: actions/setup-python@v5
+        if: steps.version.outputs.existe == 'false'
+        with:
+          python-version: '3.12'
+
+      - name: Test serveur OCR (mode banc)
+        if: steps.version.outputs.existe == 'false'
+        shell: bash
+        run: python serveur-ocr/test_serveur.py
 
       - name: Construction de l'installateur et du portable
         if: steps.version.outputs.existe == 'false'

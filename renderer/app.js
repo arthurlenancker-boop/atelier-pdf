@@ -1506,12 +1506,14 @@ $('#sel-latex').addEventListener('click', async () => {
    le serveur OCR personnel (tout local : son URL suffit, le jour où elle
    est enregistrée le bouton ƒ LaTeX l'utilise) ou l'OCR Mistral (clé
    API conservée sur cet ordinateur). Menu Fichier → Options OCR LaTeX… */
-let optionsOcrEtat = { mode: 'mistral', serveurUrl: '', clePresente: false };
+let optionsOcrEtat = { mode: 'mistral', serveurUrl: '', clePresente: false, jetonPresent: false };
 
 function basculerChampsOptionsOcr() {
   const serveur = $('#opt-serveur').checked;
   $('#aide-serveur').hidden = !serveur;
   $('#serveur-url').hidden = !serveur;
+  $('#serveur-jeton').hidden = !serveur; // v0.1.25 : jeton déclaré au serveur
+  $('#aide-jeton').hidden = !serveur;
   $('#aide-mistral').hidden = serveur;
   $('#cle-saisie').hidden = serveur;
   const messageErreur = $('#cle-erreur');
@@ -1527,7 +1529,7 @@ function ouvrirOptionsOcr() {
     $('#opt-serveur').checked = optionsOcrEtat.mode === 'serveur';
     $('#opt-mistral').checked = optionsOcrEtat.mode !== 'serveur';
     $('#serveur-url').value = optionsOcrEtat.serveurUrl || '';
-    $('#cle-saisie').value = '';
+    $('#serveur-jeton').value = ''; // jamais rappelé : un jeton ne s'affiche pas
     basculerChampsOptionsOcr();
     $('#cle-fond').hidden = false;
   });
@@ -1542,6 +1544,9 @@ $('#opt-mistral').addEventListener('change', basculerChampsOptionsOcr);
 $('#cle-annuler').addEventListener('click', fermerOptionsOcr);
 $('#cle-valider').addEventListener('click', validerOptionsOcr);
 $('#serveur-url').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') validerOptionsOcr();
+});
+$('#serveur-jeton').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') validerOptionsOcr();
 });
 $('#cle-saisie').addEventListener('keydown', (ev) => {
@@ -1560,6 +1565,10 @@ async function validerOptionsOcr() {
       return;
     }
     options.url = url;
+    // v0.1.25 : le jeton ne part QUE si l'utilisateur a tapé quelque
+    // chose ; le champ vide laisse le jeton en place (jamais rappelé).
+    const jeton = $('#serveur-jeton').value.trim();
+    if (jeton) options.jeton = jeton;
   } else {
     // Retour au mode Mistral : l'URL du serveur est retirée ; la clé
     // saisie remplace l'existante (le champ vide garde la clé en place).
@@ -1580,7 +1589,7 @@ async function validerOptionsOcr() {
   }
   fermerOptionsOcr();
   message($('#opt-serveur').checked
-    ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.`
+    ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.${options.jeton ? ' Jeton enregistré.' : ''}`
     : 'OCR Mistral enregistré pour la lecture LaTeX.', 'reussite');
 }
 
