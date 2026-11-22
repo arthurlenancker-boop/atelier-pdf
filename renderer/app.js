@@ -248,6 +248,7 @@ const $ = (sel) => document.querySelector(sel);
 const etat = {
   chemin: null,
   resume: null,   // { chemin, modifie, pageCount, annots } renvoyé par le main
+  idOnglet: null, // v0.1.30 : identifiant de l'onglet affiché
   pdfjs: null,    // document pdf.js (affichage seulement)
   page: 1,
   zoom: 1,
@@ -304,6 +305,65 @@ function majResume(resume) {
   $('#btn-retablir').disabled = !(resume && resume.peutRefaire);
   dessinerAnnots();
   majRecoVue(); // v0.1.29 : les états « corrigé » des blocs suivent le document
+  majOnglets(); // v0.1.30 : pastilles et active de la bande d'onglets
+}
+
+/* ============================================================
+   v0.1.30 : onglets. Chaque PDF ouvert vit dans un onglet ; le
+   processus principal garde l'état complet (document, journal des
+   gestes, « modifié »), ici ne vit que la présentation : nom du
+   fichier, pastille, et la vue mémorisée (page, zoom) pour rendre
+   la bascule instantanée à l'identique.
+   ============================================================ */
+const ongletsOuverts = new Map(); // id → { id, chemin, modifie, vue: { page, zoom } }
+
+function nomCourt(chemin) {
+  const parties = String(chemin || '').split(/[\\/]/).filter(Boolean);
+  return parties.length ? parties[parties.length - 1] : chemin;
+}
+
+function majOnglets() {
+  const bande = $('#onglets');
+  if (!bande) return;
+  if (ongletsOuverts.size === 0) {
+    bande.hidden = true;
+    bande.replaceChildren();
+    return;
+  }
+  bande.hidden = false;
+  bande.replaceChildren();
+  for (const o of ongletsOuverts.values()) {
+    const onglet = document.createElement('button');
+    onglet.type = 'button';
+    onglet.className = 'onglet' + (o.id === etat.idOnglet ? ' actif' : '');
+    onglet.role = 'tab';
+    onglet.title = o.chemin;
+    const nom = document.createElement('span');
+    nom.className = 'onglet-nom';
+    nom.textContent = nomCourt(o.chemin);
+    onglet.append(nom);
+    if (o.modifie) {
+      const point = document.createElement('span');
+      point.className = 'onglet-modifie';
+      point.textContent = '●';
+      point.title = 'Modifications non enregistrées';
+      onglet.append(point);
+    }
+    const croix = document.createElement('span');
+    croix.className = 'onglet-croix';
+    croix.textContent = '×';
+    croix.title = 'Fermer cet onglet';
+    onglet.append(croix);
+    onglet.addEventListener('click', (ev) => {
+      if (ev.target === croix) {
+        ev.stopPropagation();
+        fermerOnglet(o.id);
+        return;
+      }
+      if (o.id !== etat.idOnglet) activerOnglet(o.id);
+    });
+    bande.append(onglet);
+  }
 }
 
 /* v0.1.13 : annulation et rétablissement, geste par geste. */
@@ -331,10 +391,22 @@ $('#btn-retablir').addEventListener('click', retablirGeste);
 window.atelier.onChanged((infos) => {
   const pastille = $('#pastille-modifie');
   pastille.hidden = !(infos && infos.modifie);
+  // v0.1.30 : la pastille vit aussi dans la bande d'onglets (celle de
+  // l'onglet concerné, pas seulement du document affiché au moment du clic).
+  if (infos && infos.idOnglet != null) {
+    const tab = ongletsOuverts.get(infos.idOnglet);
+    if (tab) tab.modifie = !!infos.modifie;
+  }
+  majOnglets();
 });
 
 /* ============================================================
-   Ouverture et rendu pdf.js
+   v0.1.30 : ouverture, onglets et rendu pdf.js. Un PDF ouvert = un
+   onglet ; le processus principal porte l'état de CHACUN (document,
+   journal des gestes, « modifié »), celui-ci n'affiche que l'actif.
+   Bascule = réaffichage depuis le résumé du main ; la vue mémorisée
+   (page, zoom, mots reconnus) voyage dans l'onglet pour une reprise
+   à l'identique.
    ============================================================ */
 async function ouvrirDocument(chemin) {
   // v0.1.3 : le fichier est demandé d'abord au processus principal (boîte de
@@ -344,24 +416,72 @@ async function ouvrirDocument(chemin) {
   const rep = await window.atelier.open(chemin);
   if (rep.annule) return;
   if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  // v0.1.30 : déjà ouvert ? Le main renvoie l'onglet existant, on l'active
+  // (un document n'est jamais édité en double).
+  if (rep.dejaOuvert) {
+    memoriserVueOnglet();
+    await activerOnglet(rep.idOnglet);
+    message('Ce document était déjà ouvert : son onglet est réactivé.', 'info');
+    return;
+  }
+  const tab = {
+    id: rep.idOnglet,
+    chemin: rep.resume.chemin,
+    modifie: false,
+    vue: null,
+    ocrMots: null,
+    ocrPages: null,
+  };
+  ongletsOuverts.set(tab.id, tab);
+  await afficherDocument(rep);
+  // v0.1.28 : la reconnaissance du document part à l'ouverture (serveur OCR
+  // configuré, décision d'Arthur : MinerU). v0.1.30 : à l'OUVERTURE seule —
+  // basculer d'onglet ne relance pas une passe déjà faite ; les résultats
+  // mémorisés de l'onglet ont été restaurés par afficherDocument.
+  reconnaitreDocument();
+  if (!pdfjsLib) {
+    // Le message d'afficherDocument mentionnera pdf.js au rebond : ici le
+    // tab existe quand même, la bande montre le fichier.
+    majOnglets();
+  }
+}
+
+/** Affiche (ou réaffiche) le document d'une réponse open/activate :
+ *  réinitialise tout l'état du rendu propre à un document, restaure la
+ *  vue mémorisée (page, zoom) quand il y en a une. */
+async function afficherDocument(rep, vueMemorisee) {
+  const tab = ongletsOuverts.get(rep.idOnglet) || ongletsOuverts.get(rep.idOngletActif);
   if (!pdfjsLib) {
     etat.chemin = rep.resume.chemin;
+    etat.idOnglet = rep.idOnglet ?? rep.idOngletActif ?? null;
     message(`« ${rep.resume.chemin} » est ouvert, mais l'afficheur pdf.js n'a pas pu être chargé`
       + `${erreurPdfjs ? ` : ${erreurPdfjs}` : ''}. Menu Aide → Diagnostics de l'application.`, 'erreur');
     return;
   }
+  etat.idOnglet = rep.idOnglet ?? rep.idOngletActif ?? null;
   etat.resume = null;
   etat.annotsPdf = [];
   etat.selection = null;
   etat.eqPoint = null;
   etat.remplacement = null;
   etat.opsEquation.clear(); // v0.1.10
+  etat.opsFiche.clear();    // v0.1.30 : les ops de l'onglet précédé ne servent plus
   motsOcrPages.clear();     // v0.1.22 : une autre reconnaissance tout autre document
   couperReconnaissanceDocument(); // v0.1.28 : idem reconnaissance serveur du document
   pageMuette = false;
+  // v0.1.30 : reprise des reconnaissances mémorisées de l'onglet.
+  if (tab) {
+    if (tab.ocrMots) { for (const [n, v] of tab.ocrMots) motsOcrPages.set(n, v); }
+    if (tab.ocrPages) { for (const [n, v] of tab.ocrPages) recoDocument.pages.set(n, v); }
+  }
   etat.chemin = rep.resume.chemin;
   etat.page = 1;
   resoudreZoom();
+  const vue = vueMemorisee || (tab && tab.vue) || null;
+  if (vue && vue.page >= 1 && vue.page <= rep.resume.pageCount) {
+    etat.page = vue.page;
+    if (Number.isFinite(vue.zoom) && vue.zoom > 0) etat.zoom = vue.zoom;
+  }
   if (etat.pdfjs) { await etat.pdfjs.destroy(); etat.pdfjs = null; }
   // pdf.js détache le tampon qu'on lui donne : une copie protège l'original.
   etat.pdfjs = await pdfjsLib.getDocument({ data: Uint8Array.from(rep.octets) }).promise;
@@ -384,9 +504,73 @@ async function ouvrirDocument(chemin) {
   } else {
     message(`Document ouvert : ${rep.resume.pageCount} page(s).`, 'reussite');
   }
-  // v0.1.28 : la reconnaissance du document part à l'ouverture si le
-  // serveur OCR personnel est configuré (décision d'Arthur : MinerU).
-  reconnaitreDocument();
+}
+
+/** Range dans l'onglet courant la vue actuelle et les reconnaissances en
+ *  mémoire (appelée AVANT de basculer vers un autre onglet). */
+function memoriserVueOnglet() {
+  const tab = ongletsOuverts.get(etat.idOnglet);
+  if (!tab) return;
+  tab.vue = { page: etat.page, zoom: etat.zoom };
+  tab.ocrMots = new Map(motsOcrPages);
+  tab.ocrPages = new Map(recoDocument.pages);
+}
+
+/** Bascule vers l'onglet indiqué : le main change l'état actif et rend le
+ *  résumé + les octets ; la vue mémorisée de l'onglet reprend sa place. */
+async function activerOnglet(id) {
+  const cible = ongletsOuverts.get(id);
+  if (!cible) return;
+  // v0.1.30 : une écriture en cours sur la page de l'onglet quitté ne
+  // traverse pas la bascule — le cadre vit dans LE conteneur de page.
+  if (etat.idOnglet !== id && etat.saisieAttente) fermerEditeur();
+  if (etat.idOnglet != null && etat.idOnglet !== id) memoriserVueOnglet();
+  const rep = await window.atelier.activer(id);
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  await afficherDocument(rep);
+  message(`Onglet activé : « ${nomCourt(cible.chemin)} » (page ${etat.page}).`, 'info');
+}
+
+/** Ferme l'onglet indiqué (l'avis « enregistrer avant de fermer » est posé
+ *  par le PROCESSUS PRINCIPAL : boîte native Enregistrer / Fermer sans
+ *  enregistrer / Annuler quand le document est modifié). */
+async function fermerOnglet(id) {
+  const cible = id == null ? etat.idOnglet : id;
+  // v0.1.30 : un cadre d'écriture en cours sur CET onglet ne survit pas à sa
+  // fermeture — on le referme proprement (abandon du brouillon non posé).
+  if (cible === etat.idOnglet && etat.saisieAttente) fermerEditeur();
+  const rep = await window.atelier.fermer(id);
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  if (!rep.ferme) return; // l'utilisateur a annulé : rien ne bouge
+  ongletsOuverts.delete(cible);
+  if (rep.idOngletActif == null) {
+    // Plus aucun document : retour à l'accueil, tout est remis à plat.
+    etat.idOnglet = null;
+    etat.resume = null;
+    etat.chemin = null;
+    etat.annotsPdf = [];
+    etat.selection = null;
+    etat.eqPoint = null;
+    etat.remplacement = null;
+    etat.opsEquation.clear();
+    etat.opsFiche.clear();
+    motsOcrPages.clear();
+    couperReconnaissanceDocument();
+    if (etat.pdfjs) { await etat.pdfjs.destroy(); etat.pdfjs = null; }
+    els.visionneuse.hidden = true;
+    els.accueil.hidden = false;
+    els.vignettes.replaceChildren();
+    majResume(null);
+    message('Tous les documents sont fermés.', 'info');
+    return;
+  }
+  // Le main a déjà activé le remplaçant : on l'affiche.
+  await afficherDocument({
+    idOnglet: rep.idOngletActif,
+    resume: rep.resume,
+    octets: rep.octets,
+  });
+  message(`Onglet fermé. Document courant : « ${nomCourt(etat.chemin)} ».`, 'info');
 }
 
 /* ============================================================
@@ -3522,6 +3706,7 @@ window.atelier.onCommande(async (cmd) => {
   if (cmd.nom === 'ouvrir') ouvrirDocument();
   if (cmd.nom === 'enregistrer') enregistrer('overwrite');
   if (cmd.nom === 'copie') enregistrer('timestamped');
+  if (cmd.nom === 'fermer') { if (etat.idOnglet != null) fermerOnglet(etat.idOnglet); } // v0.1.30
   if (cmd.nom === 'annuler') annulerGeste();      // v0.1.13 : menu Édition
   if (cmd.nom === 'retablir') retablirGeste();
   if (cmd.nom === 'cle-api' || cmd.nom === 'options-ocr') ouvrirOptionsOcr();   // v0.1.22/v0.1.23 : Fichier → Options OCR LaTeX
@@ -3539,6 +3724,11 @@ async function enregistrer(mode) {
     ? `Copie horodatée créée : ${rep.chemin}`
     : `Enregistré : ${rep.chemin}`, 'reussite');
   etat.resume = { ...etat.resume, chemin: rep.chemin, modifie: false };
+  // v0.1.30 : la pastille d'onglet suit l'enregistrement (la copie horodatée
+  // écrit un NOUVEAU fichier : l'onglet garde son chemin, la version d'origine
+  // reste ouverte telle quelle — comportement inchangé depuis l'origine).
+  const tab = ongletsOuverts.get(etat.idOnglet);
+  if (tab && mode !== 'timestamped') tab.modifie = false;
   majResume(etat.resume);
   $('#pastille-modifie').hidden = true;
 }
@@ -3555,6 +3745,7 @@ globalThis.__atelierDiagnostics = () => [
     ? `Emplacement du worker : ${pdfjsLib.GlobalWorkerOptions.workerSrc || '(non défini)'}`
     : 'Emplacement du worker : indisponible (moteur non chargé)',
   `Fichier ouvert : ${etat.chemin || 'aucun'}`,
+  `Onglets ouverts : ${ongletsOuverts.size || 'aucun'}${etat.idOnglet != null ? ` (actif : ${nomCourt(etat.chemin)})` : ''}`,
   `Page affichée : ${etat.resume ? `${etat.page} / ${etat.resume.pageCount}` : '–'}`,
   `Zoom : ${Math.round(etat.zoom * 100)} % (rendu en cours : ${gesteZoomActif() ? 'transformation CSS en attendant le rendu net' : 'posé'})`,
   `Zone d\u2019équation : ${mathlive ? 'structurée (MathLive chargé)' : `champ LaTeX${erreurMathlive ? ` (MathLive manquant : ${erreurMathlive})` : ''}`}`,

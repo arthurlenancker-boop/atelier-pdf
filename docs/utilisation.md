@@ -68,6 +68,20 @@ supprime avec la touche Suppr, comme toute annotation.
 
 La pastille « modifié » signale un document non enregistré.
 
+### Onglets et fermeture assistée (v0.1.30)
+
+- Ouvrez autant de PDF que vous voulez : chacun a son onglet dans la bande
+  sous la barre du haut. Un clic rend un onglet actif ; la page et le zoom
+  de chaque onglet sont gardés : la reprise est à l'identique.
+- La croix d'un onglet (ou Ctrl+W pour l'onglet actif) le ferme. Ouvrir un
+  fichier déjà présent dans un onglet réactive cet onglet : un même PDF
+  n'est jamais ouvert ni édité en double.
+- Si le document à fermer (onglet ou fenêtre entière : croix, Alt+F4,
+  menu Quitter) a des modifications non enregistrées, l'application
+  demande d'abord : **Enregistrer**, **Fermer sans enregistrer**, ou
+  **Annuler**. À la fermeture de la fenêtre, chaque onglet modifié est
+  demandé un par un ; « Annuler » arrête net et vous garde la main.
+
 ## 6. Reconnaissance du document à l'ouverture
 
 Depuis la v0.1.28, si votre serveur OCR personnel est configuré (menu

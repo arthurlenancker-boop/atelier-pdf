@@ -72,10 +72,23 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let fenetre = null;
-let etat = null; // { chemin, session, doc, modifie, octets, gestes, aRefaire }
+let etat = null; // v0.1.30 : etat = l'onglet ACTIF (voir onglets ci-dessous)
 // v0.1.13 : octets = fichier TEL QU'OUVERT (jamais réenregistré), socle du
 // rejeu d'annulation ; gestes = lots d'éditions appliqués (un lot = un geste
 // utilisateur) ; aRefaire = lots écartés par les annulations.
+// v0.1.30 : onglets. Chaque PDF ouvert vit dans la Map « onglets » (id → état
+// complet : chemin, doc, session, journal des gestes) ; « etat » pointe
+// celui de l'onglet actif. Les canaux existants (apply, undo, redo, save)
+// travaillent TOUJOURS sur l'onglet actif : pdf:activate bascule le pointeur
+// avant que le rendu ne fasse quoi que ce soit. Un même fichier ouvert deux
+// fois active l'onglet existant (un PDF n'est jamais édité en double).
+const onglets = new Map();
+let sequenceOnglets = 0;
+let ongletActifId = null;
+// v0.1.30 : la fermeture de la fenêtre demande d'abord d'enregistrer les
+// onglets modifiés ; ce drapeau marque la fermeture consentie.
+let fermetureAutorisee = false;
+let confirmationFermetureEnCours = false;
 const derniersMessages = []; // journal console du rendu, pour les diagnostics
 
 // ---------------------------------------------------------------------------
@@ -172,6 +185,19 @@ function creerFenetre() {
   fenetre.once('ready-to-show', () => fenetre.show());
   fenetre.loadURL('app://local/renderer/index.html');
   fenetre.on('closed', () => { fenetre = null; });
+  // v0.1.30 : « enregistrer avant la fermeture ». Un document modifié ne
+  // peut pas disparaître en silence : la croix, Alt+F4 et Quititter
+  // (rôle du menu) passent TOUS par l'événement close.
+  fenetre.on('close', (ev) => {
+    if (fermetureAutorisee) return;
+    let modifie = false;
+    for (const o of onglets.values()) {
+      if (o.modifie) { modifie = true; break; }
+    }
+    if (!modifie) return;
+    ev.preventDefault();
+    confirmerFermetureFenetre();
+  });
   // v0.1.3 : les erreurs du processus de rendu sont silencieuses pour
   // l'utilisateur (pas de console ouverte) ; on les garde pour les diagnostics.
   fenetre.webContents.on('console-message', (_e, niveau, texte) => {
@@ -181,7 +207,12 @@ function creerFenetre() {
 }
 
 function menuApplication() {
-  const estFichier = () => Boolean(etat && etat.chemin);
+  // v0.1.30 (correctif de construction) : le menu n'est bâti QU'AU DÉMARRAGE ;
+  // un « enabled » évalué ici fige l'état de ce moment (pas de document) pour
+  // toute la séance : les items Enregistrer/Copie restaient hors service et
+  // le nouveau « Fermer l'onglet » (Ctrl+W) ne devait jamais l'être. Les
+  // gardes côté rendu (enregistrer/fermerOnglet ne font rien sans document)
+  // tiennent déjà le rôle ; on ne fige plus ici.
   const modele = [
     {
       label: 'Fichier',
@@ -195,14 +226,21 @@ function menuApplication() {
         {
           label: 'Enregistrer',
           accelerator: 'CmdOrCtrl+S',
-          enabled: estFichier(),
           click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'enregistrer' }); },
         },
         {
           label: 'Enregistrer une copie horodatée…',
           accelerator: 'CmdOrCtrl+Shift+S',
-          enabled: estFichier(),
           click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'copie' }); },
+        },
+        { type: 'separator' },
+        {
+          // v0.1.30 : fermeture de l'onglet actif. Les modifications non
+          // enregistrées demandent d'abord l'avis de l'utilisateur (boîte du
+          // canal pdf:fermer, partagée avec la croix de l'onglet).
+          label: "Fermer l'onglet",
+          accelerator: 'CmdOrCtrl+W',
+          click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'fermer' }); },
         },
         { type: 'separator' },
         {
@@ -300,7 +338,11 @@ function menuApplication() {
 }
 
 function notifierChangement() {
-  if (fenetre) fenetre.webContents.send('app:changed', { modifie: Boolean(etat && etat.modifie) });
+  // v0.1.30 : le changement porte l'identifiant de l'onglet concerné (le
+  // rendu tient à jour les pastilles de SA bande d'onglets).
+  if (fenetre) {
+    fenetre.webContents.send('app:changed', { idOnglet: ongletActifId, modifie: Boolean(etat && etat.modifie) });
+  }
 }
 
 /** Résumé sérialisable de la session (pour le calque d'apparence du rendu). */
@@ -334,6 +376,17 @@ ipcMain.handle('pdf:open', async (_e, cheminDemande) => {
       if (choix.canceled || choix.filePaths.length === 0) return { annule: true };
       [chemin] = choix.filePaths;
     }
+    // v0.1.30 : le fichier est-il déjà ouvert dans un autre onglet ? On
+    // l'active plutôt que d'en ouvrir un second : un PDF édité en double
+    // mène à l'écrasement des annotations de l'un par l'autre.
+    for (const [id, o] of onglets) {
+      if (path.resolve(o.chemin) === path.resolve(chemin)) {
+        etat = o;
+        ongletActifId = id;
+        notifierChangement();
+        return { idOnglet: id, dejaOuvert: true, resume: resumerSession(), octets: new Uint8Array(o.octets) };
+      }
+    }
     const octets = await fs.promises.readFile(chemin);
     const doc = await openPdf(octets); // PdfioError en français si corrompu
     etat = {
@@ -348,11 +401,136 @@ ipcMain.handle('pdf:open', async (_e, cheminDemande) => {
       gestes: [],
       aRefaire: [],
     };
-    return { resume: resumerSession(), octets: new Uint8Array(octets) };
+    const idOnglet = ++sequenceOnglets;
+    onglets.set(idOnglet, etat);
+    ongletActifId = idOnglet;
+    notifierChangement();
+    return { idOnglet, resume: resumerSession(), octets: new Uint8Array(octets) };
   } catch (err) {
     return { erreur: err.message || String(err) };
   }
 });
+
+// v0.1.30 : bascule l'onglet actif. Le processus de rendu N'AVANTAGE aucun
+// état : il réaffiche depuis le résumé et les octets renvoyés ici (le
+// journal des gestes, l'annulation et le drapeau « modifié » vivent dans
+// cet état et suivent l'onglet, pas la fenêtre).
+ipcMain.handle('pdf:activate', (_e, id) => {
+  try {
+    const cle = Number(id);
+    const cible = onglets.get(cle);
+    if (!cible) return { erreur: "Cet onglet n'existe plus." };
+    etat = cible;
+    ongletActifId = cle;
+    notifierChangement();
+    return { idOnglet: cle, resume: resumerSession(), octets: new Uint8Array(cible.octets) };
+  } catch (err) {
+    return { erreur: err.message || String(err) };
+  }
+});
+
+/** Enregistre l'état d'un onglet sur son fichier d'origine ; renvoie le
+ *  chemin écrit ou jette. Partagé par pdf:save et la fermeture assistée. */
+async function enregistrerOnglet(o) {
+  const octets = await savePdf(o.doc);
+  await fs.promises.writeFile(o.chemin, octets);
+  o.modifie = false;
+  return o.chemin;
+}
+
+/** v0.1.30 : l'avis d'Arthur avant de perdre un document modifié. La même
+ *  boîte sert à la croix d'un onglet et à la fermeture de la fenêtre. */
+async function demanderAvisFermeture(cheminFichier) {
+  const choix = await dialog.showMessageBox(fenetre, {
+    type: 'warning',
+    title: 'Modifications non enregistrées',
+    message: `« ${path.basename(cheminFichier)} » a des modifications non enregistrées.`,
+    detail: 'Voulez-vous enregistrer avant de fermer ?',
+    buttons: ['Enregistrer', 'Fermer sans enregistrer', 'Annuler'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  return ['enregistrer', 'fermer', 'annuler'][choix.response];
+}
+
+// v0.1.30 : fermeture d'un onglet (sa croix, Ctrl+W, menu Fichier).
+// Si le document est modifié, l'avis est demandé AVANT toute suppression ;
+// « Annuler » n'a aucune conséquence. Quand l'onglet fermé était l'actif,
+// le plus récemment ouvert des autres prend sa place (résumé + octets pour
+// le réaffichage immédiat).
+ipcMain.handle('pdf:fermer', async (_e, idDemande) => {
+  try {
+    const cle = idDemande == null ? ongletActifId : Number(idDemande);
+    const cible = onglets.get(cle);
+    if (!cible) return { erreur: "Cet onglet n'existe plus." };
+    if (cible.modifie) {
+      const avis = await demanderAvisFermeture(cible.chemin);
+      if (avis === 'annuler') return { ferme: false };
+      if (avis === 'enregistrer') {
+        try {
+          await enregistrerOnglet(cible);
+        } catch (err) {
+          return { erreur: `Enregistrement impossible, l'onglet reste ouvert : ${err.message || String(err)}` };
+        }
+      }
+    }
+    onglets.delete(cle);
+    let rep = { ferme: true };
+    if (cle === ongletActifId) {
+      const restants = [...onglets.keys()];
+      if (restants.length > 0) {
+        const nouveau = restants[restants.length - 1];
+        etat = onglets.get(nouveau);
+        ongletActifId = nouveau;
+        rep = {
+          ...rep,
+          idOngletActif: nouveau,
+          resume: resumerSession(),
+          octets: new Uint8Array(etat.octets),
+        };
+      } else {
+        etat = null;
+        ongletActifId = null;
+        rep = { ...rep, idOngletActif: null };
+      }
+    }
+    notifierChangement();
+    return rep;
+  } catch (err) {
+    return { erreur: err.message || String(err) };
+  }
+});
+
+// v0.1.30 : la croix de la fenêtre (ou Alt+F4, ou le menu Quitter) sur un
+// document modifié : avis pour CHAQUE onglet modifié, dans l'ordre d'ouverture.
+// « Annuler » stoppe net et la fenêtre reste ; tout le reste poursuivra.
+async function confirmerFermetureFenetre() {
+  if (confirmationFermetureEnCours) return;
+  confirmationFermetureEnCours = true;
+  try {
+    for (const [id, o] of onglets) {
+      if (!o.modifie) continue;
+      const avis = await demanderAvisFermeture(o.chemin);
+      if (avis === 'annuler') return; // la fenêtre reste ouverte, rien n'est fermé
+      if (avis === 'enregistrer') {
+        try {
+          await enregistrerOnglet(o);
+        } catch (err) {
+          dialog.showErrorBox(
+            'Enregistrement impossible',
+            `« ${path.basename(o.chemin)} » n'a pas pu être enregistré :\n${err.message || String(err)}`,
+          );
+          return; // la fermeture s'arrête : l'utilisateur garde la main
+        }
+      }
+    }
+    fermetureAutorisee = true;
+    if (fenetre) fenetre.close();
+  } finally {
+    confirmationFermetureEnCours = false;
+  }
+}
 
 ipcMain.handle('pdf:apply', async (_e, edits) => {
   try {

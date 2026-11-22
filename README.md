@@ -50,6 +50,9 @@ Livraison d'une version : la version portée par package.json est construite et 
 | Action | Contrôle |
 | --- | --- |
 | Ouvrir un PDF | Ctrl+O, bouton Ouvrir, ou glisser-déposer sur la fenêtre |
+| Plusieurs documents à la fois | chaque PDF ouvert a son onglet sous la barre du haut : un clic le rend actif, sa croix le ferme ; ouvrir un fichier déjà présent dans un onglet réactive cet onglet au lieu d'en ouvrir un second ; la page et le zoom de chaque onglet sont gardés en mémoire (v0.1.30) |
+| Fermer un onglet | croix de l'onglet ou Ctrl+W ; si le document a des modifications non enregistrées, l'application demande : Enregistrer, Fermer sans enregistrer, ou Annuler (v0.1.30) |
+| Quitter sans perdre de travail | la croix de la fenêtre, Alt+F4 et le menu Quitter demandent d'enregistrer chaque onglet modifié avant de laisser la place : rien ne se perd en silence (v0.1.30) |
 | Prendre la page à la main | outil Main (premier bouton) : cliquer puis faire glisser, la page suit le geste comme une feuille sur la table (v0.1.13) |
 | Sélectionner du texte | outil Texte : glisser sur le texte du document (sélection native), puis Surligner (surlignage exact, un quad par ligne) ou Copier ; sur une page scannée sans texte, la reconnaissance part toute seule et la page devient sélectionnable en quelques secondes (v0.1.22) |
 | Lire le LaTeX d'une formule | outil Texte : sélectionner la formule puis bouton « ƒ LaTeX » de la barre flottante ; le LaTeX extrait est copié dans le presse-papiers (aucune modification du fichier) (v0.1.22) |

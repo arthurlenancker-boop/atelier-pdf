@@ -39,6 +39,11 @@
     </div>
   </header>
 
+  <!-- v0.1.30 : bande des onglets Documents ouverts. Un onglet par PDF :
+       clic = bascule, croix = fermeture (avis d'enregistrer si modifié,
+       posé par le processus principal). -->
+  <div id="onglets" class="onglets" hidden role="tablist" aria-label="Documents ouverts"></div>
+
   <!-- Barre d'outils : Main, les cinq annotations + l'équation -->
   <nav class="outils">
     <button data-outil="main" class="outil" title="Main : faire défiler la page à la main">

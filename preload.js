@@ -14,6 +14,13 @@ contextBridge.exposeInMainWorld('atelier', {
   redo: () => ipcRenderer.invoke('pdf:redo'),
   /** Enregistre : mode 'overwrite' (défaut) ou 'timestamped'. */
   save: (mode) => ipcRenderer.invoke('pdf:save', { mode }),
+  /** v0.1.30 : bascule l'onglet actif (le résumé et les octets reviennent
+      pour réafficher le document). */
+  activer: (id) => ipcRenderer.invoke('pdf:activate', id),
+  /** v0.1.30 : ferme un onglet (null = l'onglet actif). Si le document est
+      modifié, le processus principal demande d'abord l'avis d'enregistrer ;
+      { ferme: false } = utilisateur annulé. */
+  fermer: (id) => ipcRenderer.invoke('pdf:fermer', id == null ? null : id),
   /** Aperçu d'une équation LaTeX : dimensions et opérateurs vectoriels. */
   previewEquation: (latex, exPt, rgb) => ipcRenderer.invoke('mjx:preview', { latex, exPt, rgb }),
   /** Version affichée (menu Aide). */

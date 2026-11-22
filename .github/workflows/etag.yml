@@ -5,6 +5,19 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.30 : onglets et « enregistrer avant la
+# fermeture ». Chaque PDF ouvert vit dans son onglet (bande sous la
+# barre du haut : clic = bascule, croix = fermeture, Ctrl+W = fermer
+# l'onglet actif) ; l'etat complet de chaque document (session pdf-lib,
+# journal des gestes, drapeau modifie) demeure dans le processus
+# principal (Map des onglets, pdf:active bascule le pointeur), le
+# rendu reaffiche depuis le resume et garde par onglet sa vue (page,
+# zoom, mots reconnus). Ouvrir un fichier deja present REACTIVE son
+# onglet, jamais un second exemplaire. La croix d'onglet, la croix de
+# fenetre, Alt+F4 et Quitter demandent tous (boite native
+# Enregistrer / Fermer sans enregistrer / Annuler) AVANT de perder un
+# document modifie ; Corps en colonne flexible (lecon v0.1.16 : la
+# bande d'onglets ne decale plus jamais la zone de travail).
 # Declencheur de la v0.1.29 : page reconnue editable en place (geste
 # valide sur maquette canvas par Arthur). Les blocs reconnus de la page
 # affichee apparaissent en contour discret a l'outil Selection ; un clic

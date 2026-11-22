@@ -51,7 +51,12 @@ html, body {
   overflow: hidden;
 }
 
-body { display: grid; grid-template-rows: auto auto 1fr auto; }
+/* v0.1.30 : colonne flexible plutôt que quatre pistes de grille figées :
+   la bande d'onglets et la barre de progrégression s'ajoutent ou se
+   retirent sans jamais décaler la zone de travail (leçon v0.1.16 : tout
+   nouvel élément de premier niveau s'accompagne d'un examen de ses
+   combinaisons de visibilité — ici la flexion les rend toutes inertes). */
+body { display: flex; flex-direction: column; }
 
 /* ————— Barre supérieure ————— */
 .barre {
@@ -150,8 +155,65 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; }
    la piste « auto » : largeur zéro, page invisible (capture d'Arthur).
    Désormais la rangée est une boîte souple : tout panneau présent garde
    sa largeur, et la vue de document prend TOUT le reste. */
-.corps { display: flex; flex-direction: row; min-height: 0; }
+.corps { display: flex; flex-direction: row; flex: 1 1 auto; min-height: 0; }
 .zone { position: relative; flex: 1 1 auto; min-width: 0; }
+
+/* ============================================================
+   v0.1.30 : bande des onglets Documents ouverts
+   ============================================================
+   Conventions Windows seules : plat, gris du cadre, l'onglet actif
+   se distingue par sa face claire et le liseré accent bas (le même
+   accent que l'outil actif ; aucune ombre, aucun ornement). */
+.onglets {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 4px 8px 0 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--bord);
+}
+.onglet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 5px 8px 6px 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.onglet:hover { background: var(--verre-survol); }
+.onglet.actif {
+  background: var(--surface-2);
+  border-color: var(--bord);
+  color: var(--ink);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.onglet-nom {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.onglet-modifie {
+  color: var(--alerte);
+  font-size: 10px;
+}
+.onglet-croix {
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+.onglet:hover .onglet-croix { color: var(--ink-2); }
+.onglet-croix:hover { background: var(--verre-appui); color: var(--ink); }
 
 /* Écran d'accueil : grande carte de verre au centre. */
 .accueil {
