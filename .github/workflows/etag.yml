@@ -18,6 +18,32 @@
 # Enregistrer / Fermer sans enregistrer / Annuler) AVANT de perder un
 # document modifie ; Corps en colonne flexible (lecon v0.1.16 : la
 # bande d'onglets ne decale plus jamais la zone de travail).
+# Declencheur de la v0.1.32 : retour d'Arthur en essai reel v0.1.30 —
+# « je voulais mettre delta ». La zone d'equation structuree ne
+# composait RIEN sur la barre d'espace (MathLive n'insere rien en mode
+# math, et le mode commande LaTeX ne se quitte QUE par Echap) : \delta
+# puis Espace resteait une commande en texte droit, d'ou la capture.
+# Depuis la v0.1.32, un appui d'espace dans le mode commande (mf.mode
+# 'latex') compose la formule et revient au mode math : \delta/Espace
+# donne delta, parite OneNote ; la palette Grecques porte l'alphabet
+# complet (epsilon, varepsilon, zeta, eta, iota, kappa, nu, xi, tau,
+# upsilon, chi, psi, Gamma, Theta, Lambda, Xi, Phi, Psi, vartheta,
+# varphi en plus d'alpha, beta, gamma, delta, Delta, Omega, omega, mu,
+# pi, rho, sigma, Sigma, lambda, phi). Decision police Fermee et
+# documentee : MathLive cable KaTeX en dur, MathJax 3.2.2 ne distribue
+# aucune donnee STIX (verifie, pas meme la beta v4) : l'aspect
+# typographique libre reste distinct de OneNote (Cambria Math
+# proprietaire).
+# REPARATION de dernier recours (motif v0.1.27) : le flux des
+# annotations riches s'etait arrete sur main ROUGE (CI #69 et
+# Livraison #41 echoues, aucun commit depuis 18:05Z). La branche
+# translaterLigne de engine/bouger.js pour l'opcode c etait placee
+# APRES le garde "nombreMots inconnu -> ligne intacte", d'ou des
+# cubiques jamais translatees ; et le test bouger.test.js convertissait
+# l'opcode "c" par Number (NaN) : l'assertion ne pouvait jamais passer.
+# Les DEUX sont corriges (branche deplacee AVANT le garde ; slice(0, 6)
+# avant map(Number)) : leur travail v0.1.31 est livre tel quel avec,
+# 250 tests verts.
 # Declencheur de la v0.1.31 : annotations riches validees sur maquette
 # canvas par Arthur (croquis couleurs, formes et traitement de texte).
 # Chaque outil Surligner, Encadrer et Ecrire ouvre son panneau d'options

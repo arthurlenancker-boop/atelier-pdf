@@ -106,8 +106,11 @@ test('deplacerAnnot : v0.1.31 — l’ellipse translate ses cubiques', async () 
   const cubique = (flux) => flux.split('\n')
     .map((l) => l.trim())
     .find((l) => l.split(/\s+/).length === 7 && l.endsWith('c'));
-  const cAvant = cubique(avant.flux).split(/\s+/).map(Number);
-  const cApres = cubique(apres.flux).split(/\s+/).map(Number);
+  // v0.1.32 : `slice(0, 6)` AVANT `map(Number)` : la ligne trouvée porte
+  // l'opcode « c » en septième mot, et `Number('c')` donne NaN, ce qui
+  // faisait échouer l'assertion même moteur correct (piège de relance 1).
+  const cAvant = cubique(avant.flux).split(/\s+/).slice(0, 6).map(Number);
+  const cApres = cubique(apres.flux).split(/\s+/).slice(0, 6).map(Number);
   assert.ok(cAvant.every((v, k) => Math.abs((v + (k % 2 === 0 ? 10 : -5)) - cApres[k]) < 0.02),
     'chaque coordonnée de la cubique est translatée');
 });

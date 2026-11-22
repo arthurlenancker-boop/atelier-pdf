@@ -60,6 +60,23 @@ function installerMathfield() {
   // Le champ peut déjà contenir du LaTeX saisi avant le chargement.
   if (!mf.value) mf.value = $('#eq-saisie').value;
   mf.addEventListener('input', rafraichirApercu);
+  // v0.1.32 (retour d'Arthur : « je voulais mettre delta ») : le geste
+  // OneNote « commande puis Espace » vaut aussi pour la zone structurée.
+  // Par défaut MathLive n'insère RIEN sur la barre d'espace en mode math
+  // (documenté) et son mode d'édition de commandes LaTeX (\delta… entré par
+  // \ ou Échap) ne se quitte QUE par Échap : la commande tapée restait
+  // affichée en lettres droites et la formule paraissait cassée. Ici,
+  // Espace quitte le mode commande : \delta puis Espace compose δ, comme
+  // OneNote. En dehors du mode commande, Espace reste sans effet.
+  mf.addEventListener('keydown', (ev) => {
+    if (ev.key !== ' ') return;
+    try {
+      if (mf.mode !== 'latex') return;
+      ev.preventDefault();
+      mf.mode = 'math';
+      rafraichirApercu();
+    } catch (e) { /* geste indisponible : Échap reste le repli */ }
+  }, { capture: true });
   majVisibiliteChamps();
   if (etat.eqMode === 'pro') {
     $('#eq-libelle').textContent = 'Zone d\u2019équation, corrigez sur place';
@@ -195,6 +212,11 @@ const SYMR = [
       ['\\alpha', 'α'], ['\\beta', 'β'], ['\\gamma', 'γ'], ['\\delta', 'δ'], ['\\pi', 'π'],
       ['\\theta', 'θ'], ['\\lambda', 'λ'], ['\\mu', 'μ'], ['\\rho', 'ρ'], ['\\sigma', 'σ'],
       ['\\phi', 'φ'], ['\\omega', 'ω'], ['\\Delta', 'Δ'], ['\\Sigma', 'Σ'], ['\\Omega', 'Ω'], ['\\Pi', 'Π'],
+      // v0.1.32 : l'alphabet grec complet (retour d'Arthur sur delta).
+      ['\\epsilon', 'ε'], ['\\varepsilon', 'ε'], ['\\zeta', 'ζ'], ['\\eta', 'η'], ['\\iota', 'ι'],
+      ['\\kappa', 'κ'], ['\\nu', 'ν'], ['\\xi', 'ξ'], ['\\tau', 'τ'], ['\\upsilon', 'υ'],
+      ['\\chi', 'χ'], ['\\psi', 'ψ'], ['\\Gamma', 'Γ'], ['\\Theta', 'Θ'], ['\\Lambda', 'Λ'],
+      ['\\Xi', 'Ξ'], ['\\Phi', 'Φ'], ['\\Psi', 'Ψ'], ['\\vartheta', 'ϑ'], ['\\varphi', 'ϕ'],
     ],
   },
   {

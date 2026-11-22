@@ -76,6 +76,21 @@ function translaterLigne(ligne, dx, dy) {
     return ligne;
   }
 
+  // Cubiques a coordonnees absolues (`x1 y1 x2 y2 x3 y3 c`) : SIX
+  // nombres, SEPT mots avec l'opcode (la CI a attrape la premiere
+  // version qui comptait huit nombres : les cubiques des ellipses,
+  // arrondis et nuages n'etaient JAMAIS translatees). Tout se decale.
+  // v0.1.32 : la branche DOIT preceder le controle `nombreMots` ci-
+  // dessous : `c` n'y figure pas et la ligne etait rendue intacte
+  // AVANT d'atteindre cette branche (le test ellipse l'a prouve).
+  if (op === 'c') {
+    if (mots.length !== 7) return ligne;
+    for (let k = 0; k <= 4; k += 2) {
+      mots[k] = fmt(Number(mots[k]) + dx);
+      mots[k + 1] = fmt(Number(mots[k + 1]) + dy);
+    }
+    return mots.join(' ');
+  }
   const nombreMots = { re: 5, m: 3, l: 3, Td: 3, cm: 6, Tm: 6 }[op];
   if (!nombreMots || mots.length !== nombreMots) return ligne;
   if (op === 'cm' || op === 'Tm') {
@@ -83,18 +98,6 @@ function translaterLigne(ligne, dx, dy) {
       || Number(mots[2]) !== 0 || Number(mots[3]) !== 1) return ligne;
     mots[4] = fmt(Number(mots[4]) + dx);
     mots[5] = fmt(Number(mots[5]) + dy);
-    return mots.join(' ');
-  }
-  // Cubiques a coordonnees absolues (`x1 y1 x2 y2 x3 y3 c`) : SIX
-  // nombres, SEPT mots avec l'opcode (la CI a attrape la premiere
-  // version qui comptait huit nombres : les cubiques des ellipses,
-  // arrondis et nuages n'etaient JAMAIS translatees). Tout se decale.
-  if (op === 'c') {
-    if (mots.length !== 7) return ligne;
-    for (let k = 0; k <= 4; k += 2) {
-      mots[k] = fmt(Number(mots[k]) + dx);
-      mots[k + 1] = fmt(Number(mots[k + 1]) + dy);
-    }
     return mots.join(' ');
   }
   // re (x y w h), m, l, Td (x y) : le premier couple est une position.
