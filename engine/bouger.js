@@ -85,11 +85,13 @@ function translaterLigne(ligne, dx, dy) {
     mots[5] = fmt(Number(mots[5]) + dy);
     return mots.join(' ');
   }
-  // Cubiques a coordonnees absolues (`x0 y0 x1 y1 x2 y2 x3 y3 c`) :
-  // ellipse, arrondi et nuage de la v0.1.31 ; tout se decale.
+  // Cubiques a coordonnees absolues (`x1 y1 x2 y2 x3 y3 c`) : SIX
+  // nombres, SEPT mots avec l'opcode (la CI a attrape la premiere
+  // version qui comptait huit nombres : les cubiques des ellipses,
+  // arrondis et nuages n'etaient JAMAIS translatees). Tout se decale.
   if (op === 'c') {
-    if (mots.length !== 9) return ligne;
-    for (let k = 0; k <= 7; k += 2) {
+    if (mots.length !== 7) return ligne;
+    for (let k = 0; k <= 4; k += 2) {
       mots[k] = fmt(Number(mots[k]) + dx);
       mots[k + 1] = fmt(Number(mots[k + 1]) + dy);
     }

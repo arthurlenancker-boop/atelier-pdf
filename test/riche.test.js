@@ -14,7 +14,8 @@ const {
 } = require('../engine/texte.js');
 
 const SOURCE = '<div><b>Astuce :</b> <span style="color:#D13438">attention</span> '
-  + 'si <u>AC</u> coupe <span style="color:#0067C0">$BC^2$</span>.</div>';
+  + 'si <u>AC</u> coupe <span style="color:#0067C0">$BC^2$</span> '
+  + 'puis <span style="background-color:#FFDF3A">tout fond</span>.</div>';
 
 /** Lecture directe d'une annotation posée (même miroir que bouger.test.js). */
 function annotParRef(doc, ref) {

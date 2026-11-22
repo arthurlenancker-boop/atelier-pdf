@@ -40,6 +40,10 @@
 # (engine/bouger.js ; le rendu ecran suit dans renderer/app.js,
 # options dans renderer/index.html et style dans renderer/style.css).
 # L'outil Trait (encre) reste hors du panneau d'options.
+# Relance 1 (apres echec CI des tests moteur) : l'opcode c prend SIX
+# nombres (SEPT mots) — translaterLigne comptait huit nombres, d'ou des
+# cubiques d'ellipse jamais translatees ; le test riche eprouve /Gf avec
+# un vrai fond coloré dans sa source (l'ancienne source n'en avait pas).
 # Declencheur de la v0.1.29 : page reconnue editable en place (geste
 # valide sur maquette canvas par Arthur). Les blocs reconnus de la page
 # affichee apparaissent en contour discret a l'outil Selection ; un clic

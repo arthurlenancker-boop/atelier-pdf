@@ -102,10 +102,10 @@ test('deplacerAnnot : v0.1.31 — l’ellipse translate ses cubiques', async () 
   deplacerAnnot(doc, page, { ref, dx: 10, dy: -5 });
   const apres = annotParRef(doc, ref);
   assert.deepStrictEqual(apres.rect, [60, 595, 160, 645]);
-  // La première ligne cubique « x0 y0 x1 y1 x2 y2 x3 y3 c » décalée de (10, -5).
+  // La première ligne cubique « x1 y1 x2 y2 x3 y3 c » (SEPT mots) décalée de (10, -5).
   const cubique = (flux) => flux.split('\n')
     .map((l) => l.trim())
-    .find((l) => l.split(/\s+/).length === 9 && l.endsWith('c'));
+    .find((l) => l.split(/\s+/).length === 7 && l.endsWith('c'));
   const cAvant = cubique(avant.flux).split(/\s+/).map(Number);
   const cApres = cubique(apres.flux).split(/\s+/).map(Number);
   assert.ok(cAvant.every((v, k) => Math.abs((v + (k % 2 === 0 ? 10 : -5)) - cApres[k]) < 0.02),
