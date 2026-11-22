@@ -115,6 +115,12 @@ ensemble).
   renvoyée par MinerU (tronquée) : c'est l'outil de réglage si jamais
   une version future du moteur change de format ; le serveur, lui,
   n'enregistre jamais d'image dans sa sortie.
+- Correctif v0.1.26.1 (22 nov., premier essai réel) : MinerU 4.2.3
+  renvoie ses pages en objets pydantic stricts (bbox normalisées de 0 à
+  1, blocs imbriqués, spans inline) ; la passerelle les convertit par
+  la méthode officielle `to_dict` du SDK et lit les DEUX schémas
+  (middle json 3.x et 4.x strict). Un bloc classé « code » ou
+  « algorithm » par le modèle est traité comme du texte, pas perdu.
 - Licences : MinerU est AGPL-3.0, la licence même du dépôt Atelier PDF ;
   tout s'exécute en local, aucun résultat ne sort de la maison.
 

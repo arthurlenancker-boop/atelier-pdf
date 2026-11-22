@@ -1,4 +1,13 @@
-# serveur-ocr/moteur_pages.py — passerelle vers le paquet MinerU (v0.1.26).
+# serveur-ocr/moteur_pages.py — passerelle vers le paquet MinerU (v0.1.26.1).
+#
+# Correctif v0.1.26.1 (22 nov., après le premier essai réel d'Arthur) :
+# MinerU 4.2.3 (tiers basic) renvoie un ParseResult dont les pages sont des
+# modèles pydantic STRICTS (docvortex.schema : CodeBlock, TextBlock,
+# EquationBlock, TextSpan…), avec des bbox NORMALISÉES (0 a 1) et une
+# imbrication blocks -> content -> sous-blocs -> spans inline. La passerelle
+# convertit désormais le résultat par la méthode OFFICIELLE to_dict(mode
+# json) du SDK, puis lit les DEUX schémas : middle json 3.x (blocks plats
+# avec lines/spans) et middle json 4.x strict (content de spans inline).
 # Ce fichier est LOCAL au serveur (il ne s'appelle PAS « mineru.py » : ce
 # nom occulterait le paquet pip dans sys.path). Toute la logique de
 # transformation est PURE et testable sans MinerU (test_moteur_pages.py) ;
@@ -76,12 +85,77 @@ def lire_taille_image(octets):
 
 
 def _texte_de(bloc, cles):
-    """Première valeur chaîne non vide parmi les clés données."""
+    """Première valeur texte exploitable parmi les clés données.
+
+    v0.1.26.1 : au schéma 3.x (chaînes aux clés text/content) s'ajoute le
+    schéma 4.x strict, où « content » est une LISTE de spans inline
+    ({type: "text"|"equation_inline"|…, content: str}) voire de sous-blocs
+    imbriqués : la valeur liste est alors assemblée par _texte_imbrique.
+    """
+    if not isinstance(bloc, dict):
+        return ""
     for cle in cles:
         valeur = bloc.get(cle)
         if isinstance(valeur, str) and valeur.strip():
             return valeur.strip()
+        if isinstance(valeur, list):
+            texte = _texte_imbrique(valeur)
+            if texte:
+                return texte
     return ""
+
+
+def _texte_imbrique(contenu, profondeur=0):
+    """Assemble récursivement le texte d'un « content » du schéma 4.x.
+
+    Spans inline de texte, équations inline (encadrées $…$ au contrat),
+    sous-blocs (code/algorithm_body…), liens ; tout le reste est ignoré.
+    Ne lève jamais ; profondeur bornée contre les cycles.
+    """
+    morceaux = []
+    try:
+        if isinstance(contenu, str):
+            return contenu.strip()
+        if not isinstance(contenu, list) or profondeur > 8:
+            return ""
+        for item in contenu:
+            if isinstance(item, str):
+                morceaux.append(item)  # brut : les espaces séparent les mots
+                continue
+            if not isinstance(item, dict):
+                continue
+            genre = item.get("type")
+            interne = item.get("content")
+            if genre == "equation_inline" and isinstance(interne, str) \
+                    and interne.strip():
+                morceaux.append("$%s$" % interne)  # latex brut, non strippé
+                continue
+            if isinstance(interne, str):
+                morceaux.append(interne)  # brut ; strip final seulement
+                continue
+            if interne is None:
+                interne = item.get("spans")
+            texte = _texte_imbrique(interne, profondeur + 1)
+            if texte:
+                morceaux.append(texte)
+    except Exception:
+        return ""
+    return "".join(morceaux).strip()
+
+
+def _html_de_tableau(bloc):
+    """HTML d'un bloc tableau, schéma 3.x (table_body/html) ou 4.x strict.
+
+    Le 4.x range le corps dans content -> fils de type table_body, dont
+    le champ content porte le HTML en chaîne.
+    """
+    if not isinstance(bloc, dict):
+        return ""
+    for cle in ("table_body", "html"):
+        valeur = bloc.get(cle)
+        if isinstance(valeur, str) and valeur.strip():
+            return valeur.strip()
+    return _texte_imbrique(bloc.get("content"))
 
 
 def _bbox_entiere(brute, largeur, hauteur):
@@ -96,7 +170,14 @@ def _bbox_entiere(brute, largeur, hauteur):
         for valeur in brute:
             if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
                 return None
-            valeurs.append(int(round(valeur)))
+            valeurs.append(float(valeur))
+        if valeurs and max(valeurs) <= 1.0 and largeur > 1 and hauteur > 1:
+            # v0.1.26.1 : bbox NORMALISÉES (0 a 1) du schéma 4.x strict,
+            # mises à l'échelle de la page AVANT l'arrondi ; les bbox en
+            # pixels (presque toujours > 1) restent inchangées.
+            valeurs = [valeurs[0] * largeur, valeurs[1] * hauteur,
+                       valeurs[2] * largeur, valeurs[3] * hauteur]
+        valeurs = [int(round(valeur)) for valeur in valeurs]
         x0, y0, x1, y1 = valeurs
         if x0 > x1:
             x0, x1 = x1, x0
@@ -151,12 +232,14 @@ def _bloc_de(bloc, largeur, hauteur):
     if bbox is None:
         return None  # jamais de boîte inventée
     type_mineru = bloc.get("type")
-    if type_mineru in ("title", "doc_title", "section_title"):
+    if type_mineru in ("title", "doc_title", "section_title",
+                       "paragraph_title"):  # v0.1.26.1 : titres 4.x
         texte = _texte_de(bloc, ("text", "content", "text_content"))
         if not texte:
             return None
         return {"type": "titre", "bbox": bbox, "texte": texte}
-    if type_mineru == "text":
+    if type_mineru in ("text", "code", "code_body", "algorithm_body",
+                       "ref_text", "aside_text"):
         lignes = []
         brutes = bloc.get("lines")
         if isinstance(brutes, list) and brutes:
@@ -177,7 +260,7 @@ def _bloc_de(bloc, largeur, hauteur):
             return None
         return {"type": "formule", "bbox": bbox, "latex": latex}
     if type_mineru == "table":
-        html = _texte_de(bloc, ("table_body", "html"))
+        html = _html_de_tableau(bloc)  # v0.1.26.1 : 3.x et 4.x strict
         if not html:
             return None
         return {"type": "tableau", "bbox": bbox, "html": html}
@@ -252,6 +335,30 @@ def _journal_diagnostic(premiere):
                      % brut[:4000])
 
 
+def _vers_dict(resultat):
+    """v0.1.26.1 : ParseResult du SDK 4.x -> dictionnaire (mode json).
+
+    Le SDK expose la conversion OFFICIELLE to_dict() (pydantic mode json :
+    enums en chaînes, tuples en listes, tout devient des dict purs), qui
+    évite de deviner la structure interne des objets pydantic. En cas
+    d'échec ou d'absence, None : l'appelant garde l'objet tel quel et
+    l'ancien chemin défensif s'applique (le diagnostic le journalise).
+    """
+    try:
+        if isinstance(resultat, (dict, list)):
+            return resultat
+        convertisseur = getattr(resultat, "to_dict", None)
+        if callable(convertisseur):
+            return convertisseur()
+        middle = getattr(resultat, "middle_json", None)
+        convertisseur = getattr(middle, "to_dict", None)
+        if callable(convertisseur):
+            return convertisseur()
+    except Exception:
+        return None
+    return None
+
+
 def reconnaitre_page(octets, niveau="basic", diagnostic=False):
     """Octets d'une page -> contrat complet, ou {"erreur": str} ; ne lève jamais.
 
@@ -280,7 +387,8 @@ def reconnaitre_page(octets, niveau="basic", diagnostic=False):
             fichier.write(octets)
             chemin = fichier.name
         resultat = parse(chemin, tier=niveau)
-        premiere = _blocs_de_source(resultat)
+        conv = _vers_dict(resultat)
+        premiere = _blocs_de_source(conv if conv is not None else resultat)
         if diagnostic:
             _journal_diagnostic(premiere)
         return transformer_page(premiere, largeur, hauteur)

@@ -168,6 +168,88 @@ except Exception:
     verification = False
 verifier(17, verification, "reconnaitre_page sur octets vides : aucune exception")
 
+# --- Partie E7 (v0.1.26.1) : schéma Middle JSON 4.x strict, observé au
+# premier essai réel (--diagnostic : CodeBlock -> AlgorithmBodyBlock ->
+# TextSpan, bbox normalisées). Le dict ci-dessous est la transcription
+# to_dict(mode json) exacte de ce que renvoie MinerU 4.2.3 en tiers basic.
+
+# E7a : le cas réel d'Arthur (bloc classé code/algorithm_body, texte dedans).
+page_reelle = {"pages": [{"page_idx": 0, "blocks": [
+    {"type": "code", "index": 0, "bbox": [0.058, 0.494, 0.925, 0.714],
+     "sub_type": "algorithm",
+     "content": [
+         {"type": "algorithm_body", "bbox": [0.058, 0.494, 0.925, 0.714],
+          "content": [
+              {"type": "text", "content": "Théorème : Soit (E) l'équation"}]}]}]}]}
+page = transformer_page(page_reelle, 1654, 2339)
+verifier(18, page["blocs"] and page["blocs"][0]["type"] == "texte",
+         "4.x strict : bloc code/algorithm_body -> texte du contrat")
+bloc18 = page["blocs"][0] if page["blocs"] else {}
+verifier(19, bloc18.get("bbox") == [96, 1155, 1530, 1670]
+         and bloc18.get("lignes", [{}])[0].get("mots", [{}])[0].get("texte")
+         == "Théorème : Soit (E) l'équation",
+         "4.x : bbox normalisées mises à l'échelle (1654x2339) et spans assemblés")
+
+# E7b : titres 4.x (doc_title/paragraph_title) avec spans inline.
+titres_4x = [{"type": "doc_title", "index": 0, "bbox": [0.1, 0.1, 0.9, 0.2],
+              "level": 1,
+              "content": [{"type": "text", "content": "Le titre"}]},
+             {"type": "paragraph_title", "index": 1, "bbox": [0.1, 0.3, 0.9, 0.35],
+              "level": 2,
+              "content": [{"type": "text", "content": "Section"}]}]
+page = transformer_page(titres_4x, 1000, 2000)
+verifier(20, [b["type"] for b in page["blocs"]] == ["titre", "titre"]
+         and page["blocs"][0]["texte"] == "Le titre"
+         and page["blocs"][1]["texte"] == "Section",
+         "4.x : doc_title et paragraph_title -> titres avec leurs textes")
+
+# E7c : équation 4.x (content chaîne) et tableau 4.x (content -> table_body).
+formule_tableau = [
+    {"type": "equation", "index": 0, "bbox": [0.5, 0.5, 0.7, 0.55],
+     "content": "x^{2}+1"},
+    {"type": "table", "index": 1, "bbox": [0.1, 0.6, 0.9, 0.9],
+     "content": [
+         {"type": "table_body", "bbox": [0.1, 0.6, 0.9, 0.9],
+          "content": "<table><tr><td>1</td></tr></table>"}]},
+]
+page = transformer_page(formule_tableau, 800, 600)
+verifier(21, [b["type"] for b in page["blocs"]] == ["formule", "tableau"]
+         and page["blocs"][0]["latex"] == "x^{2}+1"
+         and page["blocs"][1]["html"] == "<table><tr><td>1</td></tr></table>",
+         "4.x : equation (content) -> formule ; table -> table_body -> html")
+
+# E7d : équations inline encadrées $…$, habillage (header/footer) ignoré.
+texte_inline = [{"type": "text", "index": 0, "bbox": [0.1, 0.1, 0.9, 0.3],
+                 "content": [
+                     {"type": "text", "content": "le mot "},
+                     {"type": "equation_inline", "content": "a+b"}]},
+                {"type": "header", "index": 1, "bbox": [0.1, 0.0, 0.9, 0.05],
+                 "content": [{"type": "text", "content": "numéro de page"}]}]
+page = transformer_page(texte_inline, 100, 100)
+verifier(22, len(page["blocs"]) == 1
+         and page["blocs"][0]["lignes"][0]["mots"][0]["texte"]
+         == "le mot $a+b$",
+         "4.x : équation inline assemblée en $…$ ; header ignoré")
+
+# E7e : _vers_dict préfère la conversion OFFICIELLE to_dict du SDK.
+
+
+class _FauxResultat(object):
+    """ParseResult factice du SDK 4.x : pages en modèles pydantic."""
+
+    def to_dict(self):
+        return {"pages": [{"page_idx": 0, "blocks": [
+            {"type": "text", "index": 0, "bbox": [0.1, 0.1, 0.2, 0.2],
+             "content": [{"type": "text", "content": "via to_dict"}]}]}]}
+
+
+from moteur_pages import _vers_dict  # noqa: E402
+conv = _vers_dict(_FauxResultat())
+page = transformer_page(conv, 100, 100)
+verifier(23, page["blocs"] and page["blocs"][0]["type"] == "texte"
+         and page["blocs"][0]["lignes"][0]["mots"][0]["texte"] == "via to_dict",
+         "_vers_dict : l'objet du SDK est converti par sa méthode to_dict")
+
 if echecs:
     print("\n%s vérification(s) en échec." % echecs)
     sys.exit(1)
