@@ -18,6 +18,28 @@
 # Enregistrer / Fermer sans enregistrer / Annuler) AVANT de perder un
 # document modifie ; Corps en colonne flexible (lecon v0.1.16 : la
 # bande d'onglets ne decale plus jamais la zone de travail).
+# Declencheur de la v0.1.31 : annotations riches validees sur maquette
+# canvas par Arthur (croquis couleurs, formes et traitement de texte).
+# Chaque outil Surligner, Encadrer et Ecrire ouvre son panneau d'options
+# a gauche de la page : Surligner gagne quatre formes (/Highlight plein,
+# /Underline soulignement, /StrikeOut barre, /Squiggly onde) et huit
+# couleurs ; Encadrer quatre formes (rectangle, arrondi, ellipse, nuage
+# /Cloudy), trois traits (continu, tirets [7 5], points [0.2 6]), trois
+# epaisseurs (1.3 / 2.2 / 3.4 pt), remplissage teinte a 13 % et sept
+# couleurs ; Ecrire devient machine a ecrire riche — taille de corps
+# 8 a 36 pt, gras, italique, souligne, barre, exposant, indice, couleur
+# du texte et de fond (opacite 0.6), alignements, listes a puces et
+# numeros, formules $...$ composees par MathJax. Chaque palette offre
+# le cercle chromatique HSV pour les couleurs personnalisees
+# (engine/couleurs.js). Le texte riche se compose par engine/markup.js
+# et se pose par engine/riche.js (/FreeText, marqueur « Note riche
+# taille : ») ; les cadres portent leur forme dans le /Subject (« Cadre
+# forme,trait,epaisseur[,teinte] ») et l'apparence est genere par
+# engine/annots.js ; le deplacement et le redimensionnement (poignee
+# bas-droite) reposent la note ou le cadre a l'identique
+# (engine/bouger.js ; le rendu ecran suit dans renderer/app.js,
+# options dans renderer/index.html et style dans renderer/style.css).
+# L'outil Trait (encre) reste hors du panneau d'options.
 # Declencheur de la v0.1.29 : page reconnue editable en place (geste
 # valide sur maquette canvas par Arthur). Les blocs reconnus de la page
 # affichee apparaissent en contour discret a l'outil Selection ; un clic

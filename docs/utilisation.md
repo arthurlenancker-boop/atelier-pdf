@@ -31,14 +31,54 @@ Elles apparaissent dans Adobe Acrobat, Edge et LibreOffice, et s'impriment
 
 | Outil | Geste | Résultat dans le fichier |
 | --- | --- | --- |
-| Surligner | glisser sur une ligne de texte | /Highlight translucide (opacité 0,35), quadrilatère exact du glissement |
-| Encadrer | glisser un rectangle | /Square à bordure rouge |
+| Surligner | glisser sur une ligne de texte | /Highlight, /Underline, /StrikeOut ou /Squiggly selon la forme choisie |
+| Encadrer | glisser un rectangle | /Square ou /Circle, forme et trait du panneau d'options |
 | Encre | tracer à main levée | /Ink (polygone) |
-| Note | clic, puis saisir le texte | icône post-it /Text (Comment), texte au survol dans Adobe |
-| Fiche | glisser une zone, puis saisir | /FreeText : texte écrit sur la page |
+| Écrire | clic ou glisser une zone | note riche /FreeText : texte mis en forme écrit sur la page |
 
 Sur une page tournée (scan à plat par exemple), l'outil reste aligné : le
 point visé est le point annoté.
+
+Depuis la v0.1.31, chaque outil d'annotation ouvre son panneau d'options à
+gauche de la page : formes, couleurs, palettes et cercle chromatique.
+
+### Surligner : quatre formes, huit couleurs
+
+- Formes : surlignage plein (/Highlight), soulignement (/Underline),
+  barré (/StrikeOut) et ondulé (/Squiggly, la vague du correcteur).
+- Couleurs : jaune, orange, corail, rose, vert, bleu ciel, mauve et
+  turquoise ; une case « + » ouvre le cercle chromatique (teinte au
+  contour, clarté au glissement vertical) puis valider.
+
+### Encadrer : quatre formes, sept couleurs, trois traits
+
+- Formes : rectangle, rectangle arrondi, ellipse et nuage (bulle de BD,
+  bord /Cloudy).
+- Trait : continu, tirets ou points ; épaisseur fin (1,3 pt), moyen
+  (2,2 pt) ou épais (3,4 pt).
+- Remplissage : transparent ou teinté (la couleur du cadre, translucide).
+- Couleurs : noir, gris, rouge, orange, vert, bleu et violet, plus le
+  cercle chromatique.
+
+### Écrire : la machine à écrire riche
+
+Un clic pose un texte nu à l'endroit cliqué ; un glissement trace la zone
+de saisie. Le texte se compose dans un éditeur WYSIWYG posé sur la page :
+
+- taille de corps de 8 à 36 pt (stepper, valable pour toute la note) ;
+- gras, italique, souligné, barré, exposant, indice ;
+- couleur du texte et couleur de fond (translucide) ;
+- alignement gauche, centré, droite ; listes à puces et numérotées ;
+- formules LaTeX entre dollars dans le texte (`$E = mc^2$`), composées
+  par le moteur d'équations, aperçu en direct sous la saisie.
+
+Une annotation posée se sélectionne à l'outil Sélection : la poignée
+bas-droite l'élargit (le texte se recompose), le glissement la déplace,
+Suppr la retire. Le bouton Équation ouvre aussi une note riche cliquée
+pour la corriger.
+
+L'outil Trait conserve son comportement antérieur (encre à main levée) ;
+il n'est pas couvert par le panneau d'options.
 
 ## 4. Équations LaTeX
 
