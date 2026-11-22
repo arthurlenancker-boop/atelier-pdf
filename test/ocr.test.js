@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur, enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage } = require('../engine/ocr.js');
+const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur, enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage } = require('../engine/ocr.js');
 
 // ————— borner —————
 test('borner borne un nombre dans l’intervalle', () => {
@@ -139,6 +139,24 @@ test('nettoyerUrlServeur refuse tout ce qui n’est pas une URL http(s) nette', 
   assert.strictEqual(nettoyerUrlServeur(42), '');
   assert.strictEqual(nettoyerUrlServeur(null), '');
   assert.strictEqual(nettoyerUrlServeur(undefined), '');
+});
+
+// ————— v0.1.28 : refus du https sur un hôte local (correctif approuvé) —————
+test('nettoyerUrlServeur refuse https sur un hôte local (le serveur écoute en HTTP)', () => {
+  assert.strictEqual(nettoyerUrlServeur('https://127.0.0.1:8642/ocr'), '');
+  assert.strictEqual(nettoyerUrlServeur('https://localhost:8642/ocr'), '');
+  assert.strictEqual(nettoyerUrlServeur('https://[::1]:8642/ocr'), '');
+  assert.strictEqual(nettoyerUrlServeur('https://LOCALHOST:8642/ocr'), '');
+});
+
+test('estHttpsLocal signale le https local, jamais le distant ni le http', () => {
+  assert.strictEqual(estHttpsLocal('https://127.0.0.1:8642/ocr'), true);
+  assert.strictEqual(estHttpsLocal('https://localhost/ocr'), true);
+  assert.strictEqual(estHttpsLocal('https://[::1]:8642/ocr'), true);
+  assert.strictEqual(estHttpsLocal('http://127.0.0.1:8642/ocr'), false);
+  assert.strictEqual(estHttpsLocal('https://100.101.102.103:8642/ocr'), false);
+  assert.strictEqual(estHttpsLocal('mon-pc:8642'), false);
+  assert.strictEqual(estHttpsLocal(42), false);
 });
 
 // ————— v0.1.23 : latexDepuisReponseServeur —————

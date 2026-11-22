@@ -131,10 +131,27 @@ function extractionLatex(markdown) {
  * @param {*} url
  * @returns {string}
  */
+function estHttpsLocal(url) {
+  if (typeof url !== 'string') return false;
+  try {
+    const u = new URL(url.trim());
+    if (u.protocol !== 'https:') return false;
+    // WHATWG URL garde les crochets d'une adresse IPv6 : [::1].
+    const hote = u.hostname.replace(/^\[/, '').replace(/\]$/, '');
+    return hote === 'localhost' || hote === '127.0.0.1' || hote === '::1';
+  } catch {
+    return false;
+  }
+}
+
 function nettoyerUrlServeur(url) {
   if (typeof url !== 'string') return '';
   const u = url.trim().replace(/\/+$/, '');
   if (!/^https?:\/\/\S+$/i.test(u)) return '';
+  // v0.1.28 (correctif approuvé) : le serveur personnel écoute en
+  // HTTP ; un https:// sur un hôte local est une faute de frappe qui
+  // ne se serait vue qu'au clic, comme erreur de connexion.
+  if (estHttpsLocal(u)) return '';
   return u;
 }
 
@@ -256,14 +273,14 @@ function resumePage(page) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
-    nettoyerUrlServeur, latexDepuisReponseServeur,
+    nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur,
     enteteJeton, messageErreurOcr,
     pageUrlDepuis, resumePage,
   };
 } else {
   globalThis.AtelierOcr = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
-    nettoyerUrlServeur, latexDepuisReponseServeur,
+    nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur,
     enteteJeton, messageErreurOcr,
     pageUrlDepuis, resumePage,
   };

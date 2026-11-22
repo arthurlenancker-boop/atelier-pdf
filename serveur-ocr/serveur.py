@@ -175,6 +175,22 @@ def extraire_image(corps):
     return octets, None
 
 
+class ServeurOcr(ThreadingHTTPServer):
+    """v0.1.28 (correctif approuvé) : ne journalise pas les réinitialisations.
+
+    Un client qui referme brutalement la connexion (banc d'essai,
+    annulation d'une requête côté application) faisait remonter une
+    trace ConnectionResetError (WinError 10054) ou ConnectionAborted
+    par thread : ce n'est pas une erreur du serveur, seulement un
+    client pressé. Tout autre échec garde la trace habituelle."""
+
+    def handle_error(self, requete, adresse_client):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError)):
+            return
+        super().handle_error(requete, adresse_client)
+
+
 class Repondeur(BaseHTTPRequestHandler):
     # Les messages du serveur vont au journal local, jamais au client.
     def log_message(self, format_, *args):
@@ -294,7 +310,7 @@ def main():
     jeton_actif = options.jeton
     niveau_actif = options.niveau
     diagnostic = options.diagnostic
-    service = ThreadingHTTPServer((options.hote, options.port), Repondeur)
+    service = ServeurOcr((options.hote, options.port), Repondeur)
     hote_affiche = options.hote if options.hote != "0.0.0.0" else "toutes les interfaces"
     print("Serveur OCR LaTeX personnel — écoute sur %s, port %d." % (hote_affiche, options.port))
     print("POST /ocr : formule LaTeX ; POST /page : page complète (blocs).")

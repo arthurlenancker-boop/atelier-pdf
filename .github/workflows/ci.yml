@@ -60,5 +60,13 @@ jobs:
         shell: bash
         run: python serveur-ocr/test_serveur.py
 
+      # v0.1.28 : le moteur de reconnaissance des pages est éprouvé à
+      # chaque poussée (schéma strict MinerU 4.x, bbox, types, tableaux,
+      # formules ; le banc d'intégration embarque un moteur factice,
+      # aucune dépendance lourde sur le runner).
+      - name: Test du moteur de pages OCR (python)
+        shell: bash
+        run: python serveur-ocr/test_moteur_pages.py
+
       - name: Contrôle des licences des dépendances
         run: node scripts/check-licenses.js

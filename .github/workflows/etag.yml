@@ -5,21 +5,22 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
-# Declencheur de la v0.1.27 : remise en coherence apres croisement de deux
-# flux le meme matin. Les correctifs Equation (garde anti-collage des
-# commandes \ suivies d'un atome, filet anti-perte en seriation, fleches
-# doubles ⇔ ⟺ et palette « Ensembles & fleches » enrichie, correction
-# \supset/\supseteq) avaient ete prepares sur une base v0.1.24 pendant que
-# main avancait sans eux : v0.1.25 (jeton d'acces du serveur OCR) puis
-# v0.1.26 (serveur v2, reconnaissance de pages completes). La pousse a
-# ecrase package.json, renderer/app.js, etag.yml et README.md par des
-# contenus bases sur v0.1.24 : version redescendue a 0.1.25, cablage du
-# serveur v2 et garde-fous de livraison perdus, la Livraison #35 a saute
-# (le tag v0.1.25 etait deja pris). Ce commit restaure integralement le
-# contenu v0.1.26 de ces quatre fichiers, re-applique les correctifs
-# Equation (moteur engine/unicodemath.js, tests, palette de app.js,
-# README) et porte la version a 0.1.27 : les versions 0.1.25 et 0.1.26
-# restent livrees par le flux serveur.
+# Declencheur de la v0.1.28 : barre de progression de la reconnaissance
+# du document a l'ouverture (styles A et D valides par Arthur sur la
+# maquette canvas : barre fine sous la barre d'outils, navette pendant
+# le chargement du moteur, etats des vignettes, lien Arreter discret),
+# reconnaissance sequentielle par le chemin central page:tester, pages
+# reconnues gardees en memoire (rien n'ecrit dans le PDF). Correctifs
+# approuves livres ensemble : refus de https:// sur un hote local
+# (estHttpsLocal + message clair dans la carte des options), aide
+# « un document doit etre ouvert » dans la carte, styles propres au
+# bloc #essai-page, silence des reinitialisations de connexion
+# (WinError 10054) du serveur OCR, test_moteur_pages.py dans la CI.
+# Historique v0.1.27 : remise en coherence apres croisement de deux
+# flux le meme matin (correctifs Equation prepare sur une base v0.1.24
+# pendant que main avancait : restauration des quatre fichiers ecrases,
+# garde-fous de livraison retrouves, version 0.1.27 ; les versions
+# 0.1.25 et 0.1.26 etaient restees livrees par le flux serveur).
 # Pour livrer une nouvelle version : incrementer "version" dans
 # package.json, puis pousser ce fichier avec la modification.
 name: Livraison

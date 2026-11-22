@@ -68,7 +68,31 @@ supprime avec la touche Suppr, comme toute annotation.
 
 La pastille « modifié » signale un document non enregistré.
 
-## 6. Questions fréquentes
+## 6. Reconnaissance du document à l'ouverture
+
+Depuis la v0.1.28, si votre serveur OCR personnel est configuré (menu
+Fichier → Options OCR LaTeX…, choix « Mon serveur OCR »), l'ouverture
+d'un document lance la reconnaissance de toutes les pages, l'une après
+l'autre, entièrement chez vous.
+
+- Une barre fine sous la barre d'outils montre la progression. Tant
+  qu'aucune page n'est revenue, elle va et vient (elle « navigue ») :
+  c'est le chargement du moteur, long seulement à la toute première
+  reconnaissance ; ensuite elle avance par page terminée.
+- La colonne des pages (bouton Pages) raconte la même histoire : la
+  page en cours est cerclée de bleu, les pages reconnues portent une
+  coche et leur numéro passe au bleu.
+- La barre d'état indique la page en cours et le décompte (« page 3 sur
+  12, 2 pages reconnues »), avec un lien Arrêter : la page en cours
+  s'achève, puis plus rien n'est envoyé. Rien n'est cassé côté serveur.
+- Le document reste entièrement lisible et annotable pendant toute
+  la reconnaissance.
+- Sans serveur personnel configuré (mode OCR Mistral ou rien), l'ouverture
+  ne déclenche aucune reconnaissance automatique.
+- Les pages reconnues restent en mémoire de l'application, rien n'est
+  écrit dans le fichier PDF.
+
+## 7. Questions fréquentes
 
 - Mes annotations disparaissent dans un autre logiciel ? Elles y sont :
   surlignage, cadre, encre, note et fiche suivent le format standard des

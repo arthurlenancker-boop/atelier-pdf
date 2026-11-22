@@ -67,6 +67,14 @@
     </button>
   </nav>
 
+  <!-- v0.1.28 : barre fine de la reconnaissance du document à l'ouverture
+       (style A validé par Arthur) : piste grise de 3 px, remplissage
+       accent, navette tant qu'aucune page n'est revenue (chargement du
+       moteur au premier appel, sans pourcentage mesurable) -->
+  <div id="barre-progression" class="barre-progression" hidden>
+    <div id="barre-progression-empli" class="barre-progression-empli"></div>
+  </div>
+
   <div class="corps">
     <!-- v0.1.15 : vision d'ensemble du document, à la manière des
          grands éditeurs : miniatures des pages, la courante signalée,
@@ -213,7 +221,10 @@
            ~200 points par pouce ; le résumé revient sous le bouton. -->
       <div id="essai-page" hidden>
         <button id="tester-page" class="btn">Tester la reconnaissance</button>
-        <p id="page-resume" class="cle-aide" hidden></p>
+        <p id="page-resume" class="essai-info" hidden></p>
+        <!-- v0.1.28 (correctif approuvé) : l'explication vit dans la
+             carte, aucune ouverture de document n'est plus obscure -->
+        <p id="essai-aide" class="essai-aide">Un document doit être ouvert : la page affichée sera reconnue.</p>
       </div>
       <label class="cle-radio">
         <input type="radio" name="opt-ocr" id="opt-mistral" value="mistral" />
@@ -237,6 +248,9 @@
   <!-- Barre d'état -->
   <footer class="etat">
     <span id="message-etat">Prêt.</span>
+    <!-- v0.1.28 : état de la reconnaissance du document (style D) :
+         page en cours, pages reconnues, lien Arrêter discret -->
+    <span id="progression-etat" class="progression-etat" hidden></span>
     <span id="version-etat" class="faible"></span>
   </footer>
 

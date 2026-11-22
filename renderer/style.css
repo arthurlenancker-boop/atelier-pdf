@@ -663,3 +663,73 @@ math-field.eq-mathfield:focus-within {
    règle .calque-texte span s'applique déjà (position, transparence) ;
    seul le garde-fou de découpage est propre aux mots. */
 .ocr-mot { white-space: nowrap; }
+
+/* ============================================================
+   v0.1.28 : progression de la reconnaissance du document
+   (styles A et D validés par Arthur)
+   ============================================================ */
+/* Style A : barre fine sous la barre d'outils — piste grise 3 px,
+   remplissage accent, navette tant qu'aucune page n'est revenue. */
+.barre-progression {
+  height: 3px;
+  background: var(--bord);
+  overflow: hidden;
+}
+.barre-progression-empli {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+.barre-progression-empli.navette {
+  width: 30%;
+  transition: none;
+  animation: progression-navette 1.15s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes progression-navette {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(440%); }
+}
+
+/* Zone d'état (barre du bas) : page en cours, compteur, lien Arrêter. */
+.progression-etat { margin-left: auto; }
+.progression-etat a {
+  color: var(--ink-2);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.progression-etat a:hover { color: var(--ink); }
+
+/* Style D : vignettes — page en cours cerclée de bleu (pulsée),
+   page reconnue cochée (pastille accent, numéro accent). */
+.vignette { position: relative; }
+.vignette.ocr-cours {
+  border-color: var(--accent);
+  animation: vignette-ocr-pulse 1.4s ease-in-out infinite;
+}
+@keyframes vignette-ocr-pulse {
+  0%, 100% { border-color: #9CC4EA; }
+  50% { border-color: var(--accent); }
+}
+.vignette.ocr-fait figcaption { color: var(--accent); }
+.vignette.ocr-fait::after {
+  content: "\2713";
+  position: absolute;
+  right: 4px;
+  bottom: 20px;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #FFFFFF;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+/* v0.1.28 (correctif approuvé) : styles propres au bloc #essai-page,
+   n'emplacent plus .eq-erreur/.cle-aide devenus génériques. */
+.essai-info { color: var(--ink-2); font-size: 12px; margin: 4px 6px; }
+.essai-erreur { color: var(--erreur); font-size: 12px; margin: 4px 6px; }
+.essai-aide { color: var(--ink-3); font-size: 11.5px; margin: 4px 6px; }

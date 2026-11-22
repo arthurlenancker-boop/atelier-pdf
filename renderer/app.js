@@ -12,7 +12,7 @@ import '../engine/ocr.js'; // expose globalThis.AtelierOcr (v0.1.22)
 import '../engine/unicodemath.js'; // expose globalThis.AtelierUniMath (v0.1.24)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
-const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur } = globalThis.AtelierOcr;
+const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur, estHttpsLocal } = globalThis.AtelierOcr;
 
 // v0.1.2 : chargement dynamique de pdf.js. Un import statique qui echoue
 // (fichier absent) tuait silencieusement tout le module : plus aucun bouton
@@ -355,6 +355,7 @@ async function ouvrirDocument(chemin) {
   etat.remplacement = null;
   etat.opsEquation.clear(); // v0.1.10
   motsOcrPages.clear();     // v0.1.22 : une autre reconnaissance tout autre document
+  couperReconnaissanceDocument(); // v0.1.28 : idem reconnaissance serveur du document
   pageMuette = false;
   etat.chemin = rep.resume.chemin;
   etat.page = 1;
@@ -381,6 +382,9 @@ async function ouvrirDocument(chemin) {
   } else {
     message(`Document ouvert : ${rep.resume.pageCount} page(s).`, 'reussite');
   }
+  // v0.1.28 : la reconnaissance du document part à l'ouverture si le
+  // serveur OCR personnel est configuré (décision d'Arthur : MinerU).
+  reconnaitreDocument();
 }
 
 /* ============================================================
@@ -420,6 +424,7 @@ async function construireVignettes() {
       etiquette.textContent = String(n);
       figure.append(toile, etiquette);
       colonne.append(figure);
+      appliquerEtatRecoVignette(figure, n); // v0.1.28 : page déjà reconnue/en cours
       majVignettesPage();
     } catch (err) {
       // Une vignette manquante n'entrave ni la lecture ni les outils.
@@ -1568,7 +1573,7 @@ $('#tester-page').addEventListener('click', async () => {
   const resume = $('#page-resume');
   if (!etat.pdfjs || !etat.resume) {
     resume.textContent = "Ouvrez d'abord un document : la page affichée sera reconnue.";
-    resume.className = 'eq-erreur';
+    resume.className = 'essai-erreur'; // v0.1.28 : styles propres au bloc
     resume.hidden = false;
     return;
   }
@@ -1587,7 +1592,7 @@ $('#tester-page').addEventListener('click', async () => {
     const rep = await window.atelier.testerPage(dataUrl);
     if (rep.erreur) {
       resume.textContent = rep.erreur;
-      resume.className = 'eq-erreur';
+      resume.className = 'essai-erreur'; // v0.1.28
     } else {
       const blocs = rep.page && Array.isArray(rep.page.blocs) ? rep.page.blocs : [];
       if (!blocs.length) {
@@ -1595,7 +1600,7 @@ $('#tester-page').addEventListener('click', async () => {
       } else {
         resume.textContent = rep.resume || 'Page reconnue.';
       }
-      resume.className = 'cle-aide';
+      resume.className = 'essai-info'; // v0.1.28
     }
   } catch (err) {
     resume.textContent = `Reconnaissance impossible : ${(err && err.message) || err}`;
@@ -1616,9 +1621,14 @@ async function validerOptionsOcr() {
   const erreur = $('#cle-erreur');
   const options = {};
   if ($('#opt-serveur').checked) {
-    const url = nettoyerUrlServeur($('#serveur-url').value);
+    const saisie = $('#serveur-url').value;
+    const url = nettoyerUrlServeur(saisie);
     if (!url) {
-      erreur.textContent = 'Indiquez l\'adresse du serveur (ex. : http://100.x.y.z:8642/ocr — elle se lit sur le PC qui le fait tourner avec « tailscale ip -4 »).';
+      // v0.1.28 (correctif approuvé) : le https sur un hôte local obtient
+      // son message à lui, au lieu d'une erreur de connexion au clic.
+      erreur.textContent = estHttpsLocal(saisie)
+        ? "Le serveur personnel écoute en HTTP : retirez le « s » de https:// (ex. : http://127.0.0.1:8642/ocr)."
+        : 'Indiquez l\'adresse du serveur (ex. : http://100.x.y.z:8642/ocr — elle se lit sur le PC qui le fait tourner avec « tailscale ip -4 »).';
       erreur.hidden = false;
       return;
     }
@@ -1649,6 +1659,158 @@ async function validerOptionsOcr() {
   message($('#opt-serveur').checked
     ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.${options.jeton ? ' Jeton enregistré.' : ''}`
     : 'OCR Mistral enregistré pour la lecture LaTeX.', 'reussite');
+}
+
+/* ============================================================
+   v0.1.28 : reconnaissance du document à l'ouverture (styles A et D)
+   ============================================================ */
+/* À l'ouverture, si le serveur OCR personnel est configuré, toutes les
+   pages partent L'UNE APRÈS L'AUTRE au endpoint /page par le MÊME
+   chemin que le bouton « Tester la reconnaissance » (page:tester :
+   aucune duplication du pipeline, leçon v0.1.26.2). La barre fine
+   sous la barre d'outils (style A validé) avance par page terminée,
+   en navette tant qu'aucune page n'est revenue (le premier appel
+   emporte le chargement du moteur, sans pourcentage mesurable). La
+   colonne de vignettes (style D) cercle la page en vol et coche les
+   reconnues. Le lien « Arrêter » de la barre d'état laisse achever la
+   page en vol puis n'envoie plus rien. Les pages reconnues restent en
+   mémoire (rien n'écrit dans le PDF) : recherche et clic ƒ ensuite. */
+const recoDocument = {
+  generation: 0,        // un changement de document coupe la boucle
+  arretDemande: false,  // lien « Arrêter » de la barre d'état
+  pageEnCours: 0,       // n° de la page en vol (vignettes, diagnostics)
+  pages: new Map(),     // n° -> page reconnue { largeur, hauteur, blocs }
+};
+
+function progressionCacher() {
+  $('#barre-progression').hidden = true;
+  const empli = $('#barre-progression-empli');
+  empli.classList.remove('navette');
+  empli.style.width = '0';
+  const zone = $('#progression-etat');
+  zone.hidden = true;
+  zone.textContent = '';
+}
+
+function majProgressionReco(faites, total, pageEnVol) {
+  $('#barre-progression').hidden = false;
+  const empli = $('#barre-progression-empli');
+  if (faites === 0) {
+    // Navette : la première page emporte le chargement du moteur, aucun
+    // pourcentage honnête n'est mesurable avant elle.
+    empli.style.width = '';
+    empli.classList.add('navette');
+  } else {
+    empli.classList.remove('navette');
+    empli.style.width = Math.round((faites / total) * 100) + '%';
+  }
+  const zone = $('#progression-etat');
+  zone.hidden = false;
+  zone.innerHTML = 'Reconnaissance : page ' + pageEnVol + ' sur ' + total + ', '
+    + faites + (faites > 1 ? ' pages reconnues' : ' page reconnue')
+    + ' (' + Math.round((faites / total) * 100) + ' %)'
+    + ' <a data-role="arreter" href="#">Arrêter</a>';
+}
+
+function marquerVignetteReco(n, etat) {
+  const figure = els.vignettes.querySelector('.vignette[data-page="' + n + '"]');
+  if (!figure) return;
+  if (etat === 'cours') figure.classList.add('ocr-cours');
+  else {
+    figure.classList.remove('ocr-cours');
+    if (etat === 'fait') figure.classList.add('ocr-fait');
+  }
+}
+
+/* Posée au fil de construireVignettes : une page reconnue pendant que
+   sa vignette n'existait pas encore retrouve son état. */
+function appliquerEtatRecoVignette(figure, n) {
+  if (recoDocument.pageEnCours === n) figure.classList.add('ocr-cours');
+  if (recoDocument.pages.has(n)) figure.classList.add('ocr-fait');
+}
+
+function couperReconnaissanceDocument() {
+  recoDocument.generation += 1;
+  recoDocument.arretDemande = false;
+  recoDocument.pageEnCours = 0;
+  recoDocument.pages.clear();
+  progressionCacher();
+}
+
+/* Le lien « Arrêter » est dans la zone d'état : délégation simple. */
+$('#progression-etat').addEventListener('click', (ev) => {
+  if (!ev.target.dataset || ev.target.dataset.role !== 'arreter') return;
+  ev.preventDefault();
+  recoDocument.arretDemande = true;
+  $('#progression-etat').textContent = "La page en cours s'achève, puis la reconnaissance s'arrête…";
+});
+
+async function reconnaitreDocument() {
+  if (!etat.pdfjs || !etat.resume) return;
+  // Rien en mode OCR Mistral : le bouton ƒ garde son rôle, l'ouverture
+  // n'envoie le document à personne sans serveur personnel déclaré.
+  if (optionsOcrEtat.mode !== 'serveur' || !optionsOcrEtat.serveurUrl) return;
+  const gen = ++recoDocument.generation;
+  recoDocument.arretDemande = false;
+  const total = etat.resume.pageCount;
+  let faites = 0;
+  for (let n = 1; n <= total; n += 1) {
+    if (gen !== recoDocument.generation) return; // document changé
+    if (recoDocument.arretDemande) {
+      recoDocument.pageEnCours = 0;
+      marquerVignetteReco(n, 'attente');
+      progressionCacher();
+      message('Reconnaissance arrêtée : ' + faites + ' page' + (faites > 1 ? 's' : '')
+        + ' reconnue' + (faites > 1 ? 's' : '') + ' sur ' + total + '.');
+      return;
+    }
+    recoDocument.pageEnCours = n;
+    marquerVignetteReco(n, 'cours');
+    majProgressionReco(faites, total, n);
+    try {
+      const page = await etat.pdfjs.getPage(n);
+      const vp = page.getViewport({ scale: 200 / 72 }); // ~200 points par pouce
+      const toile = document.createElement('canvas');
+      toile.width = Math.max(1, Math.floor(vp.width));
+      toile.height = Math.max(1, Math.floor(vp.height));
+      await page.render({ canvasContext: toile.getContext('2d'), viewport: vp }).promise;
+      if (gen !== recoDocument.generation) return;
+      const dataUrl = toile.toDataURL('image/jpeg', 0.85);
+      const rep = await window.atelier.testerPage(dataUrl);
+      if (gen !== recoDocument.generation) return;
+      if (rep.erreur) {
+        recoDocument.pageEnCours = 0;
+        marquerVignetteReco(n, 'attente');
+        progressionCacher();
+        message(faites === 0
+          ? 'Reconnaissance du document impossible : ' + rep.erreur
+          : 'Reconnaissance arrêtée à la page ' + n + ' : ' + rep.erreur, 'erreur');
+        return;
+      }
+      recoDocument.pages.set(n, rep.page);
+      faites += 1;
+      marquerVignetteReco(n, 'fait');
+    } catch (err) {
+      if (gen !== recoDocument.generation) return;
+      recoDocument.pageEnCours = 0;
+      progressionCacher();
+      message('Reconnaissance arrêtée à la page ' + n + ' : ' + ((err && err.message) || err), 'erreur');
+      return;
+    }
+  }
+  if (gen !== recoDocument.generation) return;
+  recoDocument.pageEnCours = 0;
+  const empli = $('#barre-progression-empli');
+  empli.classList.remove('navette');
+  empli.style.width = '100%';
+  $('#progression-etat').hidden = true;
+  message('Reconnaissance terminée : ' + total + ' page' + (total > 1 ? 's' : '')
+    + ' reconnue' + (total > 1 ? 's' : '') + '.', 'reussite');
+  setTimeout(() => {
+    if (gen !== recoDocument.generation) return;
+    $('#barre-progression').hidden = true;
+    empli.style.width = '0';
+  }, 900);
 }
 
 function ecouterSouris() {
@@ -3099,6 +3261,7 @@ globalThis.__atelierDiagnostics = () => [
   `Dernier échec d'affichage : ${erreurRendu || 'aucun'}`,
   `Annotations connues : ${etat.resume ? etat.resume.annots.length : 0}`,
   `Reconnaissance des scans : ${tesseractModule ? 'moteur chargé' : 'moteur non chargé (le sera au premier besoin)'}, pages reconnues : ${motsOcrPages.size === 0 ? 'aucune' : [...motsOcrPages.keys()].sort((a, b) => a - b).join(', ')}`,
+  `Reconnaissance du document (serveur OCR) : ${recoDocument.pages.size === 0 ? 'aucune page reconnue' : [...recoDocument.pages.keys()].sort((a, b) => a - b).join(', ')}${recoDocument.pageEnCours ? ` (page en vol : ${recoDocument.pageEnCours})` : ''}`,
   `Dernier échec de reconnaissance : ${erreurOcr || erreurTesseract || 'aucun'}`,
 ].join('\n');
 
