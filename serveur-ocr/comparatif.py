@@ -1,4 +1,10 @@
-# serveur-ocr/comparatif.py — banc d'essai des niveaux de MinerU (v0.1.26).
+# serveur-ocr/comparatif.py — banc d'essai des niveaux de MinerU (v0.1.26.2).
+#
+# Correctif v0.1.26.2 (22 nov.) : la sortie du parse était passée
+# directement à _blocs_de_source sans la conversion _vers_dict du
+# correctif v0.1.26.1 : les blocs pydantic stricts de MinerU 4.2.3 arrivaient en
+# objets et aucun n'était exploitable (« 0 bloc » aux six essais réels
+# d'Arthur). La conversion officielle to_dict est désormais insérée.
 # Compare les niveaux (basic, standard…) sur des pages réelles, chez vous,
 # sur le PC qui fera tourner le serveur : chronomètre chaque page, rend le
 # texte en Markdown (comparer à l'œil) et sauvegarde le contrat v2 (le JSON
@@ -143,7 +149,9 @@ def main():
                 debut = time.perf_counter()
                 resultat = parse(page_chemin, tier=niveau)
                 duree = time.perf_counter() - debut
-                premiere = moteur_pages._blocs_de_source(resultat)
+                conv = moteur_pages._vers_dict(resultat)
+                premiere = moteur_pages._blocs_de_source(
+                    conv if conv is not None else resultat)
                 contrat = moteur_pages.transformer_page(premiere, largeur, hauteur)
                 total, decompte, lignes_texte = decompte_par_type(contrat)
                 with open(base + ".json", "w", encoding="utf-8") as fichier:
