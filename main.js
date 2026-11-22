@@ -8,6 +8,7 @@ const {
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { spawn } = require('node:child_process'); // v0.1.34
 
 const { openPdf, savePdf, timestampedPath } = require('./engine/pdfio.js');
 const { createSession } = require('./engine/session.js');
@@ -15,6 +16,7 @@ const { listAnnots } = require('./engine/reread.js');
 const { mjRender } = require('./engine/mjrender.js');
 const { rejouer, rejouerPrefixeSain } = require('./engine/undo.js');
 const { creerFileDeCommandes } = require('./engine/synchro.js'); // v0.1.33
+const { composerRaccourcisWin } = require('./engine/raccourcis.js'); // v0.1.34
 const {
   nettoyerCle, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur,
   enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage,
@@ -891,11 +893,38 @@ ipcMain.handle('page:tester', async (_e, { dataUrl } = {}) => {
 // ---------------------------------------------------------------------------
 // Cycle de vie.
 // ---------------------------------------------------------------------------
+
+/** v0.1.34 : recrée à chaque lancement les raccourcis MANQUANTS (bureau
+ * et menu démarrer) d'une application empaquetée sous Windows. Un
+ * raccourci présent n'est jamais retouché (celui que l'utilisateur a
+ * déplacé ou renommé est respecté) ; un échec (PowerShell indisponible,
+ * dossier redirigé) reste silencieux : la séance n'en dépend jamais. */
+function garantirRaccourcis() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const script = composerRaccourcisWin({
+      exe: process.execPath,
+      nom: 'Atelier PDF',
+      description: 'Éditeur PDF : annotations et équations LaTeX.',
+    });
+    const enfant = spawn('powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script],
+      { stdio: 'ignore', windowsHide: true });
+    enfant.on('error', () => { /* silencieux */ });
+  } catch { /* silencieux */ }
+}
 app.whenReady().then(() => {
   initProtocole();
   creerFenetre();
   menuApplication();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creerFenetre(); });
+
+  // v0.1.34 : les raccourcis sont GARANTIS par l'application même.
+  // La mise à jour silencieuse (electron-updater, drapeau --updated)
+  // ne recrée aucun raccourci et l'ancienne désinstallation a déjà
+  // emporté l'existant : sans cela, le raccourci du bureau disparaît
+  // à la première mise à jour (retour d'Arthur sur la v0.1.33).
+  garantirRaccourcis();
 
   // Mise à jour silencieuse : l'utilisateur non averti n'a rien à voir ;
   // un échec (pas de réseau, pas de GitHub) ne perturbe jamais la séance.

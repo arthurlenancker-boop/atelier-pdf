@@ -29,7 +29,7 @@ Développement :
 
 ### Installer (utilisateur)
 
-Téléchargez l'installateur ou le portable de la dernière Release (Windows 64 bits) : double-clic, c'est tout. Tout fonctionne hors ligne après l'installation — y compris la reconnaissance des pages scannées (modèle de langue embarqué). La lecture LaTeX des formules (bouton ƒ LaTeX) lit par défaut votre serveur OCR personnel si son adresse est réglée (Fichier → Options OCR LaTeX…, tout local ; voir le guide du dossier serveur-ocr), sinon l'OCR Mistral, en ligne, avec votre clé API personnelle.
+Téléchargez l'installateur ou le portable de la dernière Release (Windows 64 bits) : double-clic, c'est tout. Le raccourci du bureau est garanti : toute version installée ou mise à jour silencieusement le recrée au prochain lancement (v0.1.34). Tout fonctionne hors ligne après l'installation — y compris la reconnaissance des pages scannées (modèle de langue embarqué). La lecture LaTeX des formules (bouton ƒ LaTeX) lit par défaut votre serveur OCR personnel si son adresse est réglée (Fichier → Options OCR LaTeX…, tout local ; voir le guide du dossier serveur-ocr), sinon l'OCR Mistral, en ligne, avec votre clé API personnelle.
 
 ### Construire (développeur)
 
