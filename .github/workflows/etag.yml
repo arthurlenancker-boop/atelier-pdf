@@ -5,6 +5,23 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.33 : retour d'Arthur — « j'ai trop cette
+# erreur pour bien travailler » (Le rejeu du geste n° 8 a echoue :
+# Annotation introuvable, en boucle). Cause racine : les canaux IPC
+# n'etaient pas serialises ; deux Ctrl+Z rapproches pendant un
+# rejeu long ouvraient deux annulations qui chevauchaient, depilaient
+# deux fois le meme journal, et le document ne correspondait plus
+# jamais au journal : chaque annulation ulterieure echouait
+# definitivement. Trois volets : engine/synchro.js (file de commandes
+# a exclusion mutuelle, FIFO strict, isolement des erreurs) ; main.js
+# enqueue pdf:apply/pdf:undo/pdf:redo/pdf:save, l'etat vise capte a
+# l'arrivee de la commande (changement d'onglet sans detournement) ;
+# reprise assuree sur un journal deja derive (engine/undo.js
+# rejouerPrefixeSain : depaie par la fin jusqu'au dernier prefixe
+# rejouable, l'annulation rend toujours la main) et repose sure dans
+# engine/bouger.js (la source embarquee se valide AVANT le retrait,
+# l'annotation d'origine est reinseree si la pose echoue : plus
+# jamais une note perdue sur un contenu corrompu). 257 tests.
 # Declencheur de la v0.1.30 : onglets et « enregistrer avant la
 # fermeture ». Chaque PDF ouvert vit dans son onglet (bande sous la
 # barre du haut : clic = bascule, croix = fermeture, Ctrl+W = fermer

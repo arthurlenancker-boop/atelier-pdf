@@ -13,7 +13,8 @@ const { openPdf, savePdf, timestampedPath } = require('./engine/pdfio.js');
 const { createSession } = require('./engine/session.js');
 const { listAnnots } = require('./engine/reread.js');
 const { mjRender } = require('./engine/mjrender.js');
-const { rejouer } = require('./engine/undo.js');
+const { rejouer, rejouerPrefixeSain } = require('./engine/undo.js');
+const { creerFileDeCommandes } = require('./engine/synchro.js'); // v0.1.33
 const {
   nettoyerCle, extractionLatex, nettoyerUrlServeur, latexDepuisReponseServeur,
   enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage,
@@ -73,6 +74,15 @@ protocol.registerSchemesAsPrivileged([
 
 let fenetre = null;
 let etat = null; // v0.1.30 : etat = l'onglet ACTIF (voir onglets ci-dessous)
+
+// v0.1.33 : la FILE d'édition. Tout ce qui touche un document (appliquer,
+// annuler, rétablir, enregistrer) s'exécute UNE commande à la fois, dans
+// l'ordre d'arrivée. Avant, ipcMain.handle était réentrant : deux Ctrl+Z
+// rapprochés ouvraient deux rejeux qui se chevauchaient, lisaient le même
+// journal d'avant et dépilaient deux fois ; le document ne correspondait
+// plus ensuite au journal et CHAQUE annulation échouait pour toujours
+// (« Annotation introuvable » en boucle, retour d'Arthur).
+const fileEdition = creerFileDeCommandes();
 // v0.1.13 : octets = fichier TEL QU'OUVERT (jamais réenregistré), socle du
 // rejeu d'annulation ; gestes = lots d'éditions appliqués (un lot = un geste
 // utilisateur) ; aRefaire = lots écartés par les annulations.
@@ -337,24 +347,28 @@ function menuApplication() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(modele));
 }
 
-function notifierChangement() {
+function notifierChangement(o) {
   // v0.1.30 : le changement porte l'identifiant de l'onglet concerné (le
   // rendu tient à jour les pastilles de SA bande d'onglets).
+  // v0.1.33 : o = l'état QUE LA COMMANDE a réellement modifié (capté à
+  // l'arrivée de la commande, pas au moment de notifier) ; par défaut,
+  // l'onglet actif.
+  const cible = o === undefined ? etat : o;
   if (fenetre) {
-    fenetre.webContents.send('app:changed', { idOnglet: ongletActifId, modifie: Boolean(etat && etat.modifie) });
+    fenetre.webContents.send('app:changed', { idOnglet: ongletActifId, modifie: Boolean(cible && cible.modifie) });
   }
 }
 
 /** Résumé sérialisable de la session (pour le calque d'apparence du rendu). */
-function resumerSession() {
-  if (!etat) return null;
+function resumerSession(o = etat) {
+  if (!o) return null;
   return {
-    chemin: etat.chemin,
-    modifie: etat.modifie,
-    pageCount: etat.doc.getPageCount(),
-    peutAnnuler: Boolean(etat.gestes && etat.gestes.length),
-    peutRefaire: Boolean(etat.aRefaire && etat.aRefaire.length),
-    annots: listAnnots(etat.doc).map((a) => ({
+    chemin: o.chemin,
+    modifie: o.modifie,
+    pageCount: o.doc.getPageCount(),
+    peutAnnuler: Boolean(o.gestes && o.gestes.length),
+    peutRefaire: Boolean(o.aRefaire && o.aRefaire.length),
+    annots: listAnnots(o.doc).map((a) => ({
       ...a,
       ref: a.ref ? { objectNumber: a.ref.objectNumber, generationNumber: a.ref.generationNumber } : null,
     })),
@@ -532,101 +546,126 @@ async function confirmerFermetureFenetre() {
   }
 }
 
-ipcMain.handle('pdf:apply', async (_e, edits) => {
-  try {
-    if (!etat) return { erreur: 'Aucun document n\'est ouvert.' };
-    if (!Array.isArray(edits)) return { erreur: 'Requête d\'édition mal formée.' };
-    const faits = [];
-    for (const edit of edits) {
-      // v0.1.11 : les fiches mixtes se posent en asynchrone (embedFont de
-      // pdf-lib) ; il faut les attendre une à une pour que le résumé reflète
-      // vraiment le document AVANT qu'il ne soit envoyé au rendu.
-      faits.push(await etat.session.apply(edit));
+ipcMain.handle('pdf:apply', (_e, edits) => {
+  // v0.1.33 : l'état visé est capté À L'ARRIVÉE (avant l'attente dans la
+  // file) : un changement d'onglet pendant l'exécution ne détourne jamais
+  // la commande vers le document du nouvel onglet.
+  const o = etat;
+  if (!Array.isArray(edits)) return { erreur: 'Requête d\'édition mal formée.' };
+  return fileEdition.enfiler(async () => {
+    try {
+      if (!o) return { erreur: 'Aucun document n\'est ouvert.' };
+      const faits = [];
+      for (const edit of edits) {
+        // v0.1.11 : les fiches mixtes se posent en asynchrone (embedFont de
+        // pdf-lib) ; il faut les attendre une à une pour que le résumé reflète
+        // vraiment le document AVANT qu'il ne soit envoyé au rendu.
+        faits.push(await o.session.apply(edit));
+      }
+      // v0.1.13 : les éditions EFFECTIVEMENT appliquées forment UN lot = un
+      // geste rejouable ; un lot partiel (échec en milieu de lot) est journalisé
+      // tel quel, il s'annulera d'un bloc avec son voisin réussi. Toute pose
+      // nouvelle vide la pile « à refaire » (règle habituelle des éditeurs).
+      o.gestes.push(edits.slice(0, faits.length).map((e) => JSON.parse(JSON.stringify(e))));
+      o.aRefaire = [];
+      o.modifie = true;
+      notifierChangement(o);
+      return { resume: resumerSession(o), faits };
+    } catch (err) {
+      return { erreur: err.message || String(err) };
     }
-    // v0.1.13 : les éditions EFFECTIVEMENT appliquées forment UN lot = un
-    // geste rejouable ; un lot partiel (échec en milieu de lot) est journalisé
-    // tel quel, il s'annulera d'un bloc avec son voisin réussi. Toute pose
-    // nouvelle vide la pile « à refaire » (règle habituelle des éditeurs).
-    etat.gestes.push(edits.slice(0, faits.length).map((e) => JSON.parse(JSON.stringify(e))));
-    etat.aRefaire = [];
-    etat.modifie = true;
-    notifierChangement();
-    return { resume: resumerSession(), faits };
-  } catch (err) {
-    return { erreur: err.message || String(err) };
-  }
+  });
 });
 
 // v0.1.13 : annulation par rejeu. L'état courant n'est JAMAIS touché tant
 // que le rejeu du nouveau départ n'a pas réussi : toute erreur de rejeu
 // renvoie { erreur } et laisse le document exactement comme avant.
-ipcMain.handle('pdf:undo', async () => {
-  try {
-    if (!etat) return { erreur: 'Aucun document n\'est ouvert.' };
-    if (!etat.gestes.length) return { resume: resumerSession(), rien: true };
-    const dernier = etat.gestes[etat.gestes.length - 1];
-    const { doc, session } = await rejouer(etat.octets, etat.gestes.slice(0, -1));
-    etat.gestes.pop();
-    etat.aRefaire.push(dernier);
-    etat.doc = doc;
-    etat.session = session;
-    etat.modifie = etat.gestes.length > 0;
-    notifierChangement();
-    return { resume: resumerSession() };
-  } catch (err) {
-    return { erreur: err.message || String(err) };
-  }
+ipcMain.handle('pdf:undo', () => {
+  const o = etat;
+  return fileEdition.enfiler(async () => {
+    try {
+      if (!o) return { erreur: 'Aucun document n\'est ouvert.' };
+      if (!o.gestes.length) return { resume: resumerSession(o), rien: true };
+      const dernier = o.gestes[o.gestes.length - 1];
+      // v0.1.33 : rejeu ASSAINI. Le rejeu strict échouait pour toujours dès
+      // que le journal avait dérivé (course historique, relecture d'un PDF
+      // modifié par ailleurs) ; on rejoue le journal privé de son dernier
+      // geste, et s'il résiste, les gestes sont abandonnés PAR LA FIN
+      // jusqu'au dernier préfixe rejouable : l'annulation rend TOUJOURS la
+      // main avec un état cohérent, jamais « Annotation introuvable » en
+      // boucle. Les gestes abandonnés étaient déjà du travail incohérent.
+      const r = await rejouerPrefixeSain(o.octets, o.gestes.slice(0, -1));
+      o.gestes = o.gestes.slice(0, r.rejoues);
+      o.aRefaire.push(dernier);
+      o.doc = r.doc;
+      o.session = r.session;
+      o.modifie = o.gestes.length > 0;
+      notifierChangement(o);
+      return { resume: resumerSession(o), abandonnes: r.abandonnes.length };
+    } catch (err) {
+      return { erreur: err.message || String(err) };
+    }
+  });
 });
 
 // v0.1.13 : rétablissement. Le lot écarté se réapplique sur la session
 // courante ; en cas d'échec, le lot RESTE sur la pile et rien ne change.
-ipcMain.handle('pdf:redo', async () => {
-  try {
-    if (!etat) return { erreur: 'Aucun document n\'est ouvert.' };
-    if (!etat.aRefaire.length) return { resume: resumerSession(), rien: true };
-    const lot = etat.aRefaire[etat.aRefaire.length - 1];
-    const faits = [];
-    for (const edit of lot) faits.push(await etat.session.apply(edit));
-    etat.aRefaire.pop();
-    etat.gestes.push(lot);
-    etat.modifie = true;
-    notifierChangement();
-    return { resume: resumerSession(), faits };
-  } catch (err) {
-    // Un lot à moitié appliqué ne doit JAMAIS rester en place : on reconstruit
-    // l'état en rejetant tous les gestes sains, la pile « à refaire » intacte.
+ipcMain.handle('pdf:redo', () => {
+  const o = etat;
+  return fileEdition.enfiler(async () => {
     try {
-      const { doc, session } = await rejouer(etat.octets, etat.gestes);
-      etat.doc = doc;
-      etat.session = session;
-    } catch (e2) { void e2; /* état inchangé ; l'erreur d'origine prime */ }
-    return { erreur: err.message || String(err) };
-  }
+      if (!o) return { erreur: 'Aucun document n\'est ouvert.' };
+      if (!o.aRefaire.length) return { resume: resumerSession(o), rien: true };
+      const lot = o.aRefaire[o.aRefaire.length - 1];
+      const faits = [];
+      for (const edit of lot) faits.push(await o.session.apply(edit));
+      o.aRefaire.pop();
+      o.gestes.push(lot);
+      o.modifie = true;
+      notifierChangement(o);
+      return { resume: resumerSession(o), faits };
+    } catch (err) {
+      // Un lot à moitié appliqué ne doit JAMAIS rester en place : on reconstruit
+      // l'état en rejetant tous les gestes sains, la pile « à refaire » intacte.
+      try {
+        const r = await rejouerPrefixeSain(o.octets, o.gestes);
+        o.doc = r.doc;
+        o.session = r.session;
+        // v0.1.33 : le journal se réaligne sur le préfixe sain (même règle
+        // que l'annulation : l'état reconstruit et le journal coïncident).
+        o.gestes = o.gestes.slice(0, r.rejoues);
+      } catch (e2) { void e2; /* état inchangé ; l'erreur d'origine prime */ }
+      return { erreur: err.message || String(err) };
+    }
+  });
 });
 
-ipcMain.handle('pdf:save', async (_e, { mode } = {}) => {
-  try {
-    if (!etat) return { erreur: 'Aucun document n\'est ouvert.' };
-    const octets = await savePdf(etat.doc);
-    let cible;
-    if (mode === 'timestamped') {
-      const dossier = path.dirname(etat.chemin);
-      const base = path.basename(etat.chemin, path.extname(etat.chemin));
-      cible = timestampedPath(dossier, base);
-    } else {
-      cible = etat.chemin;
+ipcMain.handle('pdf:save', (_e, { mode } = {}) => {
+  const o = etat;
+  return fileEdition.enfiler(async () => {
+    try {
+      if (!o) return { erreur: 'Aucun document n\'est ouvert.' };
+      const octets = await savePdf(o.doc);
+      let cible;
+      if (mode === 'timestamped') {
+        const dossier = path.dirname(o.chemin);
+        const base = path.basename(o.chemin, path.extname(o.chemin));
+        cible = timestampedPath(dossier, base);
+      } else {
+        cible = o.chemin;
+      }
+      await fs.promises.writeFile(cible, octets);
+      if (mode !== 'timestamped') {
+        o.modifie = false;
+      } else {
+        o.modifie = false; // le contenu sauvegardé correspond aussi à l'état courant
+      }
+      notifierChangement(o);
+      return { chemin: cible };
+    } catch (err) {
+      return { erreur: err.message || String(err) };
     }
-    await fs.promises.writeFile(cible, octets);
-    if (mode !== 'timestamped') {
-      etat.modifie = false;
-    } else {
-      etat.modifie = false; // le contenu sauvegardé correspond aussi à l'état courant
-    }
-    notifierChangement();
-    return { chemin: cible };
-  } catch (err) {
-    return { erreur: err.message || String(err) };
-  }
+  });
 });
 
 ipcMain.handle('mjx:preview', async (_e, { latex, exPt, rgb } = {}) => {

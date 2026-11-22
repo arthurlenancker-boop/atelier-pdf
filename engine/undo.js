@@ -48,4 +48,31 @@ async function rejouer(octets, gestes) {
   return { doc, session };
 }
 
-module.exports = { rejouer };
+/**
+ * v0.1.33 : annulation ASSAINIE. Un journal désynchronisé (une course entre
+ * deux rejeux, un état vif qui n'a plus rien à voir avec le journal capté)
+ * faisait échouer CHAQUE annulation pour toujours : « Annotation
+ * introuvable » en boucle (retour d'Arthur). Ici, le rejeu strict est
+ * tenté ; s'il échoue, des gestes sont abandonnés PAR LA FIN jusqu'au
+ * dernier préfixe qui se rejoue proprement. L'utilisateur récupère une
+ * commande d'annulation qui marche TOUJOURS ; le travail postérieur à la
+ * dérive est sacrifié (c'était du travail déjà incohérent).
+ * @returns {Promise<{doc, session, rejoues: number, abandonnes: Array}>}
+ *   rejoues = nombre de lots du préfixe sain ; abandonnes = lots écartés.
+ * @throws l'erreur du rejeu du préfixe VIDE (document original illisible).
+ */
+async function rejouerPrefixeSain(octets, gestes) {
+  const lots = Array.isArray(gestes) ? gestes : [];
+  let derniereErreur = null;
+  for (let fin = lots.length; fin >= 0; fin -= 1) {
+    try {
+      const r = await rejouer(octets, lots.slice(0, fin));
+      return { ...r, rejoues: fin, abandonnes: lots.slice(fin) };
+    } catch (cause) {
+      derniereErreur = cause;
+    }
+  }
+  throw derniereErreur;
+}
+
+module.exports = { rejouer, rejouerPrefixeSain };

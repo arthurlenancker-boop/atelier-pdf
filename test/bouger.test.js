@@ -4,12 +4,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { PDFDocument, PDFName } = require('pdf-lib');
+const { PDFDocument, PDFName, PDFString } = require('pdf-lib');
 
 const { addHighlight, addSquare, addInk, addTextNote, addFreeText } = require('../engine/annots.js');
 const { addEquation } = require('../engine/equation.js');
 const { addMixedFiche } = require('../engine/melange.js');
 const { deplacerAnnot, redimensionnerAnnot } = require('../engine/bouger.js');
+const { addNoteRiche } = require('../engine/riche.js'); // v0.1.33
 const { extraireSourceFiche, extraireTailleFiche } = require('../engine/texte.js');
 const { createSession } = require('../engine/session.js');
 const { listAnnots } = require('../engine/reread.js');
@@ -267,4 +268,35 @@ test('session : deplacer et redimensionner passent par le journal', async () => 
   }), /introuvable/);
   assert.strictEqual(session.edits().length, 3, 'un échec n\u2019entre pas au journal');
   void page;
+});
+
+// v0.1.33 : repose sûre — un contenu corrompu ne doit JAMAIS faire perdre
+// l'annotation : la source se valide avant le retrait, la note reste.
+test('redimensionnerAnnot : v0.1.33 — source corrompue = refus sans perte', async () => {
+  const { doc, page } = await neuf();
+  const { ref } = await addNoteRiche(doc, page, {
+    rect: [20, 600, 220, 700], source: 'Corps de la note',
+  });
+  const annots = page.node.Annots();
+  const tailleAvant = annots.size();
+  // Corruption : le marqueur « Note riche 11 : » est là mais la source
+  // embarquée a disparu (le cas repoussant la pose après le retrait).
+  doc.context.lookup(ref).set(
+    PDFName.of('Contents'), PDFString.of('Note riche 11 :'),
+  );
+  await assert.rejects(
+    () => redimensionnerAnnot(doc, page, {
+      ref: { objectNumber: ref.objectNumber, generationNumber: ref.generationNumber },
+      rect: [20, 620, 240, 720],
+    }),
+    /illisible/,
+    'le geste refuse poliment, AVANT tout retrait',
+  );
+  assert.strictEqual(annots.size(), tailleAvant,
+    '/Annots garde exactement la même taille : aucune perte');
+  let presente = false;
+  for (let k = 0; k < annots.size(); k += 1) {
+    if (annots.get(k).objectNumber === ref.objectNumber) presente = true;
+  }
+  assert.ok(presente, 'la référence de la note est toujours dans /Annots');
 });

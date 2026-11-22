@@ -268,10 +268,20 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
     // si le contenu dépasse, comme à la pose (moteur de la v0.1.11).
     const { extraireSourceFiche, extraireTailleFiche } = require('./texte.js');
     const source = extraireSourceFiche(contenu);
+    // v0.1.33 : la source se valide AVANT le retrait — un contenu corrompu
+    // ne doit jamais faire perdre la fiche à l'utilisateur.
+    if (!String(source ?? '').trim()) {
+      throw new Error('Fiche mixte illisible : la source embarquée manque, le redimensionnement est refusé.');
+    }
     const fontSize = extraireTailleFiche(contenu) || 11;
     tableau.remove(i);
-    const rep = await addMixedFiche(doc, page, { rect: nouveau, source, fontSize });
-    return { ref: rep.ref, rect: rep.rect };
+    try {
+      const rep = await addMixedFiche(doc, page, { rect: nouveau, source, fontSize });
+      return { ref: rep.ref, rect: rep.rect };
+    } catch (e) {
+      tableau.push(ref); // v0.1.33 : jamais perdre l'annotation d'origine
+      throw e;
+    }
   }
 
   if (correction) {
@@ -280,10 +290,18 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
     } = require('./texte.js');
     const { addCorrection } = require('./correction.js');
     const source = extraireSourceCorrection(contenu);
+    if (!String(source ?? '').trim()) {
+      throw new Error('Correction illisible : la source embarquée manque, le redimensionnement est refusé.');
+    }
     const fontSize = extraireTailleCorrection(contenu) || 11;
     tableau.remove(i);
-    const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize });
-    return { ref: rep.ref, rect: rep.rect };
+    try {
+      const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize });
+      return { ref: rep.ref, rect: rep.rect };
+    } catch (e) {
+      tableau.push(ref); // v0.1.33 : jamais perdre l'annotation d'origine
+      throw e;
+    }
   }
 
   // v0.1.31 : la note riche se REPOSE depuis sa source embarquée, comme
@@ -309,9 +327,17 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
         if (hex) couleur = hex;
       }
     } catch { /* couleur par defaut */ }
+    if (!String(source ?? '').trim()) {
+      throw new Error('Note riche illisible : la source embarquée manque, le redimensionnement est refusé.');
+    }
     tableau.remove(i);
-    const rep = await addNoteRiche(doc, page, { rect: nouveau, source, fontSize, couleur, sujet });
-    return { ref: rep.ref, rect: rep.rect };
+    try {
+      const rep = await addNoteRiche(doc, page, { rect: nouveau, source, fontSize, couleur, sujet });
+      return { ref: rep.ref, rect: rep.rect };
+    } catch (e) {
+      tableau.push(ref); // v0.1.33 : jamais perdre l'annotation d'origine
+      throw e;
+    }
   }
 
   // v0.1.31 : un cadre pose avec ses options se REPOSE avec elles (la
@@ -327,13 +353,18 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
         }
       } catch { /* couleur du cadre par defaut */ }
       tableau.remove(i);
-      const nouveauRef = addSquare(doc, page, {
-        rect: nouveau, color: couleur,
-        borderWidth: optionsPose.borderWidth,
-        forme: optionsPose.forme, trait: optionsPose.trait,
-        teinte: optionsPose.teinte,
-      });
-      return { ref: nouveauRef, rect: nouveau };
+      try {
+        const nouveauRef = addSquare(doc, page, {
+          rect: nouveau, color: couleur,
+          borderWidth: optionsPose.borderWidth,
+          forme: optionsPose.forme, trait: optionsPose.trait,
+          teinte: optionsPose.teinte,
+        });
+        return { ref: nouveauRef, rect: nouveau };
+      } catch (e) {
+        tableau.push(ref); // v0.1.33 : jamais perdre l'annotation d'origine
+        throw e;
+      }
     }
   }
 
