@@ -70,7 +70,59 @@ function listAnnots(doc) {
       let subject = '';
       try { subject = decoderContenu(a.get(PDFName.of('Subject')), ctx); } catch { subject = ''; }
 
-      sortie.push({ page: pageIndex, subtype, rect, hasAP, contents, subject, ref });
+      // v0.1.31 : couleur (/C), fond (/IC), trait (/BS W et D) et
+      // rectangles (/QuadPoints), pour repeindre à l'écran chaque
+      // surlignage et chaque cadre comme ils sont dans le fichier.
+      let c = null;
+      try {
+        const v = ctx.lookup(a.get(PDFName.of('C')));
+        if (v && typeof v.get === 'function') {
+          c = [0, 1, 2].map((j) => {
+            const n = nombre(v.get(j), ctx);
+            return n === null ? null : n;
+          });
+          if (c.some((x) => x === null)) c = null;
+        }
+      } catch { c = null; }
+      let ic = null;
+      try {
+        const v = ctx.lookup(a.get(PDFName.of('IC')));
+        if (v && typeof v.get === 'function') {
+          ic = [0, 1, 2].map((j) => nombre(v.get(j), ctx));
+          if (ic.some((x) => x === null)) ic = null;
+        }
+      } catch { ic = null; }
+      let bs = null;
+      try {
+        const v = ctx.lookup(a.get(PDFName.of('BS')));
+        if (v && typeof v.get === 'function') {
+          bs = {};
+          const w = nombre(v.get(PDFName.of('W')), ctx);
+          if (w !== null) bs.w = w;
+          const d = ctx.lookup(v.get(PDFName.of('D')));
+          if (d && typeof d.size === 'function' && d.size() > 0) {
+            bs.d = [];
+            for (let j = 0; j < d.size(); j += 1) {
+              const n = nombre(d.get(j), ctx);
+              if (n !== null) bs.d.push(n);
+            }
+            if (bs.d.length === 0) delete bs.d;
+          }
+        }
+      } catch { bs = null; }
+      let quads = null;
+      try {
+        const v = ctx.lookup(a.get(PDFName.of('QuadPoints')));
+        if (v && typeof v.size === 'function' && v.size() >= 8 && v.size() % 8 === 0) {
+          quads = [];
+          for (let j = 0; j < v.size(); j += 1) quads.push(nombre(v.get(j), ctx));
+          if (quads.some((x) => x === null)) quads = null;
+        }
+      } catch { quads = null; }
+
+      sortie.push({ page: pageIndex, subtype, rect, hasAP, contents, subject, ref,
+        ...(c ? { c } : {}), ...(ic ? { ic } : {}), ...(bs ? { bs } : {}),
+        ...(quads ? { quads } : {}) });
     }
   });
   return sortie;

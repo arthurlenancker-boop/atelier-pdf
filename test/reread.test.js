@@ -67,3 +67,32 @@ test('le document multi-page est parcouru entièrement', async () => {
   assert.strictEqual(equation.page, 1);
   assert.match(equation.contents, /b\^2 - 4ac/);
 });
+
+test('v0.1.31 : couleur, teinte, trait et rectangles relus pour repeindre', async () => {
+  const doc = await PDFDocument.create();
+  const p1 = doc.addPage([595.28, 841.89]);
+  addHighlight(doc, p1, {
+    rect: [58, 712, 486, 730], quadPoints: [[60, 728, 484, 728, 60, 714, 484, 714]],
+    color: '#FFA53A',
+  });
+  addSquare(doc, p1, {
+    rect: [52, 620, 300, 690], forme: 'nuage', trait: 'tirets',
+    borderWidth: 2.2, teinte: true, color: '#0067C0',
+  });
+  const relu = await openPdf(await savePdf(doc));
+  const liste = listAnnots(relu);
+
+  const hl = liste.find((a) => a.subtype === 'Highlight');
+  // #FFA53A en fractions 0..1 : l'écran repeint la couleur choisie à la roue.
+  assert.ok(Math.abs(hl.c[0] - 1) < 1e-6);
+  assert.ok(Math.abs(hl.c[1] - 165 / 255) < 1e-6);
+  assert.ok(Math.abs(hl.c[2] - 58 / 255) < 1e-6);
+  assert.strictEqual(hl.quads.length, 8, 'les huit coordonnées du rectangle');
+
+  const cadre = liste.find((a) => a.subtype === 'Square');
+  assert.ok(Math.abs(cadre.bs.w - 2.2) < 1e-9, 'épaisseur relue du /BS');
+  assert.deepStrictEqual(cadre.bs.d, [7, 5], 'tirets relus du /BS');
+  assert.ok(cadre.ic, 'la teinte est relue du /IC');
+  assert.match(cadre.contents, /^Cadre nuage,tirets,2,2,teinte/,
+    'les options de pose voyagent dans le contenu');
+});

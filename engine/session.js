@@ -10,6 +10,7 @@ const { addHighlight, addSquare, addInk, addTextNote, addFreeText } = require('.
 const { addEquation } = require('./equation.js');
 const { addMixedFiche } = require('./melange.js');
 const { addCorrection } = require('./correction.js'); // v0.1.29 : bloc reconnu corrigé
+const { addNoteRiche } = require('./riche.js'); // v0.1.31 : note texte riche
 const { deplacerAnnot, redimensionnerAnnot } = require('./bouger.js');
 const { listAnnots } = require('./reread.js');
 
@@ -23,6 +24,7 @@ const REGISTRE = {
   equation: addEquation,
   ficheMelangee: addMixedFiche,
   correction: addCorrection,
+  noteRiche: addNoteRiche,
   // v0.1.12 : la fiche mixte n'est plus seule à être asynchrone.
   deplacer: deplacerAnnot,
   redimensionner: redimensionnerAnnot,

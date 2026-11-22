@@ -87,6 +87,31 @@ function extraireTailleCorrection(contenu) {
   return Number.isFinite(t) && t > 0 ? t : null;
 }
 
+/* v0.1.31 : la note riche suit la même convention — la mise en forme
+ * canonique (sous-ensemble HTML, formules $...$ comprises) voyage dans
+ * /Contents derrière le marqueur « Note riche [taille] : », la taille du
+ * corps embarquée pour recomposer à l'identique (édition, déplacement,
+ * redimensionnement, relecture des autres lecteurs). */
+const PREFIXE_NOTE_RICHE = 'Note riche';
+const MARQUEUR_NOTE_RICHE = /^Note riche(?: ([0-9]+(?:[.,][0-9]+)?)?)?\s*:\s*/;
+
+/** Relit la source (mise en forme canonique) d'une note riche posée. */
+function extraireSourceNoteRiche(contenu) {
+  if (typeof contenu !== 'string') return '';
+  const m = contenu.match(MARQUEUR_NOTE_RICHE);
+  if (!m) return '';
+  return contenu.slice(m[0].length);
+}
+
+/** Taille du corps embarquée dans le marqueur de la note riche, ou null. */
+function extraireTailleNoteRiche(contenu) {
+  if (typeof contenu !== 'string') return null;
+  const m = contenu.match(MARQUEUR_NOTE_RICHE);
+  if (!m || m[1] === undefined) return null;
+  const t = Number(String(m[1]).replace(',', '.'));
+  return Number.isFinite(t) && t > 0 ? t : null;
+}
+
 /** Découpe une source en segments texte / formule.
  * Seuls des $ APPARIÉS délimitent une formule ; un contenu vide ou
  * blanc ($ $) reste du texte littéral. Retourne [] pour une entrée vide. */
@@ -224,11 +249,13 @@ if (typeof module !== 'undefined' && module.exports) {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
     PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+    PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche,
   };
 } else {
   globalThis.AtelierTexte = {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
     PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+    PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche,
   };
 }

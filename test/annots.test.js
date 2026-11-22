@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { addHighlight, addSquare, addInk, addTextNote, addFreeText } = require('../engine/annots.js');
 const { openPdf, savePdf } = require('../engine/pdfio.js');
+const { listAnnots } = require('../engine/reread.js');
 const { PDFDocument, PDFName, PDFRawStream } = require('pdf-lib');
 const { decodePDFRawStream } = require('pdf-lib');
 
@@ -89,6 +90,78 @@ test('le rectangle inversé du surlignage est ordonné', async () => {
   assert.strictEqual(rect.get(0).asNumber(), 250, 'x0 < x1 malgré le glissement inverse');
   assert.ok(rect.get(0).asNumber() < rect.get(2).asNumber());
   assert.ok(rect.get(1).asNumber() < rect.get(3).asNumber());
+});
+
+/* ————— v0.1.31 : formes de surlignage et de cadre ————— */
+
+test('v0.1.31 : les formes de surlignage posent leurs sous-types standard', async () => {
+  const relu = await docReluAvec();
+  const annots = relu.getPage(0).node.Annots();
+  // Le surlignage par défaut reste un /Highlight plein (compatibilité).
+  assert.strictEqual(relu.context.lookup(annots.get(0)).get(PDFName.of('Subtype')).toString(), '/Highlight');
+
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]);
+  addHighlight(doc, page, {
+    rect: [98, 698, 202, 722],
+    quadPoints: [[100, 720, 200, 720, 100, 700, 200, 700]],
+    forme: 'souligne', color: '#FFDF3A',
+  });
+  addHighlight(doc, page, {
+    rect: [98, 668, 202, 692],
+    quadPoints: [[100, 690, 200, 690, 100, 670, 200, 670]],
+    forme: 'barre', color: [0.5, 0.2, 0.2],
+  });
+  addHighlight(doc, page, {
+    rect: [98, 638, 202, 662],
+    quadPoints: [[100, 660, 200, 660, 100, 640, 200, 640]],
+    forme: 'ondule', color: '#7BC8FF',
+  });
+  const relu2 = await openPdf(await savePdf(doc));
+  const liste = listAnnots(relu2);
+  assert.deepStrictEqual(liste.map((a) => a.subtype), ['Underline', 'StrikeOut', 'Squiggly']);
+  assert.deepStrictEqual(liste[0].quads.slice(0, 4), [100, 720, 200, 720]);
+  // La couleur de la palette (hexadécimal du cercle chromatique compris)
+  // arrive en fractions 0..1 dans /C : #FFDF3A donne 1, 223/255, 58/255.
+  assert.ok(Math.abs(liste[0].c[0] - 1) < 1e-6);
+  assert.ok(Math.abs(liste[0].c[1] - 223 / 255) < 1e-6);
+  assert.ok(Math.abs(liste[0].c[2] - 58 / 255) < 1e-6);
+  const listeAnnotsFenetres = relu2.getPage(0).node.Annots();
+  const flu0 = decodeAp(relu2, relu2.context.lookup(listeAnnotsFenetres.get(0)));
+  assert.ok(/ re f/.test(flu0), 'le soulignement remplit des rectangles');
+  const flu1 = decodeAp(relu2, relu2.context.lookup(listeAnnotsFenetres.get(1)));
+  assert.ok(/ re f/.test(flu1), 'le barré remplit des rectangles');
+  const flu2 = decodeAp(relu2, relu2.context.lookup(listeAnnotsFenetres.get(2)));
+  assert.ok(flu2.includes(' m') && flu2.includes(' l') && /S/.test(flu2), 'l’ondulé trace une sinusoïde en points');
+});
+
+test('v0.1.31 : formes de cadre, traits, épaisseurs, teinte et marqueur', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595.28, 841.89]);
+  addSquare(doc, page, { rect: [60, 700, 240, 760], forme: 'ellipse', trait: 'tirets', borderWidth: 1.3, color: '#D13438' });
+  addSquare(doc, page, { rect: [60, 600, 240, 660], forme: 'nuage', trait: 'continu', borderWidth: 2.2, teinte: true, color: '#0067C0' });
+  addSquare(doc, page, { rect: [60, 500, 240, 560], forme: 'arrondi', trait: 'points', borderWidth: 3.4 });
+  const relu = await openPdf(await savePdf(doc));
+  const liste = listAnnots(relu);
+  assert.deepStrictEqual(liste.map((a) => a.subtype), ['Circle', 'Square', 'Square']);
+  assert.deepStrictEqual(liste[0].bs.d, [7, 5], 'tirets [7 5] dans /BS');
+  assert.ok(Math.abs(liste[0].bs.w - 1.3) < 1e-9);
+  assert.deepStrictEqual(liste[2].bs.d, [0.2, 6], 'pointillés [0.2 6] dans /BS');
+  assert.ok(Math.abs(liste[2].bs.w - 3.4) < 1e-9);
+  assert.match(liste[1].contents, /^Cadre nuage,continu,2,2,teinte$/, 'les options voyagent derrière le marqueur');
+  // /BE nuage et /IC de la teinte lus depuis le dictionnaire.
+  const annots = relu.getPage(0).node.Annots();
+  const nuage = relu.context.lookup(annots.get(1));
+  const be = relu.context.lookup(nuage.get(PDFName.of('BE')));
+  assert.strictEqual(relu.context.lookup(be.get(PDFName.of('S'))).toString(), '/Cloudy');
+  assert.ok(relu.context.lookup(nuage.get(PDFName.of('IC'))), 'la teinte voyage dans /IC');
+  // L'apparence : l'ellipse, l'arrondi et le nuage tracent des cubiques.
+  const flu0 = decodeAp(relu, relu.context.lookup(annots.get(0)));
+  assert.ok(/ c/.test(flu0));
+  const flu1 = decodeAp(relu, relu.context.lookup(annots.get(1)));
+  assert.ok(/ c/.test(flu1), 'le nuage bosse en arcs de cubiques');
+  const flu2 = decodeAp(relu, relu.context.lookup(annots.get(2)));
+  assert.ok(/ c/.test(flu2) && / B|S/.test(flu2));
 });
 
 test('les cinq sortes d\'annotation survivent à l\'aller-retour', async () => {

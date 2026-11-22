@@ -10,6 +10,8 @@
 const { PDFName, PDFNumber, PDFRawStream, PDFRef } = require('pdf-lib');
 const { normalizeRect } = require('./annotcore.js');
 const { addMixedFiche } = require('./melange.js');
+const { addSquare, lireOptionsCadre } = require('./annots.js'); // v0.1.31
+const { addNoteRiche } = require('./riche.js'); // v0.1.31
 
 const PREFIXE_EQUATION = 'Équation LaTeX';
 const fmt = (v) => String(Math.round(v * 100) / 100);
@@ -65,7 +67,7 @@ function translaterLigne(ligne, dx, dy) {
 
   // `x y w h re S` et `x y w h re f` (rectangles peints/tracés) :
   // SIX mots, opcode peint en dernière position (`re` en 5e).
-  if (op === 'S' || op === 'f') {
+  if (op === 'S' || op === 'f' || op === 'B') {
     if (mots.length === 6 && mots[4] === 're') {
       mots[0] = fmt(Number(mots[0]) + dx);
       mots[1] = fmt(Number(mots[1]) + dy);
@@ -81,6 +83,16 @@ function translaterLigne(ligne, dx, dy) {
       || Number(mots[2]) !== 0 || Number(mots[3]) !== 1) return ligne;
     mots[4] = fmt(Number(mots[4]) + dx);
     mots[5] = fmt(Number(mots[5]) + dy);
+    return mots.join(' ');
+  }
+  // Cubiques a coordonnees absolues (`x0 y0 x1 y1 x2 y2 x3 y3 c`) :
+  // ellipse, arrondi et nuage de la v0.1.31 ; tout se decale.
+  if (op === 'c') {
+    if (mots.length !== 9) return ligne;
+    for (let k = 0; k <= 7; k += 2) {
+      mots[k] = fmt(Number(mots[k]) + dx);
+      mots[k + 1] = fmt(Number(mots[k + 1]) + dy);
+    }
     return mots.join(' ');
   }
   // re (x y w h), m, l, Td (x y) : le premier couple est une position.
@@ -267,6 +279,57 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
     tableau.remove(i);
     const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize });
     return { ref: rep.ref, rect: rep.rect };
+  }
+
+  // v0.1.31 : la note riche se REPOSE depuis sa source embarquée, comme
+  // la fiche mixte ; le sujet est conservé (note posée ou fiche glissée)
+  // et la couleur du corps relue du /DA.
+  if (subtype === 'FreeText' && contenu.startsWith('Note riche')) {
+    const { extraireSourceNoteRiche, extraireTailleNoteRiche } = require('./texte.js');
+    const source = extraireSourceNoteRiche(contenu);
+    const fontSize = extraireTailleNoteRiche(contenu) || 11;
+    let sujet = 'Note';
+    try {
+      const su = ctx.lookup(annot.get(PDFName.of('Subject')));
+      if (su && typeof su.decodeText === 'function' && su.decodeText()) sujet = su.decodeText();
+    } catch { /* sans sujet : note */ }
+    let couleur = null;
+    try {
+      const da = ctx.lookup(annot.get(PDFName.of('DA')));
+      const texteDa = String((da && da.asString && da.asString()) || '');
+      const m = /([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+rg\s*$/.exec(texteDa);
+      if (m) {
+        const { rgb01VersHex } = require('./couleurs.js');
+        const hex = rgb01VersHex([Number(m[1]), Number(m[2]), Number(m[3])]);
+        if (hex) couleur = hex;
+      }
+    } catch { /* couleur par defaut */ }
+    tableau.remove(i);
+    const rep = await addNoteRiche(doc, page, { rect: nouveau, source, fontSize, couleur, sujet });
+    return { ref: rep.ref, rect: rep.rect };
+  }
+
+  // v0.1.31 : un cadre pose avec ses options se REPOSE avec elles (la
+  // regeneration generique l'aurait efface en rectangle nu).
+  if (subtype === 'Square' && !equation) {
+    const optionsPose = lireOptionsCadre(contenu);
+    if (optionsPose) {
+      let couleur = [1, 0, 0];
+      try {
+        const cv = ctx.lookup(annot.get(PDFName.of('C')));
+        if (cv && typeof cv.get === 'function' && cv.size() >= 3) {
+          couleur = [0, 1, 2].map((j) => cv.get(j).asNumber());
+        }
+      } catch { /* couleur du cadre par defaut */ }
+      tableau.remove(i);
+      const nouveauRef = addSquare(doc, page, {
+        rect: nouveau, color: couleur,
+        borderWidth: optionsPose.borderWidth,
+        forme: optionsPose.forme, trait: optionsPose.trait,
+        teinte: optionsPose.teinte,
+      });
+      return { ref: nouveauRef, rect: nouveau };
+    }
   }
 
   const ancien = ctx.lookup(annot.get(PDFName.of('Rect')));

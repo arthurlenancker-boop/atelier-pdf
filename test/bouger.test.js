@@ -94,6 +94,24 @@ test('deplacerAnnot : cadre, trait, note et fiche — flux translaté', async ()
   assert.strictEqual(fiche.texte(), 'Fiche texte');
 });
 
+test('deplacerAnnot : v0.1.31 — l’ellipse translate ses cubiques', async () => {
+  const { doc, page } = await neuf();
+  const ref = addSquare(doc, page, { rect: [50, 600, 150, 650], forme: 'ellipse', color: '#0067C0' });
+  const avant = annotParRef(doc, ref);
+  assert.ok(/ c/.test(avant.flux), 'l’ellipse trace des cubiques');
+  deplacerAnnot(doc, page, { ref, dx: 10, dy: -5 });
+  const apres = annotParRef(doc, ref);
+  assert.deepStrictEqual(apres.rect, [60, 595, 160, 645]);
+  // La première ligne cubique « x0 y0 x1 y1 x2 y2 x3 y3 c » décalée de (10, -5).
+  const cubique = (flux) => flux.split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.split(/\s+/).length === 9 && l.endsWith('c'));
+  const cAvant = cubique(avant.flux).split(/\s+/).map(Number);
+  const cApres = cubique(apres.flux).split(/\s+/).map(Number);
+  assert.ok(cAvant.every((v, k) => Math.abs((v + (k % 2 === 0 ? 10 : -5)) - cApres[k]) < 0.02),
+    'chaque coordonnée de la cubique est translatée');
+});
+
 test('deplacerAnnot : équation — /Rect seul, apparence locale intacte', async () => {
   const { doc, page } = await neuf();
   const { ref } = addEquation(doc, page, { latex: 'x + 1', x: 100, y: 200, exPt: 4 });
@@ -127,15 +145,38 @@ test('deplacerAnnot : fiche mixte — marqueur et formules préservés, AP trans
   assert.strictEqual(apres.texte(), 'Fiche mixte 11 : a $x$ b', 'source intacte');
 });
 
-test('redimensionnerAnnot : cadre — Rect et apparence régénérés', async () => {
+test('redimensionnerAnnot : cadre — reposé avec ses options derrière le marqueur', async () => {
   const { doc, page } = await neuf();
   const ref = addSquare(doc, page, { rect: [50, 600, 150, 650] });
   const rep = await redimensionnerAnnot(doc, page, { ref, rect: [50, 600, 220, 700] });
+  // v0.1.31 : un cadre marqué se REPOSE (nouvelle annotation), l'ancien
+  // quitte la page — le rectangle nu regexpénère toujours en « re S ».
+  assert.notStrictEqual(rep.ref.objectNumber, ref.objectNumber,
+    'le cadre redimensionné est une nouvelle annotation');
   assert.deepStrictEqual(rep.rect, [50, 600, 220, 700]);
-  const a = annotParRef(doc, ref);
+  const a = annotParRef(doc, rep.ref);
   assert.deepStrictEqual(a.rect, [50, 600, 220, 700]);
   assert.ok(a.flux.includes('50 600 170 100 re S'));
   assert.deepStrictEqual(a.bbox, [50, 600, 220, 700]);
+  assert.match(a.texte(), /^Cadre rect,continu,1,5$/,
+    'les options de pose voyagent derrière le marqueur');
+  assert.strictEqual(page.node.Annots().size(), 1, 'l’ancien cadre a été retiré de la page');
+});
+
+test('redimensionnerAnnot : cadre nuage teinté — la forme survit au reposage', async () => {
+  const { doc, page } = await neuf();
+  const ref = addSquare(doc, page, {
+    rect: [50, 600, 150, 650], forme: 'nuage', trait: 'tirets',
+    borderWidth: 2.2, teinte: true, color: '#0067C0',
+  });
+  const rep = await redimensionnerAnnot(doc, page, { ref, rect: [50, 600, 220, 700] });
+  const a = annotParRef(doc, rep.ref);
+  assert.match(a.texte(), /^Cadre nuage,tirets,2,2,teinte$/,
+    'le marqueur conserve nuage, tirets, épaisseur et teinte');
+  assert.ok(/ c/.test(a.flux), 'le nuage est retracé en cubiques');
+  assert.ok(/G0 gs/.test(a.flux), 'la teinte est repeinte');
+  const ic = doc.context.lookup(a.annot.get(PDFName.of('IC')));
+  assert.ok(ic, 'le fond /IC est reposé');
 });
 
 test('redimensionnerAnnot : fiche /FreeText — texte et corps conservés', async () => {
