@@ -96,3 +96,37 @@ test('v0.1.31 : couleur, teinte, trait et rectangles relus pour repeindre', asyn
   assert.match(cadre.contents, /^Cadre nuage,tirets,2,2,teinte/,
     'les options de pose voyagent dans le contenu');
 });
+
+test('v0.1.35 : l\'encre (/InkList) est relue point par point pour l\'écran', async () => {
+  const doc = await PDFDocument.create();
+  const p1 = doc.addPage([400, 600]);
+  addInk(doc, p1, {
+    points: [[10, 100], [20, 120], [30, 110]],
+    color: [0, 81 / 255, 1],
+    width: 1.5,
+  });
+  const relu = await openPdf(await savePdf(doc));
+  const liste = listAnnots(relu);
+  const encres = liste.filter((a) => a.subtype === 'Ink');
+  assert.strictEqual(encres.length, 1);
+  const encre = encres[0];
+  // Un chemin aplati [x1 y1 x2 y2 ...] : le calque applicatif redessine
+  // l'encre depuis ces points, avec la couleur /C et l'épaisseur /BS W.
+  assert.deepStrictEqual(encre.inkList, [[10, 100, 20, 120, 30, 110]]);
+  assert.ok(Array.isArray(encre.c) && encre.c.length === 3, 'couleur /C relue');
+  assert.ok(Math.abs(encre.bs.w - 1.5) < 1e-9, 'épaisseur relue du /BS');
+});
+
+test('v0.1.35 : une annotation sans /InkList reste relisible sans le champ', async () => {
+  const doc = await PDFDocument.create();
+  const p1 = doc.addPage([400, 600]);
+  addHighlight(doc, p1, {
+    rect: [10, 500, 200, 520], quadPoints: [[12, 518, 198, 518, 12, 504, 198, 504]],
+  });
+  const relu = await openPdf(await savePdf(doc));
+  const liste = listAnnots(relu);
+  const hl = liste.find((a) => a.subtype === 'Highlight');
+  assert.ok(hl, 'le surlignage est relu');
+  assert.strictEqual('inkList' in hl, false,
+    'aucune clef inkList pour une annotation sans /InkList');
+});

@@ -12,6 +12,7 @@ import '../engine/ocr.js'; // expose globalThis.AtelierOcr (v0.1.22)
 import '../engine/unicodemath.js'; // expose globalThis.AtelierUniMath (v0.1.24)
 import '../engine/couleurs.js'; // expose globalThis.AtelierCouleurs (v0.1.31)
 import '../engine/markup.js'; // expose globalThis.AtelierMarkup (v0.1.31)
+import '../engine/surlignage.js'; // expose globalThis.AtelierSurlignage (v0.1.35)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
 const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur, estHttpsLocal } = globalThis.AtelierOcr;
@@ -725,7 +726,19 @@ async function rendPage() {
     if (ma !== generationRendu) return;
   }
   try {
-    tacheRendu = page.render({ canvasContext: els.calquePdf.getContext('2d'), viewport });
+    // v0.1.35 : le rendu principal ne peint PLUS les annotations dans le
+    // canevas de la page (annotationMode DISABLE). pdf.js peignait les
+    // apparences — surlignage d'origine, encre, formes tierces — SOUS le
+    // calque applicatif, qui est déjà l'unique source visible des
+    // annotations : une suppression à l'écran laisse donc une peinture
+    // orpheline au fond de page, « un retrait qui ne se voit pas ».
+    // Vignettes et captures gardent le rendu complet : elles n'ont pas
+    // de calque. Repli prudent : si AnnotationMode manque (pdf.js très
+    // ancien), 0 EST la valeur DISABLE de la norme du module.
+    const modeAnnot = (pdfjsLib && pdfjsLib.AnnotationMode
+      && Number.isInteger(pdfjsLib.AnnotationMode.DISABLE))
+      ? pdfjsLib.AnnotationMode.DISABLE : 0;
+    tacheRendu = page.render({ canvasContext: els.calquePdf.getContext('2d'), viewport, annotationMode: modeAnnot });
     await tacheRendu.promise;
     tacheRendu = null;
     erreurRendu = null;
@@ -1675,6 +1688,15 @@ function dessinerApercuRiche(source) {
   }
 }
 
+/* v0.1.35 : annotations tierces visibles par nature (trait, polygone,
+   tampon…). pdf.js ne peint plus leur apparence au fond de page : le
+   calque les marque d'un liseré pointillé pour qu'elles restent visibles
+   et sélectionnables (l'apparence, elle, n'est jamais retouchée).
+   Les liens et les champs de formulaire sont invisibles par nature :
+   jamais marqués. */
+const SORTES_ANNOTS_TIERCES = ['Line', 'PolyLine', 'Polygon', 'Stamp',
+  'Caret', 'FileAttachment', 'Redact'];
+
 async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
@@ -1748,9 +1770,31 @@ async function dessinerAnnots() {
         }
       }
     } else if (a.subtype === 'Ink') {
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = 'rgba(86, 168, 255, 0.6)';
-      ctx.strokeRect(x, y, w, h);
+      // v0.1.35 : pdf.js ne peint plus l'encre au fond de page ; le calque
+      // dessine les traits eux-mêmes, relus du /InkList du fichier, avec
+      // la couleur /C et l'épaisseur /BS W. Silhouette pointillée en
+      // repli si un trait est illisible (l'annotation reste sélectionnable).
+      const traits = Array.isArray(a.inkList) ? a.inkList
+        .filter((t) => Array.isArray(t) && t.length >= 4 && t.length % 2 === 0
+          && !t.some((n) => typeof n !== 'number' || !Number.isFinite(n))) : [];
+      if (traits.length > 0) {
+        ctx.strokeStyle = rgbaCouleurAnnot(a.c, 1, [0, 0.15, 0.75]);
+        ctx.lineWidth = Math.max(1, ((a.bs && a.bs.w) || 1.5) * etat.zoom);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const t of traits) {
+          ctx.beginPath();
+          for (let k = 0; k < t.length; k += 2) {
+            const e = pdfVersEcran({ x: t[k], y: t[k + 1] });
+            if (k === 0) ctx.moveTo(e.x, e.y); else ctx.lineTo(e.x, e.y);
+          }
+          ctx.stroke();
+        }
+      } else {
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(86, 168, 255, 0.6)';
+        ctx.strokeRect(x, y, w, h);
+      }
     } else if (a.subtype === 'Text') {
       ctx.fillStyle = '#F0B044';
       ctx.fillRect(x, y, Math.max(w, 14), Math.max(h, 14));
@@ -1801,9 +1845,17 @@ async function dessinerAnnots() {
           }
         });
       }
+    } else if (SORTES_ANNOTS_TIERCES.includes(a.subtype)) {
+      // v0.1.35 : annotation tierce (trait, polygone, tampon…) : sans le
+      // liseré, elle serait invisible depuis que pdf.js ne peint plus les
+      // apparences au fond de page. Le liseré marque la place ; l'apparence
+      // écrite dans le fichier n'est jamais retouchée.
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(120, 120, 120, 0.7)';
+      ctx.strokeRect(x, y, Math.max(w, 6), Math.max(h, 6));
     }
     // Annotation sans /AP (autrui) : rectangle pointillé gris, lecture seule.
-    if (a.hasAP === false) {
+    if (a.hasAP === false && !SORTES_ANNOTS_TIERCES.includes(a.subtype)) {
       ctx.setLineDash([4, 3]);
       ctx.strokeStyle = 'rgba(120, 120, 120, 0.6)';
       ctx.strokeRect(x, y, w, h);
@@ -3026,6 +3078,35 @@ async function supprimerSelection() {
   etat.selection = null;
   majResume(rep.resume);
   message('Annotation supprimée.', 'reussite');
+}
+
+/* v0.1.35 : « Ôter tous les surlignages de la page » — demande d'Arthur
+   après un retrait à la main qui « ne se voyait pas » (le surlignage
+   restait peint au fond de page par pdf.js). Le lot retire d'un coup
+   les quatre formes de surlignage de la page affichée et forme UN SEUL
+   geste : une annulation les ramène toutes ensemble. */
+async function oterSurlignagesPage() {
+  if (!etat.resume) return;
+  const cibles = globalThis.AtelierSurlignage
+    .selectionSurlignagesPage(etat.resume.annots, etat.page - 1);
+  if (cibles.length === 0) {
+    message('Aucune annotation de surlignage sur cette page.', 'info');
+    return;
+  }
+  const edits = cibles.filter((a) => a.ref)
+    .map((a) => ({ kind: 'remove', pageIndex: a.page, args: { ref: a.ref } }));
+  if (edits.length === 0) {
+    message('Aucun surlignage supprimable sur cette page.', 'info');
+    return;
+  }
+  const rep = await window.atelier.applyEdits(edits);
+  if (rep.erreur) { message(rep.erreur, 'erreur'); return; }
+  const numeros = new Set(edits.map((e) => e.args.ref.objectNumber));
+  if (etat.selection && numeros.has(etat.selection.ref.objectNumber)) {
+    etat.selection = null;
+  }
+  majResume(rep.resume);
+  message(`${edits.length} surlignage(s) ôté(s) de la page.`, 'reussite');
 }
 
 /* ============================================================
@@ -4870,6 +4951,7 @@ window.atelier.onCommande(async (cmd) => {
   if (cmd.nom === 'fermer') { if (etat.idOnglet != null) fermerOnglet(etat.idOnglet); } // v0.1.30
   if (cmd.nom === 'annuler') annulerGeste();      // v0.1.13 : menu Édition
   if (cmd.nom === 'retablir') retablirGeste();
+  if (cmd.nom === 'oter-surlignages') oterSurlignagesPage(); // v0.1.35 : Édition
   if (cmd.nom === 'cle-api' || cmd.nom === 'options-ocr') ouvrirOptionsOcr();   // v0.1.22/v0.1.23 : Fichier → Options OCR LaTeX
 });
 

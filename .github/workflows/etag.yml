@@ -5,6 +5,27 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.35 : retour d'Arthur — « ca ne retire
+# pas vraiment, et regarde les dingueries que fait l'ocr ».
+# Cause etablie (banc node, pdfjs-dist 4.10.38, PDF forge par
+# pdf-lib) : DEUX sources de verite peignaient l'ecran. Le calque
+# applicatif (dessinerAnnots) vidait bien le surlignage supprime,
+# mais pdf.js repeignait AUSSI les apparences des annotations
+# dans le canevas de page (annotationMode implicite ENABLE) :
+# le surlignage d'origine restait au fond, « un retrait qui ne
+# se voit pas ». Trois volets : (1) rendu principal en
+# annotationMode DISABLE (renderer/app.js rendPage — vignettes
+# et captures inchanges, aucun calque par-dessus) ; (2) l'encre
+# redessinee par le calque depuis /InkList relu (engine/reread.js
+# champ inkList, couleur /C, epaisseur /BS W) et liseré gris pour
+# les annotations tierces visibles (Line, PolyLine, Polygon,
+# Stamp, Caret, FileAttachment, Redact) ; (3) menu Edition
+# « Oter tous les surlignages de la page » : moteur pur
+# engine/surlignage.js, les quatre formes (surlignage, souligne,
+# barre, ondule), UN lot = UN geste annulable. Les blocs en
+# pointilles signales a cote sont l'affichage des blocs
+# reconnus par l'OCR (calque « Reco », masquable au bouton) et
+# la selection : jamais inscrits dans le fichier. 267 tests.
 # Declencheur de la v0.1.34 : retour d'Arthur — « il n'y a plus de
 # raccourci qui se cree apres installation ». Cause etablie : la
 # v0.1.33 n'a pas ete installee a la main, elle l'a ete EN SILENCE

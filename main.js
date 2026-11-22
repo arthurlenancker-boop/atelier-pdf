@@ -287,6 +287,17 @@ function menuApplication() {
           registerAccelerator: false,
           click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'retablir' }); },
         },
+        { type: 'separator' },
+        {
+          // v0.1.35 : « ça ne retire pas vraiment ». Retirer un surlignage
+          // à la sélection ne laissait aucune trace À L'ÉCRAN tant que
+          // pdf.js repeignait les apparences au fond de page ; l'outil
+          // ÔTE d'un coup les quatre formes de surlignage de la page
+          // affichée (le lot forme UN geste : une annulation les ramène
+          // toutes).
+          label: 'Ôter tous les surlignages de la page',
+          click: () => { if (fenetre) fenetre.webContents.send('app:commande', { nom: 'oter-surlignages' }); },
+        },
       ],
     },
     {

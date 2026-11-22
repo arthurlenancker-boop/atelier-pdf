@@ -119,10 +119,31 @@ function listAnnots(doc) {
           if (quads.some((x) => x === null)) quads = null;
         }
       } catch { quads = null; }
+      // v0.1.35 : /InkList, les traits d'encre point par point. pdf.js ne
+      // peint plus aucune annotation dans la page (annotationMode DISABLE
+      // au rendu principal) : le calque applicatif redessine l'encre depuis
+      // ces points, avec la couleur /C et l'épaisseur /BS W du fichier.
+      let inkList = null;
+      try {
+        const v = ctx.lookup(a.get(PDFName.of('InkList')));
+        if (v && typeof v.size === 'function' && v.size() > 0) {
+          inkList = [];
+          for (let j = 0; j < v.size(); j++) {
+            const chemin = ctx.lookup(v.get(j));
+            if (!chemin || typeof chemin.size !== 'function'
+              || chemin.size() < 4 || chemin.size() % 2 !== 0) continue;
+            const pts = [];
+            for (let k = 0; k < chemin.size(); k++) pts.push(nombre(chemin.get(k), ctx));
+            if (pts.some((x) => x === null)) continue;
+            inkList.push(pts);
+          }
+          if (inkList.length === 0) inkList = null;
+        }
+      } catch { inkList = null; }
 
       sortie.push({ page: pageIndex, subtype, rect, hasAP, contents, subject, ref,
         ...(c ? { c } : {}), ...(ic ? { ic } : {}), ...(bs ? { bs } : {}),
-        ...(quads ? { quads } : {}) });
+        ...(quads ? { quads } : {}), ...(inkList ? { inkList } : {}) });
     }
   });
   return sortie;
