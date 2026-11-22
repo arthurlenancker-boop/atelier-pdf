@@ -1,12 +1,17 @@
 'use strict';
 
 /*
- * engine/unicodemath.js — v0.1.24 : transcodage UnicodeMath (le « Linéaire »
+ * engine/unicodemath.js — v0.1.24/25 : transcodage UnicodeMath (le « Linéaire »
  * de OneNote, spécification UTN28 v3.3) vers LaTeX. Fractions a/b associées
  * à gauche, scripts et préscripts, radicaux avec degré, n-aires avec bornes,
  * accents préfixés et postfixés, fonctions et limites, \matrix, \eqarray,
- * piles █/Ⓒ, \abs \norm \rect. Moteur pur, aucune dépendance.
- * Double en-tête gardé (leçon v0.1.4). Tests : test/unicodemath.test.js.
+ * piles █/Ⓒ, \abs \norm \rect. v0.1.25 (retour d'Arthur sur \times et
+ * \Leftrightarrow) : garde anti-collage des commandes suivi d'un atome
+ * (fini \timesb affiché « timesb »), filet anti-perte en sériation (un
+ * symbole inconnu n'efface plus la fin de la frappe), couverture des
+ * flèches doubles, ∉ ∖ ∧ ∨ ⊕ ⊗ ⊙ ± ∓ · ∘ • et \supset/\supseteq corrigés.
+ * Moteur pur, aucune dépendance. Double en-tête gardé (leçon v0.1.4).
+ * Tests : test/unicodemath.test.js.
  */
 
 const FONCTIONS = new Set([
@@ -55,6 +60,14 @@ const FERMANTS = new Map([
 const ENV_MATRICE = new Map([
   ['(', 'pmatrix'], ['[', 'bmatrix'], ['{', 'Bmatrix'],
   [PIPE, 'vmatrix'], [NORM, 'Vmatrix']
+]);
+
+// v0.1.25 : produits et seconds opérateurs → leur COMMANDE LaTeX propre
+// (∘ = \circ, • = \bullet…), fini le \cdot approximatif d'avant la v0.1.25.
+const MULT_LA = new Map([
+  ['\u00D7', '\\times'], ['\u00F7', '\\div'], ['\u22C5', '\\cdot'], ['\u00B7', '\\cdot'],
+  ['\u2218', '\\circ'], ['\u2217', '\\ast'], ['\u22C6', '\\star'],
+  ['\u2219', '\\bullet'], ['\u2022', '\\bullet']
 ]);
 
 // ---------- Pré-substitutions ----------
@@ -193,11 +206,15 @@ function parseur(toks, src) {
     return contenu;
   }
 
-  const MULT = new Set(['\u00D7', '\u00F7', '\u22C5', '\u2219', '\u2218']);
+  // v0.1.25 : · (U+00B7) et • ∗ ⋆ rejoignent les produits.
+  const MULT = new Set(['\u00D7', '\u00F7', '\u22C5', '\u00B7', '\u2219', '\u2218', '\u2217', '\u22C6', '\u2022']);
 
   function estBinaireRel(c) {
     if (c === '+' || c === '-' || c === '\u2212' || c === '=' || c === '<' || c === '>') return true;
-    return '\u00B1\u2264\u2265\u2260\u2248\u2261\u226A\u226B\u2192\u2194\u2208\u220B\u2282\u2283\u2286\u2287\u221D\u2245\u222A\u2229'.includes(c)
+    return ('\u00B1\u2264\u2265\u2260\u2248\u2261\u226A\u226B\u2192\u2194\u2208\u2209\u220B\u2282\u2283\u2286\u2287\u221D\u2245\u222A\u2229'
+      // v0.1.25 : flèches doubles, ensembles négés (∉), logique, anneaux…
+      + '\u21D2\u21D0\u21D4\u27FA\u27F7\u2213\u2216\u2227\u2228\u2295\u2296\u2297\u2299'
+      + '\u2223\u22A5\u2225\u223C\u2243\u22A2\u22A3\u2235\u2234').includes(c)
       || c === VBAR;
   }
 
@@ -231,7 +248,7 @@ function parseur(toks, src) {
         if (precMin > 2) break;
         avancer();
         const dr = parseTerme(arret);
-        gauche = bin(gauche, t.val === '\u00D7' ? '\\times' : t.val === '\u00F7' ? '\\div' : '\\cdot', dr);
+        gauche = bin(gauche, MULT_LA.get(t.val) || '\\cdot', dr);
         continue;
       }
       if (t.type === 'op' && estBinaireRel(t.val)) {
@@ -285,7 +302,7 @@ function parseur(toks, src) {
       if (t.type === 'op' && MULT.has(t.val)) {
         avancer();
         const dr = parseFacteur(arret);
-        gauche = bin(gauche, t.val === '\u00D7' ? '\\times' : t.val === '\u00F7' ? '\\div' : '\\cdot', dr);
+        gauche = bin(gauche, MULT_LA.get(t.val) || '\\cdot', dr);
         continue;
       }
       if (peutDébuterFacteur(t)) {
@@ -476,11 +493,29 @@ function parseur(toks, src) {
 
   function serie() {
     let n = parseExpr(0, undefined);
-    while (voir().type === 'op' && (voir().val === OPEN_D || voir().val === CLOSE_D)) {
-      avancer();
-      if (voir().type === 'fin') break;
-      const suite = parseExpr(0, undefined);
-      if (!(suite && suite.sorte === 'mot' && suite.op && suite.val === '')) n = suite;
+    for (;;) {
+      const t = voir();
+      if (t.type === 'fin') break;
+      if (t.type === 'op' && (t.val === OPEN_D || t.val === CLOSE_D)) {
+        avancer();
+        if (voir().type === 'fin') break;
+        const suite = parseExpr(0, undefined);
+        if (!(suite && suite.sorte === 'mot' && suite.op && suite.val === '')) n = suite;
+        continue;
+      }
+      /* v0.1.25 : FILET ANTI-PERTE. Avant, « a⇔b » donnait « a » : le
+         symbole ⇔ inconnu interrompait l'analyse et TOUTE la suite de la
+         frappe était perdue sans un mot. Désormais un jeton que l'analyse
+         n'a pas consommé est juxtaposé tel quel (ou reprise par une vraie
+         suite si c'est un mot) : la saisie n'est JAMAIS avalée. */
+      if (t.type === 'op') { avancer(); n = juxt(n, motOp(t.val)); continue; }
+      if (t.type === 'ctrl') { avancer(); n = juxt(n, ctrlAtom(t.val)); continue; }
+      if (t.type === 'mot' || t.type === 'texte') {
+        const suite = parseExpr(0, undefined);
+        n = juxt(n, suite);
+        continue;
+      }
+      break;
     }
     return n;
   }
@@ -524,6 +559,11 @@ function sepJuxt(g, d, noeudDroite, noeudGauche) {
   if (d === '' || g === '') return '';
   if (g.endsWith('\\mathrm{d}')) return '';
   if (g === '-') return '';
+  /* v0.1.25 : GARDE ANTI-COLLAGE. La gauche se termine par une commande
+     LaTeX (\times, \Leftrightarrow, \alpha…) : la coller au mot suivant
+     forgeait une commande invalide (\timesb) que MathLive affichait en
+     lettres droites, « timesb » au lieu du symbole attendu. */
+  if (/\\[A-Za-z]+$/.test(g)) return ' ';
   if (estFonctionCote(noeudGauche)) return ' ';
   if (d.startsWith('\\mathrm{d}')) return '\\,';
   if (d[0] === '\\' || d[0] === '(' || d[0] === '[') return ' ';
@@ -551,7 +591,7 @@ function ser(n) {
   if (typeof n === 'string') return n;
   if (!n) return '';
   switch (n.sorte) {
-    case 'mot': return MOT_MAP.has(n.val) ? MOT_MAP.get(n.val) : n.val;
+    case 'mot': return MOT_MAP.has(n.val) ? MOT_MAP.get(n.val) : opVersLaTeX(n.val);
     case 'brut': return n.val;
     case 'texte': return '\\text{' + n.val + '}';
     case 'ctrl': return '\\' + n.val;
@@ -657,11 +697,32 @@ function opVersLaTeX(c) {
     '\u2264': '\\leq', '\u2265': '\\geq', '\u2260': '\\neq', '\u2192': '\\to',
     '\u2194': '\\leftrightarrow', '\u2248': '\\approx', '\u2261': '\\equiv',
     '\u226A': '\\ll', '\u226B': '\\gg', '\u221D': '\\propto', '\u2208': '\\in',
-    '\u220B': '\\ni', '\u2282': '\\subset', '\u2283': '\\superset',
-    '\u2286': '\\subseteq', '\u2287': '\\superseteq', '\u222A': '\\cup',
-    '\u2229': '\\cap', '\u2245': '\\cong', '\u2212': '-'
+    '\u220B': '\\ni', '\u2282': '\\subset',
+    // v0.1.25 : \superset et \superseteq n'existent pas en LaTeX
+    // (MathLive les affichait en mots) ; les vrais noms ont été rétablis.
+    '\u2283': '\\supset',
+    '\u2286': '\\subseteq', '\u2287': '\\supseteq', '\u222A': '\\cup',
+    '\u2229': '\\cap', '\u2245': '\\cong', '\u2212': '-',
+    // v0.1.25 : couverture des symboles qu'OneNote admet en Linéaire.
+    '\u00B1': '\\pm', '\u2213': '\\mp',
+    '\u21D2': '\\Rightarrow', '\u21D0': '\\Leftarrow', '\u21D4': '\\Leftrightarrow',
+    '\u27FA': '\\Longleftrightarrow', '\u27F7': '\\longleftrightarrow',
+    '\u2209': '\\notin', '\u2216': '\\setminus',
+    '\u2227': '\\wedge', '\u2228': '\\vee',
+    '\u2295': '\\oplus', '\u2296': '\\ominus', '\u2297': '\\otimes', '\u2299': '\\odot',
+    '\u2223': '\\mid', '\u22A5': '\\perp', '\u2225': '\\parallel',
+    '\u223C': '\\sim', '\u2243': '\\simeq', '\u22A2': '\\vdash', '\u22A3': '\\dashv',
+    '\u2235': '\\because', '\u2234': '\\therefore',
+    '\u2191': '\\uparrow', '\u2193': '\\downarrow', '\u21A6': '\\mapsto',
+    '\u2195': '\\updownarrow', '\u21D5': '\\Updownarrow',
+    '\u2207': '\\nabla', '\u00AC': '\\neg', '\u2205': '\\emptyset',
+    '\u2220': '\\angle', '\u25B3': '\\triangle', '\u22A4': '\\top',
+    '\u00B0': '\\degree', '\u2032': "'",
+    '\u22EF': '\\cdots', '\u2026': '\\ldots'
   };
   if (c === VBAR) return '\\middle\\vert';
+  const m = MULT_LA.get(c);
+  if (m) return m;
   return M[c] || c;
 }
 

@@ -106,3 +106,38 @@ t('\\dd', '\\mathrm{d}');
 t('(a+b)^n=∑_(k=0)^n (n\\choose k) a^k b^(n-k)',
   '(a + b)^n = \\sum_{k = 0}^n \\left(\\binom{n}{k}\\right) a^kb^{n - k}')
 ;
+
+/* v0.1.25 — correctifs sur retour d'Arthur : commandes \times et
+   \Leftrightarrow en saisie linéaire (collage interdit, symboles
+   reconnus, plus jamais de contenu perdu), symboles ⊃ ⊇ corrigés. */
+
+// Commandes suivies d'un autre atome : JAMAIS de collage (\timesb…)
+t('\\times', '\\times');
+t('a\\times b', 'a \\times b');
+t('3\\times4', '3 \\times 4');
+t('\\Leftrightarrow', '\\Leftrightarrow');
+t('p\\Leftrightarrow ow', 'p \\Leftrightarrow ow');
+t('p \\Leftrightarrow q', 'p \\Leftrightarrow q');
+t('\\alpha x', '\\alpha x');
+
+// Symboles Unicode directs : reconnus, plus de perte de contenu
+t('a⇔b', 'a \\Leftrightarrow b');
+t('a⟺b', 'a \\Longleftrightarrow b');
+t('a⟷b', 'a \\longleftrightarrow b');
+t('x∉E', 'x \\notin E');
+t('a⊃b', 'a \\supset b');
+t('a⊇b', 'a \\supseteq b');
+t('a∖b', 'a \\setminus b');
+t('a∧b', 'a \\wedge b');
+t('a∨b', 'a \\vee b');
+t('a⊕b', 'a \\oplus b');
+t('a⊗b', 'a \\otimes b');
+t('a∓b', 'a \\mp b');
+
+// Produits et seconds opérateurs
+t('(3·4)/x', '\\frac{3 \\cdot 4}{x}');
+t('a∘b', 'a \\circ b');
+t('90°', '90 \\degree');
+
+// Filet anti-perte : un symbole inconnu traverse au lieu de tout avaler
+t('a★b', 'a★b');
