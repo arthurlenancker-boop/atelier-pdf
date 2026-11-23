@@ -829,9 +829,14 @@ math-field.eq-mathfield:focus-within {
 .reco-fait { border: 1px solid transparent; }
 .reco-fait:hover { background: rgba(0, 103, 192, 0.06); }
 .editeur-page.correction {
-  background: #FFFFFF;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-doux);
+  /* v0.1.41 (croquis validé) : la correction en place ne montre plus
+     la boîte blanche voyante d'avant — une LÉGÈRE TEINTE de fond et
+     un liseré discret signalent la zone en édition, le texte reste
+     posé sur la page, à sa place, comme dans OneNote. */
+  background: rgba(0, 103, 192, 0.07);
+  border: 1px solid rgba(0, 103, 192, 0.35);
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 /* ————— v0.1.31 : panneau d'options de l'outil actif (croquis validé) :

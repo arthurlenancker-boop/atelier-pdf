@@ -164,8 +164,11 @@ et taille réelles.
 
 - Un clic sur un bloc de texte ou un titre ouvre la correction
   EXACTEMENT à sa place, préremplie du texte reconnu, à la taille
-  estimée du bloc. Corrigez la coquille, cliquez à côté (ou Échap)
-  pour poser ; un texte vidé abandonne la correction.
+  estimée du bloc. Corrigez la coquille, puis Entrée (ou un clic à
+  côté) pour poser ; Échap abandonne et rend l'original intact ;
+  Maj+Entrée (ou Ctrl+Échap) passe à la ligne ; un texte vidé
+  abandonne aussi la correction (v0.1.41 : l'étiquette clavier des
+  corrections est celle de l'outil Modifier).
 - Un bloc de formule s'ouvre pareil, prérempli de son LaTeX entre
   dollars ($...$) : la formule corrigée est composée par le moteur
   d'équations, comme une équation posée.
@@ -182,6 +185,28 @@ et taille réelles.
   retirer.
 - Réserve : la correction écrit dans le rectangle du bloc, sans
   recomposer le paragraphe entier ni traiter les tableaux reconnus.
+
+## 7 bis. Modifier une phrase, comme dans Word (v0.1.41)
+
+L'outil Modifier (à côté d'Écrire dans la barre d'outils) complète le
+clic sur les blocs reconnus : il ne demande ni aperçu ni page
+préalablement reconnue, il travaille là où vous cliquez.
+
+- Cliquez dans une phrase du document : la LIGNE cliquée s'ouvre à sa
+  place, marquée d'une légère teinte de fond et d'un liseré discret,
+  le curseur au caractère le plus proche du clic.
+- Tapez, supprimez, remplacez librement : la police (Times ou
+  Helvetica), la taille mesurée sur place et le gras de la ligne sont
+  repris à l'identique, le texte ajouté se fond dans le document.
+- Sur une page scannée, le clic ouvre le bloc reconnu qui contient le
+  point (même chemin que le bouton Reco) ; une page scannée non
+  reconnue vous invite à armer d'abord l'outil Texte.
+- Entrée pose la modification ; Maj+Entrée (ou Ctrl+Échap) passe à la
+  ligne ; Échap abandonne et rend l'original intact ; un clic à côté
+  pose aussi.
+- Une correction déjà posée se reprend par un nouveau clic dessus
+  (à l'outil Modifier comme à la Sélection) au lieu d'en empiler une
+  seconde.
 
 ## 8. Questions fréquentes
 

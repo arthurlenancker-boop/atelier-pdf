@@ -2835,13 +2835,12 @@ function majRecoVue() {
  * LUI : source réelle, taille réelle mesurée sur place, famille (Times
  * ou Helvetica), gras au besoin. Une page scannée garde la source de la
  * reconnaissance et sa taille estimée, comme toujours. */
-els.calqueReco.addEventListener('click', async (ev) => {
-  const div = ev.target.closest('.reco-bloc');
-  if (!div || div.classList.contains('reco-tranquille')) return;
-  const page = blocsReconnus();
-  if (!page) return;
-  const b = page.blocs[Number(div.dataset.i)];
-  if (!b || !Array.isArray(b.bbox)) return;
+/* v0.1.41 : le chemin PARTAGÉ de la correction d'un bloc reconnu — le
+ * clic sur l'aperçu (outil Sélection, depuis la v0.1.29) et l'outil
+ * Modifier l'empruntent l'un comme l'autre : reprise d'une correction
+ * déjà posée, sinon le VRAI texte du document quand il vit sous le
+ * rectangle, sinon le texte reconnu du scan. */
+async function ouvrirCorrectionDeBloc(b, page) {
   const rect = rectPdfDeBloc(b, page);
   const existante = correctionSurRect(rect);
   if (existante) {
@@ -2867,6 +2866,91 @@ els.calqueReco.addEventListener('click', async (ev) => {
     };
   }
   ouvrirEditeur('correction', donnees);
+}
+
+/* v0.1.41 : l'outil Modifier (croquis validé) — le clic ouvre la
+ * correction au point demandé : (1) une correction DÉJÀ POSÉE à cet
+ * endroit se reprend telle quelle ; (2) le VRAI texte de la page (née
+ * sous Word, LibreOffice, PowerPoint…) fournit LA LIGNE cliquée, sa
+ * source, sa taille, sa famille et son gras ; (3) sur une page scannée
+ * et reconnue, le bloc qui contient le point suit le chemin de la
+ * reconnaissance ; (4) sinon, le clic était dans une marge : on
+ * l'oriente plutôt que de laisser un clic muet. */
+async function ouvrirModificationAuPoint(x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !etat.resume) return;
+  // (1) Reprise : la correction posée qui couvre le point.
+  const existante = correctionSurRect([x - 1, y - 1, x + 1, y + 1]);
+  if (existante) {
+    const famille = extraireFamilleCorrection(existante.contents) === 'serif' ? 'serif' : 'sans';
+    const gras = Boolean(extraireGrasCorrection(existante.contents));
+    ouvrirEditeur('correction', null, existante, { famille, gras });
+    return;
+  }
+  // (2) Le vrai texte : la ligne sous le point.
+  const contenu = await itemsTexteDePage(etat.page);
+  if (contenu) {
+    let ligne = null;
+    try {
+      ligne = AtelierTexteReel.ligneAuPoint(contenu.items, x, y);
+    } catch (e) {
+      ligne = null; // jamais bloquer la correction sur une lecture de ligne
+    }
+    if (ligne) {
+      let zone = null;
+      try {
+        zone = AtelierTexteReel.zoneDeLigne(ligne, contenu.styles);
+      } catch (e) {
+        zone = null;
+      }
+      if (zone && zone.source.trim()) {
+        ouvrirEditeur('correction', zone);
+        placerCurseurModification(x, zone.rect);
+        return;
+      }
+    }
+  }
+  // (3) Un scan : le bloc reconnu qui contient le point.
+  const page = blocsReconnus();
+  if (page && Array.isArray(page.blocs)) {
+    for (const b of page.blocs) {
+      if (!b || !Array.isArray(b.bbox) || b.bbox.length < 4) continue;
+      if (sourceDeBloc(b).trim() === '') continue;
+      const rect = rectPdfDeBloc(b, page);
+      if (x >= rect[0] && x <= rect[2] && y >= rect[1] && y <= rect[3]) {
+        await ouvrirCorrectionDeBloc(b, page);
+        return;
+      }
+    }
+  }
+  // (4) Marge ou page muette : orienter, comme toujours dans l'atelier.
+  message(pageMuette
+    ? 'Aucun texte à cet endroit. Sur une page scannée, armez l\u2019outil Texte pour lancer la reconnaissance, puis cliquez un bloc reconnu.'
+    : 'Aucun texte à cet endroit : cliquez dans une phrase du document.');
+}
+
+/* v0.1.41 : le caret part du caractère le PLUS PROCHE du clic, comme
+ * dans Word — la fraction horizontale du clic dans la ligne donne la
+ * position dans la source (ligne unique, mesurée sur l'encre réelle). */
+function placerCurseurModification(x, rect) {
+  const attente = etat.saisieAttente;
+  if (!attente || attente.kind !== 'correction' || attente.ref) return;
+  const zone = $('#editeur-texte');
+  const longueur = (zone.value || '').length;
+  const largeur = rect[2] - rect[0];
+  const fraction = largeur > 0 ? Math.min(1, Math.max(0, (x - rect[0]) / largeur)) : 1;
+  const pos = Math.round(longueur * fraction);
+  zone.focus();
+  zone.setSelectionRange(pos, pos);
+}
+
+els.calqueReco.addEventListener('click', async (ev) => {
+  const div = ev.target.closest('.reco-bloc');
+  if (!div || div.classList.contains('reco-tranquille')) return;
+  const page = blocsReconnus();
+  if (!page) return;
+  const b = page.blocs[Number(div.dataset.i)];
+  if (!b || !Array.isArray(b.bbox)) return;
+  await ouvrirCorrectionDeBloc(b, page);
 });
 
 /* Le bouton Reconnaissance masque ou remet l'aperçu : masqué, les
@@ -2939,6 +3023,14 @@ function ecouterSouris() {
         }
         message('Aucune annotation sous le curseur.');
       }
+      return;
+    }
+    if (etat.outil === 'modifier') {
+      // v0.1.41 : l'outil Modifier (croquis validé) — un clic dans une
+      // phrase ouvre la correction EN PLACE au point cliqué. Pas de
+      // geste : la pose se fait par Entrée (ou clic à côté), l'abandon
+      // par Échap.
+      ouvrirModificationAuPoint(point.x, point.y);
       return;
     }
     if (etat.outil === 'surligner' || etat.outil === 'encadrer' || etat.outil === 'ecrire') {
@@ -3669,7 +3761,12 @@ function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
     ? '"Times New Roman", Times, serif' : '';
   if (attente.kind === 'correction' && attente.gras) zone.style.fontWeight = '600';
   else zone.style.fontWeight = '';
-  zone.style.padding = `${Math.round((estNoteNue ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
+  // v0.1.41 : la correction est POSÉE sur la page (croquis validé) :
+  // padding vertical nul, le texte calé sur l'original ; les autres
+  // cadres gardent leur matelas.
+  zone.style.padding = attente.kind === 'correction'
+    ? `0 ${Math.round(3 * etat.zoom)}px 0`
+    : `${Math.round((estNoteNue ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
   zone.style.height = 'auto';
   zone.value = estRiche ? '' : attente.contenu;
   zone.hidden = estRiche;
@@ -3827,7 +3924,11 @@ async function validerEditeur() {
 /** v0.1.21 : l'étiquette clavier du cadre, à la demande d'Arthur —
  * Échap POSE le texte (plus besoin de viser ailleurs) ; Ctrl+Échap
  * passe à la ligne. Pour abandonner un brouillon non vide : effacer le
- * texte puis Échap (l'original réédité reste intact). */
+ * texte puis Échap (l'original réédité reste intact).
+ * v0.1.41 : dans une CORRECTION, l'étiquette est celle du croquis
+ * validé — Échap ABANDONNE et rend l'original intact (l'annotation
+ * masquée réapparaît), Maj+Entrée (ou Ctrl+Échap) passe la ligne,
+ * Entrée pose. */
 function toucheEchapEditeur(ev) {
   const riche = $('#editeur-riche');
   if (ev.ctrlKey || ev.metaKey) {
@@ -3852,6 +3953,10 @@ function toucheEchapEditeur(ev) {
     }
     calerAccessoiresEditeur();
     rafraichirApercuFiche();
+  } else if (etat.saisieAttente && etat.saisieAttente.kind === 'correction') {
+    // v0.1.41 : Échap abandonne la correction — croquis validé.
+    ev.preventDefault();
+    fermerEditeur();
   } else {
     ev.preventDefault();
     validerEditeur();
@@ -3862,6 +3967,14 @@ $('#editeur-texte').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
     ev.preventDefault();
     validerEditeur();
+  } else if (ev.key === 'Enter' && etat.saisieAttente
+    && etat.saisieAttente.kind === 'correction') {
+    // v0.1.41 : dans la correction en place, ENTRÉE POSE (croquis
+    // validé) ; Maj+Entrée garde le retour à la ligne explicite.
+    if (!ev.shiftKey) {
+      ev.preventDefault();
+      validerEditeur();
+    }
   } else if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'm' || ev.key === 'M')) {
     // v0.1.11 : insertion d'une formule à la position du curseur.
     ev.preventDefault();
@@ -4670,7 +4783,8 @@ function choisirOutil(outil) {
   });
   const corps = document.body;
   const curseur = outil === 'encre' ? 'crayon'
-    : (outil === 'surligner' || outil === 'encadrer' || outil === 'ecrire') ? 'texte'
+    : (outil === 'surligner' || outil === 'encadrer' || outil === 'ecrire'
+      || outil === 'modifier') ? 'texte'
       : outil === 'equation' ? 'viseur'
         : outil === 'main' ? 'main'
           : outil === 'texte' ? 'texte'
@@ -4703,6 +4817,7 @@ function choisirOutil(outil) {
     encadrer: 'Glissez pour tracer le cadre : il prend la forme, le trait, l\u2019épaisseur et la couleur choisies.',
     encre: 'Tracez à main levée.',
     ecrire: 'Machine à écrire : cliquez pour écrire à cet endroit, ou glissez pour tracer la zone ; gras, couleurs, listes et formules au panneau de droite.',
+    modifier: 'Modifier : cliquez dans une phrase du document — elle s\u2019ouvre sur place, teinte légère, curseur au point cliqué. Tapez, supprimez, complétez ; Entrée pose, Échap abandonne. Une correction posée se reprend par un nouveau clic.',
     equation: 'Cliquez le point d\'insertion sur la page.',
   };
   message(notes[outil] || 'Prêt.');

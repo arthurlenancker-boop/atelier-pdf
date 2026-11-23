@@ -5,6 +5,40 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.41 : l'outil Modifier, croquis VALIDE par
+# Arthur (« c'est carré ça »). Demande : « pose moi des questions pour
+# savoir ce qu'il faut faire concernant la modification du texte
+# (l'interface) ». Reponses d'Arthur entrevues en deux tours : le texte
+# s'edite EN PLACE comme dans Word (pas de grande boite ; l'actuelle
+# est « trop grande, trop voyante »), rendu « comme OneNote » (une
+# leger teinte de fond sur la zone en edition, rien de plus),
+# validation « la touche entree », le texte ajoute prend « exactement
+# la meme » mise en forme, et APRES la premiere maquette (suppression
+# interdite) Arthur a ecrit « je ne peux pas supprimer de
+# texte... » : la maquette corrigee autorise la suppression et le
+# remplacement, l'outil s'appelle Modifier. Construction SANS toucher
+# au moteur d'ecriture du PDF (la correction v0.1.38/39 est le socle
+# exact) : (1) engine/textereel.js, moteur pur, gagne deux fonctions
+# TESTEES, ligneAuPoint (la ligne cliquee, a la bande verticale pres,
+# rayon borne : un demi-corps vertical, max(10 ; 1,5 corps)
+# horizontal pour cliquer en fin de ligne) et zoneDeLigne (source,
+# taille, famille, gras et rectangle d'UNE ligne, memes dominantes
+# qu'analyserItemsTexte sans fusionner le paragraphe) ;
+# (2) renderer/index.html : bouton « Modifier » a cote d'Écrire ;
+# (3) renderer/style.css : le cadre de correction abandonne la boite
+# blanche — teinte rgba(0,103,192,.07), lisere 1 px rgba(0,103,192,.35),
+# aucun halo ; (4) renderer/app.js : ouvrirModificationAuPoint (reprise
+# de la correction posee au point, sinon la ligne cliquee du VRAI texte,
+# sinon le bloc reconnu d'un scan, sinon un message d'orientation ; le
+# chemin du bloc reconnu est PARTAGE avec le clic de l'aperçu Reco,
+# ouvrirCorrectionDeBloc), le caret part du caractere le plus proche du
+# clic, padding vertical nul sur la correction (texte cale sur
+# l'original), et l'etiquette clavier du croquis : dans UNE correction,
+# Entree POSE, Maj+Entree (ou Ctrl+Echap) passe la ligne, Echap
+# ABANDONNE et rend l'original intact ; les autres cadres (notes,
+# fiches) gardent leur etiquette v0.1.21 (Echap pose). Tests :
+# textereel.test.js passe de 7 a 10 tests (ligne sous le point, bornes
+# des marges, zone d'une ligne) ; 291 tests au total attendus verts.
 # Declencheur de la v0.1.40 : retour d'Arthur — « essaie de revoir le
 # code pour les modifications pour qu'il soit comme je le pense ».
 # Revue du code des annotations riches contre la maquette VALIDEE

@@ -152,8 +152,90 @@ function analyserItemsTexte(items, styles, rect) {
   return { source: src, taille, famille, gras, rect: [x0, yBas, x1, yHaut] };
 }
 
+/* v0.1.41 : la LIGNE réelle sous un point (x, y) de la page — l'outil
+ * Modifier clique dans une phrase et corrige CETTE ligne. Est retenue
+ * celle dont la bande verticale [base − 0,32·t, base + 0,82·t] accueille
+ * y (la hauteur d'encre d'une ligne, celle d'analyserItemsTexte) ;
+ * sinon la ligne la plus proche dans un rayon borné : un demi-corps à
+ * la verticale, max(10, 1,5·t) à l'horizontale — de quoi cliquer un peu
+ * après la fin de la ligne sans viser au pixel. La ligne retenue est
+ * la plus proche verticalement, puis horizontalement à égalité. Null
+ * si le clic tombe dans une marge : rien n'y est éditable. */
+function ligneAuPoint(items, x, y) {
+  if (!Array.isArray(items) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  let lignes;
+  try {
+    lignes = regrouperEnLignes(items).filter((l) => l.texte);
+  } catch (e) {
+    return null;
+  }
+  if (!lignes.length) return null;
+  let meilleur = null;
+  let cleMin = Infinity;
+  for (const l of lignes) {
+    const t = l.taille || 11;
+    let x0 = Infinity; let x1 = -Infinity;
+    for (const it of l.items) {
+      if (!it || !Array.isArray(it.transform)) continue;
+      const ix0 = Number(it.transform[4]) || 0;
+      const ix1 = ix0 + (Number(it.width) || 0);
+      if (ix0 < x0) x0 = ix0;
+      if (ix1 > x1) x1 = ix1;
+    }
+    if (!Number.isFinite(x0) || !Number.isFinite(x1)) continue;
+    const bas = (Number(l.base) || 0) - t * 0.32;
+    const haut = (Number(l.base) || 0) + t * 0.82;
+    const dv = y < bas ? bas - y : (y > haut ? y - haut : 0);
+    if (dv > Math.max(4, t * 0.5)) continue; // rayon vertical borné
+    const dH = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0);
+    if (dH > Math.max(10, t * 1.5)) continue; // marge de fin de ligne
+    const cle = dv * 1000 + dH; // la verticale l'emporte, l'horizontale départage
+    if (cle < cleMin) { cleMin = cle; meilleur = l; }
+  }
+  return meilleur;
+}
+
+/* v0.1.41 : la ZONE d'UNE seule ligne — source, taille, famille, gras et
+ * rectangle exact de l'encre, mêmes dominantes et mêmes bandes
+ * qu'analyserItemsTexte, mais SANS fusionner les lignes voisines : l'outil
+ * Modifier corrige la ligne cliquée, pas le paragraphe entier. Null si
+ * la ligne est vide. */
+function zoneDeLigne(ligne, styles) {
+  if (!ligne || !Array.isArray(ligne.items) || !ligne.items.length) return null;
+  const texte = String(ligne.texte || '').trim();
+  if (!texte) return null;
+  const tailleLigne = Math.round((ligne.taille || 11) * 2) / 2;
+  let pSerif = 0; let pSans = 0; let pGras = 0;
+  let x0 = Infinity; let x1 = -Infinity;
+  let base = Infinity; let taille = 0;
+  for (const it of ligne.items) {
+    if (!it || typeof it.str !== 'string' || !it.str.trim()) continue;
+    const st = (styles && it.fontName && styles[it.fontName]) || null;
+    const n = it.str.length;
+    if (familleDeStyle(st) === 'serif') pSerif += n; else pSans += n;
+    if (grasDeStyle(st)) pGras += n;
+    const ix0 = Number(it.transform && it.transform[4]) || 0;
+    const ix1 = ix0 + (Number(it.width) || 0);
+    if (ix0 < x0) x0 = ix0;
+    if (ix1 > x1) x1 = ix1;
+    const ibase = Number(it.transform && it.transform[5]) || 0;
+    const itaille = tailleDItem(it) || tailleLigne;
+    if (ibase < base) base = ibase;
+    if (itaille > taille) taille = itaille;
+  }
+  if (!Number.isFinite(x0) || !Number.isFinite(x1) || !Number.isFinite(base)) return null;
+  const t = taille || tailleLigne;
+  return {
+    source: texte,
+    taille: Math.round(t * 2) / 2,
+    famille: pSerif > pSans ? 'serif' : 'sans',
+    gras: pGras > (pSerif + pSans) / 2,
+    rect: [x0, base - t * 0.32, x1, base + t * 0.82],
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { tailleDItem, familleDeStyle, grasDeStyle, selectionnerItemsDans, regrouperEnLignes, analyserItemsTexte };
+  module.exports = { tailleDItem, familleDeStyle, grasDeStyle, selectionnerItemsDans, regrouperEnLignes, analyserItemsTexte, ligneAuPoint, zoneDeLigne };
 } else {
-  globalThis.AtelierTexteReel = { tailleDItem, familleDeStyle, grasDeStyle, selectionnerItemsDans, regrouperEnLignes, analyserItemsTexte };
+  globalThis.AtelierTexteReel = { tailleDItem, familleDeStyle, grasDeStyle, selectionnerItemsDans, regrouperEnLignes, analyserItemsTexte, ligneAuPoint, zoneDeLigne };
 }

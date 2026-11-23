@@ -10,6 +10,7 @@ const assert = require('node:assert');
 const {
   tailleDItem, familleDeStyle, grasDeStyle,
   selectionnerItemsDans, regrouperEnLignes, analyserItemsTexte,
+  ligneAuPoint, zoneDeLigne,
 } = require('../engine/textereel.js');
 
 /* Un fragment pdf.js : {str, transform [a,b,c,d,e,f], width, fontName}. */
@@ -99,4 +100,74 @@ test('analyserItemsTexte : null quand la zone ne porte aucun vrai texte', () => 
   assert.strictEqual(analyserItemsTexte(null, null, [0, 0, 100, 100]), null);
   // Un scan : la page entière est muette, la reconnaissance garde son rôle.
   assert.strictEqual(analyserItemsTexte([item('loin', 400, 100, 12)], {}, [50, 600, 300, 700]), null);
+});
+
+/* v0.1.41 : l'outil Modifier clique dans une phrase — le moteur PUR
+   doit dire QUELLE ligne vit sous le point, puis décrire la zone de
+   CETTE ligne seule (source, taille, famille, gras, rectangle). */
+
+test('ligneAuPoint : la ligne sous le point, à la bande verticale près', () => {
+  const items = [
+    item('Bonjour', 80, 700, 11),
+    item('Monde', 130, 700, 11),
+    item('Second', 80, 660, 11),
+  ];
+  // (100, 699) : dans la bande ET dans l'encre de la première ligne.
+  const l1 = ligneAuPoint(items, 100, 699);
+  assert.ok(l1);
+  assert.strictEqual(l1.texte, 'Bonjour Monde');
+  // La bande de la ligne 2 : [656,48 ; 669,02] ; (80, 672) est juste AU-
+  // DESSUS, à moins d'un demi-corps : c'est la ligne 2 qui l'emporte.
+  const l2 = ligneAuPoint(items, 80, 672);
+  assert.ok(l2);
+  assert.strictEqual(l2.texte, 'Second');
+  // (120, 700) : entre les fragments, DANS la ligne (l'encre couve).
+  const l3 = ligneAuPoint(items, 120, 700);
+  assert.ok(l3);
+  assert.strictEqual(l3.texte, 'Bonjour Monde');
+  // Fin de ligne : cliquer un peu APRÈS le dernier mot reste dans la
+  // ligne (marge max(10 ; 1,5·t) = 16,5 pt ici).
+  const l4 = ligneAuPoint(items, 157.5 + 8, 700);
+  assert.ok(l4);
+  assert.strictEqual(l4.texte, 'Bonjour Monde');
+});
+
+test('ligneAuPoint : null dans les marges — rien n’y est éditable', () => {
+  const items = [
+    item('Bonjour', 80, 700, 11),
+    item('Second', 80, 660, 11),
+  ];
+  // Loin SOUS la dernière ligne : plus d'un demi-corps de la bande.
+  assert.strictEqual(ligneAuPoint(items, 90, 620), null);
+  // Loin à DROITE de l'encre : au-delà de la marge de fin de ligne.
+  assert.strictEqual(ligneAuPoint(items, 300, 700), null);
+  // Page muette ou entrée cassée : null, jamais d'exception.
+  assert.strictEqual(ligneAuPoint([], 100, 700), null);
+  assert.strictEqual(ligneAuPoint(null, 100, 700), null);
+  assert.strictEqual(ligneAuPoint(items, Number.NaN, 700), null);
+});
+
+test('zoneDeLigne : la zone d’UNE ligne, sans y fusionner les voisines', () => {
+  const items = [
+    item('Un titre', 80, 700, 16, 'f-serif'),
+    item('ordinaire', 80, 674, 11, 'f-sans'),
+  ];
+  const styles = {
+    'f-serif': { fontFamily: 'Times New Roman, serif' },
+    'f-sans': { fontFamily: 'Helvetica, sans-serif' },
+  };
+  const l = ligneAuPoint(items, 100, 699);
+  assert.ok(l);
+  const z = zoneDeLigne(l, styles);
+  assert.ok(z);
+  assert.strictEqual(z.source, 'Un titre', 'UNE ligne, pas le paragraphe');
+  assert.strictEqual(z.taille, 16, 'la taille mesurée sur place');
+  assert.strictEqual(z.famille, 'serif');
+  assert.strictEqual(z.gras, false);
+  assert.ok(Math.abs(z.rect[0] - 80) < 0.01, 'le rectangle part de l’encre');
+  assert.ok(Math.abs(z.rect[1] - (700 - 16 * 0.32)) < 0.01, 'bande basse idem analyserItemsTexte');
+  assert.ok(Math.abs(z.rect[3] - (700 + 16 * 0.82)) < 0.01, 'bande haute idem analyserItemsTexte');
+  // Ligne vide ou entrée absente : null.
+  assert.strictEqual(zoneDeLigne(null, styles), null);
+  assert.strictEqual(zoneDeLigne({ base: 700, taille: 11, texte: '', items: [] }, styles), null);
 });

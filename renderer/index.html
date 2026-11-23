@@ -70,6 +70,13 @@
     <button data-outil="ecrire" class="outil" title="Écrire (machine à écrire) : cliquer pour écrire à cet endroit, ou glisser pour tracer la zone ; les formules s'y insèrent">
       <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="11" height="7" rx="1"/><path d="M5.4 9.8h5.2M6 6.8h.01M8 6.8h.01M10 6.8h.01"/></svg></span><span class="etiquette">Écrire</span>
     </button>
+    <!-- v0.1.41 : l'outil Modifier (croquis validé) — cliquer dans une
+         phrase du document ouvre la correction EN PLACE : légère teinte
+         sur la zone, caret au point cliqué, on tape et on supprime
+         librement, Entrée pose, Échap abandonne. -->
+    <button data-outil="modifier" class="outil" title="Modifier : cliquez dans une phrase du document pour la corriger ou la compléter en place (Entrée pose, Échap abandonne)">
+      <span class="icone"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2.5h6M2.5 5h4.5M2.5 7.5h3M8.6 12.8l.5-1.9 4.3-4.3 1.4 1.4-4.3 4.3z"/></svg></span><span class="etiquette">Modifier</span>
+    </button>
     <button data-outil="equation" class="outil" title="Équation : cliquer le point d'insertion, composer la formule, puis Insérer dans la page">
       <span class="icone">∑</span><span class="etiquette">Équation</span>
     </button>
