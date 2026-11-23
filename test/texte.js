@@ -145,3 +145,40 @@ test('le marqueur à taille commence toujours par PREFIXE_FICHE_MIXTE', () => {
   assert.ok('Fiche mixte 11 : x'.startsWith(PREFIXE_FICHE_MIXTE));
   assert.ok('Fiche mixte : x'.startsWith(PREFIXE_FICHE_MIXTE));
 });
+
+/* Mesure AUSSI INTOLERANTE que pdf-lib : tout caractère hors WinAnsi
+ * fait JETER la pose entière dans la vraie vie (retour d'Arthur sur
+ * v0.1.38 : « WinAnsi cannot encode (0x000a) », le 0x0a est \n). */
+const mesWin = (t) => {
+  if (/\n/.test(t)) throw new Error('WinAnsi cannot encode "\\n" (0x000a)');
+  return t.length * 2;
+};
+
+test('composerLignes : un SAUT DE LIGNE de la source COUPE la ligne (v0.1.39)', () => {
+  const rep = composerLignes(decouperMelange('la première ligne\nla seconde'), {
+    mesurerTexte: mesWin, dimsFormule: dimsFrac, largeurMax: 100, fontSize: 11,
+  });
+  assert.strictEqual(rep.lignes.length, 2, 'deux lignes réelles');
+  assert.deepStrictEqual(
+    rep.lignes.map((l) => l.morceaux.map((m) => m.valeur).join('')),
+    ['la première ligne', 'la seconde'],
+    'chaque ligne porte exactement sa sous-ligne de la source',
+  );
+  // Le retour chariot Windows (\r\n) coupe pareil.
+  const crlf = composerLignes(decouperMelange('un\r\ndeux'), {
+    mesurerTexte: mesWin, dimsFormule: dimsFrac, largeurMax: 100, fontSize: 11,
+  });
+  assert.strictEqual(crlf.lignes.length, 2);
+});
+
+test('composerLignes : trois lignes de source, trois lignes composées, aucune avalée', () => {
+  const src = 'Titre du paragraphe\nCorps du paragraphe assez long\nSuite.';
+  const rep = composerLignes(decouperMelange(src), {
+    mesurerTexte: mesWin, dimsFormule: dimsFrac, largeurMax: 1000, fontSize: 11,
+  });
+  assert.strictEqual(rep.lignes.length, 3);
+  assert.deepStrictEqual(
+    rep.lignes.map((l) => l.morceaux.map((m) => m.valeur).join('')),
+    ['Titre du paragraphe', 'Corps du paragraphe assez long', 'Suite.'],
+  );
+});

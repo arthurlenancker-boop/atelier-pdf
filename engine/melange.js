@@ -7,7 +7,7 @@
 'use strict';
 
 const { PDFName, StandardFonts } = require('pdf-lib');
-const { makeForm, addAnnot, normalizeRect, octetsWinAnsi } = require('./annotcore.js');
+const { makeForm, addAnnot, normalizeRect, octetsWinAnsi, sanitizeWinAnsi } = require('./annotcore.js');
 const { mjRender } = require('./mjrender.js');
 const {
   PREFIXE_FICHE_MIXTE, contientFormule, decouperMelange, translitterMathWinAnsi,
@@ -46,7 +46,11 @@ async function poserFiche(doc, page, { rect, source, fontSize, sujet = null }) {
   const [x0, y0, x1, y1] = normalizeRect(rect);
   const exPt = exPourCorps(fontSize);
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const mesurerTexte = (t) => font.widthOfTextAtSize(String(t), fontSize);
+  // v0.1.39 : mesurer le texte AFFICHÉ (translittéré, assaini), jamais le
+  // texte brut : pdf-lib rejette tout caractère hors WinAnsi (0x0a, émoji…)
+  // et la pose échouait alors que l'affichage, tolérant, aurait réussi.
+  const texteAffichable = (t) => sanitizeWinAnsi(translitterMathWinAnsi(String(t).replace(/[\n\r]+/g, ' ')));
+  const mesurerTexte = (t) => font.widthOfTextAtSize(texteAffichable(t), fontSize);
 
   // Rendu MathJax une fois par formule distincte, à la taille du corps.
   const rendus = new Map();

@@ -5,6 +5,28 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.39 : retour d'Arthur — « c'est ça aussi qui me
+# gene une boite s'ouvre et ce n'est pas utile pour modifier » avec
+# captures : sur une page a texte reel, l'editeur de correction
+# s'ouvrait mais la pose ECHOUAIT, toast brut « WinAnsi cannot encode
+# (0x000a) ». Cause etablie dans la source : pdf-lib refuse de MESURER
+# tout caractere hors WinAnsi, y compris le retour a la ligne ; sur une
+# page a texte reel la source preremplie joint les lignes par \n
+# (l'OCR aussi), composerLignes (engine/texte.js) traitait ce \n comme
+# un simple espace, la mesure rejetait donc la pose ENTIERE ; la
+# reprise (annotation retiree puis reposee) echouant, la correction
+# disparaissait et « le texte restait tel qu'il etait ». Correctif :
+# (1) composerLignes coupe desormais sur /\r?\n/ : chaque saut de
+# ligne devient un retour a la ligne REEL dans l'apparence ; (2) les
+# moteurs de pose (correction, melange, riche) mesurent le texte
+# AFFICHE, translittere puis assaini (sanitizeWinAnsi de
+# engine/annotcore.js) : la mesure ne rejette PLUS jamais la pose, et
+# un caractere exotique (Ω, émoji) s'affiche « ? » sans rien casser ;
+# (3) la source, dans /Contents, reste exacte. Tests :
+# test/texte.js 23 (dont la mesure qui JETTE bien sur \n comme pdf-lib,
+# la composition en lignes reelles), test/correction.test.js 12
+# (pose multi-lignes en 2 lignes reelles, source relue exacte,
+# caracteres exotiques). 288 tests.
 # Declencheur de la v0.1.38 : retour d'Arthur — « quand je modifie le
 # texte ca forme un amas de texte et apres les modifications ne
 # s'appliquent pas et le texte reste tel qu'il etait » puis « le test

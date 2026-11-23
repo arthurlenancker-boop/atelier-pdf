@@ -178,3 +178,29 @@ test('addCorrection : le redimensionnement REPOSE la correction dans sa famille 
     'la correction reposée garde SA famille et SON gras');
   assert.strictEqual(Math.round(repose.rect[2]), 460, 'le rectangle visé est tenu');
 });
+
+test('addCorrection : une source MULTI-LIGNES se pose enfin (v0.1.39, retour d\'Arthur)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const source = 'la première ligne du paragraphe\nla seconde ligne du même paragraphe';
+  const rep = await addCorrection(doc, page, { rect: [80, 650, 420, 672], source, fontSize: 12 });
+  assert.ok(rep.ref, 'la pose n\'est plus rejetée par la mesure pdf-lib (l\'erreur « WinAnsi cannot encode 0x000a »)');
+  const a = listAnnots(doc)[0];
+  assert.strictEqual(extraireSourceCorrection(a.contents), source,
+    'la source multi-lignes (le retour à la ligne compris) est relue EXACTEMENT');
+  const octets = Buffer.from(await doc.save()).toString('latin1');
+  assert.strictEqual((octets.match(/ Tm/g) || []).length, 2,
+    'le texte est composé en DEUX lignes réelles, pas en un amas');
+  assert.ok(/\/F1 12 Tf/.test(octets), 'les deux lignes sont écrites dans la police du bloc');
+});
+
+test('addCorrection : les caractères exotiques (Ω, émoji) ne bloquent plus la pose (v0.1.39)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const source = 'Résistance Ω = 220 Ω puis ⚡ et voilà le résultat';
+  const rep = await addCorrection(doc, page, { rect: [80, 600, 420, 622], source, fontSize: 11 });
+  assert.ok(rep.ref, 'la mesure sur le texte affiché assaini ne rejette plus rien');
+  const a = listAnnots(doc)[0];
+  assert.strictEqual(extraireSourceCorrection(a.contents), source,
+    'la source exotique est relue EXACTEMENT (l\'écran affiche « ? », la source reste intacte)');
+});

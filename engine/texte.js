@@ -226,35 +226,47 @@ function composerLignes(segments, { mesurerTexte, dimsFormule, largeurMax, fontS
     }
 
     // Segment texte : mots et espaces, mots trop larges coupés par caractères.
-    const parties = segment.valeur.split(/(\s+)/);
-    for (const partie of parties) {
-      if (partie === '') continue;
-      if (/^\s+$/.test(partie)) { espacePend = partie; continue; }
-      let mot = partie;
-      while (mot) {
-        let largeurMot = mesurerTexte(mot);
-        if (largeurMot > largeurMax) {
-          // Coupe caractère par caractère : le plus long préfixe qui tient.
-          let k = 1;
-          while (k < mot.length && mesurerTexte(mot.slice(0, k + 1)) <= largeurMax) k += 1;
-          const morceau = mot.slice(0, k);
-          const l = mesurerTexte(morceau);
-          if (courante.morceaux.length && courante.w + l > largeurMax) cloreLigne();
-          ajouterTexte(morceau, l);
-          cloreLigne(); // ce morceau remplit la ligne : ligne suivante.
-          mot = mot.slice(k);
-          espacePend = '';
-          continue;
-        }
-        const largeurEspace = espacePend && courante.morceaux.length ? mesurerTexte(espacePend) : 0;
-        if (courante.morceaux.length && courante.w + largeurEspace + largeurMot > largeurMax) {
-          cloreLigne();
-          espacePend = '';
-        }
-        const jointure = espacePend && courante.morceaux.length ? espacePend : '';
-        ajouterTexte(jointure + mot, mesurerTexte(jointure) + largeurMot);
+    // v0.1.39 : un SAUT DE LIGNE de la source est un RETOUR à la ligne
+    // RÉEL (pas une espace de plus) — le compositeur coupait la ligne
+    // seulement à débordement, alors la mesure pdf-lib recevait « \n »
+    // et rejetait la pose entière (« WinAnsi cannot encode 0x000a »,
+    // retour d'Arthur : les modifications ne s'appliquaient pas).
+    const souslignes = String(segment.valeur).split(/\r?\n/);
+    for (let si = 0; si < souslignes.length; si += 1) {
+      if (si > 0) {
         espacePend = '';
-        mot = '';
+        cloreLigne();
+      }
+      const parties = souslignes[si].split(/(\s+)/);
+      for (const partie of parties) {
+        if (partie === '') continue;
+        if (/^\s+$/.test(partie)) { espacePend = partie; continue; }
+        let mot = partie;
+        while (mot) {
+          let largeurMot = mesurerTexte(mot);
+          if (largeurMot > largeurMax) {
+            // Coupe caractère par caractère : le plus long préfixe qui tient.
+            let k = 1;
+            while (k < mot.length && mesurerTexte(mot.slice(0, k + 1)) <= largeurMax) k += 1;
+            const morceau = mot.slice(0, k);
+            const l = mesurerTexte(morceau);
+            if (courante.morceaux.length && courante.w + l > largeurMax) cloreLigne();
+            ajouterTexte(morceau, l);
+            cloreLigne(); // ce morceau remplit la ligne : ligne suivante.
+            mot = mot.slice(k);
+            espacePend = '';
+            continue;
+          }
+          const largeurEspace = espacePend && courante.morceaux.length ? mesurerTexte(espacePend) : 0;
+          if (courante.morceaux.length && courante.w + largeurEspace + largeurMot > largeurMax) {
+            cloreLigne();
+            espacePend = '';
+          }
+          const jointure = espacePend && courante.morceaux.length ? espacePend : '';
+          ajouterTexte(jointure + mot, mesurerTexte(jointure) + largeurMot);
+          espacePend = '';
+          mot = '';
+        }
       }
     }
   }

@@ -21,7 +21,7 @@
 'use strict';
 
 const { StandardFonts } = require('pdf-lib');
-const { makeForm, addAnnot, normalizeRect, octetsWinAnsi } = require('./annotcore.js');
+const { makeForm, addAnnot, normalizeRect, octetsWinAnsi, sanitizeWinAnsi } = require('./annotcore.js');
 const { mjRender } = require('./mjrender.js');
 const {
   PREFIXE_CORRECTION, decouperMelange, translitterMathWinAnsi, composerLignes, exPourCorps,
@@ -78,7 +78,14 @@ async function addCorrection(doc, page, { rect, source, fontSize = 11, famille =
   const [x0, y0, x1, y1] = normalizeRect(rect);
   const exPt = exPourCorps(taille);
   const font = await doc.embedFont(police.pdf);
-  const mesurerTexte = (t) => font.widthOfTextAtSize(String(t), taille);
+  // v0.1.39 : la mesure ne doit JAMAIS rejeter la pose. pdf-lib refuse
+  // tout caractère hors WinAnsi (retour d'Arthur : toast « WinAnsi cannot
+  // encode (0x000a) » — un retour à la ligne dans la source). Le texte
+  // mesuré est donc EXACTEMENT le texte affiché (translittéré, assaini),
+  // ce qui rend la composition fidèle au rendu ET insensible aux
+  // caractères exotiques de la page (émoji, Ω, etc. → « ? »).
+  const texteAffichable = (t) => sanitizeWinAnsi(translitterMathWinAnsi(String(t).replace(/[\n\r]+/g, ' ')));
+  const mesurerTexte = (t) => font.widthOfTextAtSize(texteAffichable(t), taille);
 
   // Rendu MathJax une fois par formule distincte, à la taille du corps.
   // v0.1.38 : une formule NON RENDABLE (commande inconnue de MathJax,

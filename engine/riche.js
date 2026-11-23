@@ -10,7 +10,7 @@
 'use strict';
 
 const { PDFName, StandardFonts } = require('pdf-lib');
-const { makeForm, addAnnot, normalizeRect, octetsWinAnsi } = require('./annotcore.js');
+const { makeForm, addAnnot, normalizeRect, octetsWinAnsi, sanitizeWinAnsi } = require('./annotcore.js');
 const { mjRender } = require('./mjrender.js');
 const {
   PREFIXE_NOTE_RICHE, translitterMathWinAnsi, exPourCorps,
@@ -96,8 +96,13 @@ async function addNoteRiche(doc, page, { rect, source, fontSize = 11, couleur = 
     const police = polices.get(styles && styles.gras && styles.italique ? 'F4'
       : styles && styles.gras ? 'F2'
         : styles && styles.italique ? 'F3' : 'F1');
-    // Liste des morceaux composés : mesuré comme la fiche mixte.
-    return police.widthOfTextAtSize(String(texte), tailleMorc(styles));
+    // Liste des morceaux composés : mesurés comme la fiche mixte, sur le
+    // texte AFFICHÉ (v0.1.39) : pdf-lib rejette tout caractère hors
+    // WinAnsi, la mesure du texte brut pouvait faire échouer toute la note.
+    return police.widthOfTextAtSize(
+      sanitizeWinAnsi(translitterMathWinAnsi(String(texte).replace(/[\n\r]+/g, ' '))),
+      tailleMorc(styles),
+    );
   };
 
   const layout = composerLignesRiche(blocs, {
