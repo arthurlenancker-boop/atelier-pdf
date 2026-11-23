@@ -9,6 +9,8 @@ const assert = require('node:assert');
 const {
   PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
   decouperMelange, exPourCorps, composerLignes, contientFormule,
+  PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+  extraireFamilleCorrection, extraireGrasCorrection, extraireCouleurCorrection,
 } = require('../engine/texte.js');
 
 // Mesure déterministe pour les tests : 2 pt par caractère.
@@ -181,4 +183,34 @@ test('composerLignes : trois lignes de source, trois lignes composées, aucune a
     rep.lignes.map((l) => l.morceaux.map((m) => m.valeur).join('')),
     ['Titre du paragraphe', 'Corps du paragraphe assez long', 'Suite.'],
   );
+});
+
+/* v0.1.43 : la COULEUR d'encre voyage dans le marqueur de correction
+ * (retour d'Arthur : « le texte est passé de rose à gris »). Moteur pur :
+ * la relecture du marqueur, nouveaux comme anciens. */
+test('v0.1.43 : le marqueur porte la couleur, les autres champs restent relus', () => {
+  const marqueur = 'Correction OCR 12 serif gras #E13A6E : Un texte rose';
+  assert.strictEqual(extraireCouleurCorrection(marqueur), '#E13A6E');
+  assert.strictEqual(extraireTailleCorrection(marqueur), 12);
+  assert.strictEqual(extraireFamilleCorrection(marqueur), 'serif');
+  assert.ok(extraireGrasCorrection(marqueur));
+  assert.strictEqual(extraireSourceCorrection(marqueur), 'Un texte rose');
+});
+
+test('v0.1.43 : sans gras, la couleur suit quand même la famille', () => {
+  assert.strictEqual(extraireCouleurCorrection('Correction OCR 11 sans #1f4e79 : bleu'),
+    '#1f4e79', 'la casse mixte est relue telle quelle');
+  assert.strictEqual(extraireFamilleCorrection('Correction OCR 11 sans #1f4e79 : bleu'), 'sans');
+  assert.strictEqual(extraireGrasCorrection('Correction OCR 11 sans #1f4e79 : bleu'), false);
+  assert.strictEqual(extraireSourceCorrection('Correction OCR 11 sans #1f4e79 : bleu'), 'bleu');
+});
+
+test('v0.1.43 : les marqueurs ANCIENS restent relus (couleur null, source intacte)', () => {
+  assert.strictEqual(extraireCouleurCorrection('Correction OCR 12,5 : texte'), null);
+  assert.strictEqual(extraireCouleurCorrection('Correction OCR : #a1b2c3 dans la source'), null,
+    'un #hex de la SOURCE, après les deux-points, n\'est pas une couleur du marqueur');
+  assert.strictEqual(extraireSourceCorrection('Correction OCR : #a1b2c3 : texte'), '#a1b2c3 : texte',
+    'la source contenant elle-même « #hex : » reste EXACTEMENT ce qu\'elle était');
+  assert.strictEqual(extraireCouleurCorrection('Correction OCR 11 serif gras : Un titre'), null);
+  assert.strictEqual(extraireCouleurCorrection('Fiche mixte 11 : pas une correction #E13A6E'), null);
 });

@@ -936,13 +936,14 @@ function tracceEquation(ctx, apercu, rect) {
 /** Trace les opérateurs d'une formule avec la LIGNE DE BASE posée en
  * (xPx, basePx) à l'échelle k (l'apparence fichier fait pareil :
  * translation (penX, base − depthPt) puis XObject). */
-function tracerOpsPlacé(ctx, apercu, xPx, basePx, k) {
+function tracerOpsPlacé(ctx, apercu, xPx, basePx, k, couleur) {
   if (!apercu || !apercu.ops) return;
   const px = (v) => xPx + v * k;
   const py = (v) => basePx + (apercu.heightPt - v) * k - apercu.depthPt * k;
+  const encre = couleur || '#111319'; // v0.1.43 : l'encre de la correction, sinon le gris
   ctx.save();
-  ctx.fillStyle = '#111319';
-  ctx.strokeStyle = '#111319';
+  ctx.fillStyle = encre;
+  ctx.strokeStyle = encre;
   ctx.lineWidth = Math.max(0.6, 0.9 * k);
   ctx.setLineDash([]);
   let p = new Path2D();
@@ -1047,6 +1048,11 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
   // posés en Helvetica : le repli « sans » est fidèle.
   const serif = extraireFamilleCorrection(a.contents) === 'serif';
   const gras = Boolean(extraireGrasCorrection(a.contents));
+  // v0.1.43 : la COULEUR du marqueur gouverne l'encre écran — le fichier
+  // et l'aperçu écrivent dans la même. Les marqueurs anciens, sans
+  // couleur, retombent sur le gris fidèle, comme avant.
+  const couleurEncre = extraireCouleurCorrection(a.contents);
+  const encreEcran = couleurEncre || '#14161c';
   const policeEcran = `${gras ? 'bold ' : ''}${serif ? '"Times New Roman", Times, serif' : 'sans-serif'}`;
   const mesurer = (t) => {
     mesureCtx.font = `${gras ? 'bold ' : ''}${FS_FICHE}px ${serif ? '"Times New Roman", Times, serif' : 'sans-serif'}`;
@@ -1064,7 +1070,7 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
     // Ops pas encore chargées (ou formule illisible) : la source reste
     // lisible en attendant, et le calcul se fait au fond.
     ctx.font = `${fs * etat.zoom}px ${policeEcran}`;
-    ctx.fillStyle = '#14161c';
+    ctx.fillStyle = encreEcran;
     ctx.textBaseline = 'alphabetic';
     const ligne = source.replace(/\n/g, ' ');
     ctx.fillText(ligne.slice(0, 90), x + 2 * etat.zoom, y + h / 2);
@@ -1084,7 +1090,7 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
   });
   const interbase = INTERBASE_FICHE * fs;
   ctx.font = `${fs * etat.zoom}px ${policeEcran}`;
-  ctx.fillStyle = '#14161c';
+  ctx.fillStyle = encreEcran;
   ctx.textBaseline = 'alphabetic';
   let curseur = a.rect[3] - MARGE_V_FICHE * k; // haut du rectangle, points PDF
   for (const ligne of layout.lignes) {
@@ -1098,8 +1104,9 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
       } else {
         // Ops chargées au CORPS de CETTE correction (chargerOpsFiches)
         // comme les fiches le sont au leur : le tracé suit, zoomé.
+        // v0.1.43 : les formules suivent l'encre de la correction.
         const ap = carte.get(m.valeur);
-        if (ap) tracerOpsPlacé(ctx, ap, ecran.x, ecran.y, etat.zoom);
+        if (ap) tracerOpsPlacé(ctx, ap, ecran.x, ecran.y, etat.zoom, couleurEncre);
       }
       penX += m.largeur;
     }
@@ -2849,6 +2856,55 @@ function majRecoVue() {
  * LUI : source réelle, taille réelle mesurée sur place, famille (Times
  * ou Helvetica), gras au besoin. Une page scannée garde la source de la
  * reconnaissance et sa taille estimée, comme toujours. */
+/* v0.1.43 : la couleur d'encre RÉELLE du texte remplacé (retour d'Arthur :
+ * « le texte est passé de rose à gris »). Le calque de la PAGE (pdf.js,
+ * annotationMode DISABLE depuis la v0.1.35) porte l'encre du document,
+ * sans aucune peinture applicative : on y échantillonne le rectangle de
+ * la ligne, en pixels d'écran. Les pixels transparents et le fond clair
+ * (luminance > 235) sont ignorés ; l'encre restante est quantifiée en
+ * seaux 32 niveaux par canal, le seau DOMINANT définit la couleur. Si le
+ * texte est NOIR ou GRIS (saturation faible), la correction retombe sur
+ * son gris fidèle #14161c, comme toujours ; si l'encre est TEINTÉE
+ * (rose, bleu, vert…), la correction l'écrit DANS CETTE couleur. */
+function couleurEncreDuRect(rectPdf) {
+  try {
+    if (!Array.isArray(rectPdf) || rectPdf.length < 4) return null;
+    const cv = els.calquePdf;
+    const a = pdfVersEcran({ x: rectPdf[0], y: rectPdf[1] });
+    const c = pdfVersEcran({ x: rectPdf[2], y: rectPdf[3] });
+    const x0 = Math.max(0, Math.floor(Math.min(a.x, c.x)));
+    const y0 = Math.max(0, Math.floor(Math.min(a.y, c.y)));
+    const x1 = Math.min(cv.width, Math.ceil(Math.max(a.x, c.x)));
+    const y1 = Math.min(cv.height, Math.ceil(Math.max(a.y, c.y)));
+    if (x1 - x0 < 1 || y1 - y0 < 1) return null;
+    const img = cv.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0);
+    const seaux = new Map(); // « r5,g5,b5 » -> { n, sr, sg, sb }
+    let encre = 0;
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 40) continue; // transparent : rien peint ici
+      const r = d[i]; const g = d[i + 1]; const bb = d[i + 2];
+      if (0.2126 * r + 0.7152 * g + 0.0722 * bb > 235) continue; // fond clair
+      encre += 1;
+      const cle = `${r >> 5},${g >> 5},${bb >> 5}`;
+      const s = seaux.get(cle) || { n: 0, sr: 0, sg: 0, sb: 0 };
+      s.n += 1; s.sr += r; s.sg += g; s.sb += bb;
+      seaux.set(cle, s);
+    }
+    if (encre < 8) return null; // pas d'encre lisible : le gris reste
+    let dom = null;
+    for (const [, s] of seaux) if (!dom || s.n > dom.n) dom = s;
+    if (!dom || dom.n / encre < 0.34) return null; // mélange : le gris reste
+    const r = dom.sr / dom.n; const g = dom.sg / dom.n; const b = dom.sb / dom.n;
+    const max = Math.max(r, g, b); const min = Math.min(r, g, b);
+    if ((max - min) / 255 < 0.18) return null; // noir/gris : gris fidèle
+    const hex = (v) => Math.round(v).toString(16).padStart(2, '0');
+    return `#${hex(r)}${hex(g)}${hex(b)}`;
+  } catch (e) {
+    return null; // jamais bloquer la correction sur un échantillon
+  }
+}
+
 /* v0.1.41 : le chemin PARTAGÉ de la correction d'un bloc reconnu — le
  * clic sur l'aperçu (outil Sélection, depuis la v0.1.29) et l'outil
  * Modifier l'empruntent l'un comme l'autre : reprise d'une correction
@@ -2860,7 +2916,10 @@ async function ouvrirCorrectionDeBloc(b, page) {
   if (existante) {
     const famille = extraireFamilleCorrection(existante.contents) === 'serif' ? 'serif' : 'sans';
     const gras = Boolean(extraireGrasCorrection(existante.contents));
-    ouvrirEditeur('correction', null, existante, { famille, gras });
+    // v0.1.43 : la couleur relue du MARQUEUR (la couleur décidée à la
+    // première pose), pas un nouvel échantillon de la page en dessous.
+    const couleur = extraireCouleurCorrection(existante.contents);
+    ouvrirEditeur('correction', null, existante, { famille, gras, couleur });
     return;
   }
   let donnees = { rect, source: sourceDeBloc(b), fontSize: tailleEstimeeDeBloc(b) };
@@ -2877,6 +2936,13 @@ async function ouvrirCorrectionDeBloc(b, page) {
       fontSize: reel.taille,
       famille: reel.famille,
       gras: reel.gras,
+      // v0.1.43 : l'encre RÉELLE du texte remplacé (échantillonnée sur la
+      // page en dessous, avant tout masque : le calque pdf.js est vierge
+      // de nos peintures).
+      couleur: couleurEncreDuRect([
+        Math.min(rect[0], reel.rect[0]), Math.min(rect[1], reel.rect[1]),
+        Math.max(rect[2], reel.rect[2]), Math.max(rect[3], reel.rect[3]),
+      ]),
     };
   }
   ouvrirEditeur('correction', donnees);
@@ -2897,7 +2963,9 @@ async function ouvrirModificationAuPoint(x, y) {
   if (existante) {
     const famille = extraireFamilleCorrection(existante.contents) === 'serif' ? 'serif' : 'sans';
     const gras = Boolean(extraireGrasCorrection(existante.contents));
-    ouvrirEditeur('correction', null, existante, { famille, gras });
+    // v0.1.43 : couleur relue du MARQUEUR de la correction posée.
+    const couleur = extraireCouleurCorrection(existante.contents);
+    ouvrirEditeur('correction', null, existante, { famille, gras, couleur });
     return;
   }
   // (2) Le vrai texte : la ligne sous le point.
@@ -2917,6 +2985,14 @@ async function ouvrirModificationAuPoint(x, y) {
         zone = null;
       }
       if (zone && zone.source.trim()) {
+        // v0.1.43 : la couleur d'encre de la ligne est échantillonnée
+        // AVANT l'ouverture (le cadre n'existait pas encore, mais
+        // l'échantillon reste celui de la page vierge de nos peintures).
+        try {
+          zone.couleur = couleurEncreDuRect(zone.rect);
+        } catch (e) {
+          zone.couleur = null;
+        }
         ouvrirEditeur('correction', zone);
         placerCurseurModification(x, zone.rect);
         return;
@@ -3095,9 +3171,11 @@ function ecouterSouris() {
       // v0.1.29 : reprise d'une correction posée (l'aperçu de la
       // reconnaissance est masqué : la Sélection voit l'annotation).
       // v0.1.38 : la famille et le gras du marqueur suivent la reprise.
+      // v0.1.43 : la couleur aussi.
       const famille = extraireFamilleCorrection(cible.contents) === 'serif' ? 'serif' : 'sans';
       const gras = Boolean(extraireGrasCorrection(cible.contents));
-      ouvrirEditeur('correction', null, cible, { famille, gras });
+      const couleur = extraireCouleurCorrection(cible.contents);
+      ouvrirEditeur('correction', null, cible, { famille, gras, couleur });
     }
   });
 
@@ -3668,6 +3746,13 @@ function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
     const gras = reprise
       ? Boolean((supplement && supplement.gras) || extraireGrasCorrection(cible.contents))
       : Boolean((supplement && supplement.gras) || bloc.gras);
+    // v0.1.43 : la COULEUR d'encre suit la correction — lue du MARQUEUR à
+    // la reprise, échantillonnée sur la page à la pose neuve. Une couleur
+    // absente ou mal formée retombe sur le gris fidèle (null).
+    const couleurHex = (c) => (/^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c) : null);
+    const couleur = reprise
+      ? (couleurHex(supplement && supplement.couleur) || couleurHex(extraireCouleurCorrection(cible.contents)))
+      : (couleurHex(supplement && supplement.couleur) || couleurHex(bloc.couleur));
     attente = {
       kind: 'correction',
       sujet: 'Correction',
@@ -3679,6 +3764,7 @@ function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
         : (Number.isFinite(bloc.fontSize) && bloc.fontSize > 0 ? bloc.fontSize : 11),
       famille,
       gras,
+      couleur,
       ref: reprise ? cible.ref : null,
     };
   } else if (cible && cible.subtype === 'FreeText'
@@ -3775,6 +3861,12 @@ function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
     ? '"Times New Roman", Times, serif' : '';
   if (attente.kind === 'correction' && attente.gras) zone.style.fontWeight = '600';
   else zone.style.fontWeight = '';
+  // v0.1.43 : la correction écrit dans la COULEUR du texte remplacé
+  // (retour d'Arthur : « le texte est passé de rose à gris ») — le cadre
+  // montre déjà ce que la validation posera. Les autres cadres gardent
+  // leur encre d'apparat : le textarea étant PARTAGÉ, il est remis à
+  // zéro hors correction.
+  zone.style.color = attente.kind === 'correction' && attente.couleur ? attente.couleur : '';
   // v0.1.41 : la correction est POSÉE sur la page (croquis validé) :
   // padding vertical nul, le texte calé sur l'original ; les autres
   // cadres gardent leur matelas.
@@ -3907,6 +3999,10 @@ async function validerEditeur() {
     args.fontSize = attente.fontSize;
     args.famille = attente.famille === 'serif' ? 'serif' : 'sans';
     args.gras = Boolean(attente.gras);
+    // v0.1.43 : l'encre réelle échantillonnée sur la page (ou relue du
+    // marqueur à la reprise) voyage jusqu'au moteur, qui l'écrit dans le
+    // fichier ET dans le marqueur de la correction posée.
+    args.couleur = attente.couleur || null;
   } else if (estRiche) {
     // v0.1.31 : notes et fiches se posent en NOTE RICHE — texte mis en
     // forme (gras, couleurs, listes, alignements) et formules $...$,
@@ -4477,7 +4573,7 @@ const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
 const { PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
   decouperMelange, contientFormule, exPourCorps, composerLignes,
   PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
-  extraireFamilleCorrection, extraireGrasCorrection,
+  extraireFamilleCorrection, extraireGrasCorrection, extraireCouleurCorrection,
   PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche } = globalThis.AtelierTexte;
 const { poigneesRect, poigneeSousPoint, rectDepuisPoignee } = globalThis.AtelierGeom;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;

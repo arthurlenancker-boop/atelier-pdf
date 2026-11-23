@@ -18,6 +18,13 @@
 // reprises et le repose au déplacement. ET : une formule que MathJax ne
 // peut pas rendre ne fait plus échouer la correction entière — le code
 // s'affiche en texte, la pose réussit toujours.
+// v0.1.43 : FIDÉLITÉ À LA COULEUR (retour d'Arthur : « le texte est
+// passé de rose à gris »). La correction reçoit du rendu la couleur
+// d'encre RÉELLE du texte remplacé, l'écrit dans le fichier et la fait
+// voyager dans le marqueur (#RRGGBB, facultatif) pour les reprises et le
+// repose au déplacement. Une couleur absente ou mal formée retombe sur
+// l'encre grise fidèle d'avant : les corrections d'avant la v0.1.43
+// restent posées, relues et reposées comme elles l'étaient.
 'use strict';
 
 const { StandardFonts } = require('pdf-lib');
@@ -50,6 +57,16 @@ const MARGE = 2;
 const MARGE_VERTICALE = 3;
 const INTERBASE = 0.45; // × fontSize entre deux lignes
 
+/** Hexadécimal #RRGGBB, ou null si absent/mal formé (encre grise fidèle). */
+const couleurValable = (c) => (/^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c) : null);
+
+/** v0.1.43 : fractions [r g b] 0-1 d'une couleur #RRGGBB. */
+const hexVersRgb = (c) => [
+  parseInt(c.slice(1, 3), 16) / 255,
+  parseInt(c.slice(3, 5), 16) / 255,
+  parseInt(c.slice(5, 7), 16) / 255,
+];
+
 /**
  * Pose la correction d'un bloc reconnu.
  * @param {object} p
@@ -60,17 +77,23 @@ const INTERBASE = 0.45; // × fontSize entre deux lignes
  * @param {string} [p.famille='sans'] v0.1.38 : famille réelle du texte
  *        remplacé, 'serif' (police à empattements) ou 'sans'
  * @param {boolean} [p.gras=false] v0.1.38 : le texte remplacé était en gras
+ * @param {string} [p.couleur=null] v0.1.43 : couleur d'encre RÉELLE du
+ *        texte remplacé ('#RRGGBB', lue sur la page) ou null
  * @returns {Promise<{ref: PDFRef, rect: number[]}>} rectangle RÉALISÉ (le
  *          bas descend si le contenu dépasse ; le haut reste fixé sur le
  *          sommet du bloc, le masque couvre le rectangle réalisé entier).
  */
-async function addCorrection(doc, page, { rect, source, fontSize = 11, famille = 'sans', gras = false }) {
+async function addCorrection(doc, page, { rect, source, fontSize = 11, famille = 'sans', gras = false, couleur = null }) {
   const src = String(source ?? '');
   if (!src.trim()) {
     // Une correction vide n'a pas de sens : elle masquerait le scan pour
     // ne rien écrire. Rien n'est créé, l'erreur remonte telle quelle.
     throw new Error('Une correction doit contenir du texte.');
   }
+  // v0.1.43 : l'encre de la correction est la couleur RÉELLE du texte
+  // remplacé quand le rendu l'a échantillonnée, sinon le gris fidèle.
+  const couleurEncre = couleurValable(couleur);
+  const encre = couleurEncre ? hexVersRgb(couleurEncre) : ENCRE;
   const taille = Number.isFinite(fontSize) && fontSize > 0 ? fontSize : 11;
   const serif = famille === 'serif';
   const police = POLICE_DE[serif ? 'serif' : 'sans'][gras ? 'gras' : '']
@@ -98,7 +121,7 @@ async function addCorrection(doc, page, { rect, source, fontSize = 11, famille =
       let rendu = null;
       let repli = null;
       try {
-        rendu = mjRender(latex, exPt, { rgb: ENCRE });
+        rendu = mjRender(latex, exPt, { rgb: encre });
       } catch (e) {
         repli = translitterMathWinAnsi(latex);
       }
@@ -149,7 +172,7 @@ async function addCorrection(doc, page, { rect, source, fontSize = 11, famille =
           ops.push(
             'BT',
             `/F1 ${fmt(taille)} Tf`,
-            `${fmt(ENCRE[0])} ${fmt(ENCRE[1])} ${fmt(ENCRE[2])} rg`,
+            `${fmt(encre[0])} ${fmt(encre[1])} ${fmt(encre[2])} rg`,
             `1 0 0 1 ${fmt(penX)} ${fmt(baselines[li])} Tm`,
             `<${hex}> Tj`,
             'ET',
@@ -168,7 +191,7 @@ async function addCorrection(doc, page, { rect, source, fontSize = 11, famille =
             ops.push(
               'BT',
               `/F1 ${fmt(taille)} Tf`,
-              `${fmt(ENCRE[0])} ${fmt(ENCRE[1])} ${fmt(ENCRE[2])} rg`,
+              `${fmt(encre[0])} ${fmt(encre[1])} ${fmt(encre[2])} rg`,
               `1 0 0 1 ${fmt(penX)} ${fmt(baselines[li])} Tm`,
               `<${hex}> Tj`,
               'ET',
@@ -224,12 +247,12 @@ async function addCorrection(doc, page, { rect, source, fontSize = 11, famille =
     C: [0, 0, 0],
     BS: { W: 0 },
     AP: { N: formRef },
-    // La taille du corps ET la famille ET le gras voyagent dans le
-    // marqueur : le rectangle de la correction se recompose à l'identique
-    // à l'écran comme dans le fichier, y compris repris et reposées
-    // (déplacement, redimensionnement). Les anciens marqueurs (sans
-    // famille) restent relus par engine/texte.js.
-    Contents: `${PREFIXE_CORRECTION} ${fmt(taille)} ${serif ? 'serif' : 'sans'}${gras ? ' gras' : ''} : ${src}`,
+    // La taille du corps ET la famille ET le gras ET la couleur voyagent
+    // dans le marqueur : le rectangle de la correction se recompose à
+    // l'identique à l'écran comme dans le fichier, y compris repris et
+    // reposées (déplacement, redimensionnement). Les anciens marqueurs
+    // (sans famille, sans couleur) restent relus par engine/texte.js.
+    Contents: `${PREFIXE_CORRECTION} ${fmt(taille)} ${serif ? 'serif' : 'sans'}${gras ? ' gras' : ''}${couleurEncre ? ` ${couleurEncre}` : ''} : ${src}`,
     Subject: 'Correction',
   });
   return { ref, rect: [x0, yBas, x1, y1] };

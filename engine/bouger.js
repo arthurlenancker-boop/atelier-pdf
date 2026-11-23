@@ -288,6 +288,7 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
     const {
       extraireSourceCorrection, extraireTailleCorrection,
       extraireFamilleCorrection, extraireGrasCorrection,
+      extraireCouleurCorrection,
     } = require('./texte.js');
     const { addCorrection } = require('./correction.js');
     const source = extraireSourceCorrection(contenu);
@@ -301,9 +302,13 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
     // repli « sans » est donc fidèle à ce qu'ils étaient.
     const famille = extraireFamilleCorrection(contenu) === 'serif' ? 'serif' : 'sans';
     const gras = Boolean(extraireGrasCorrection(contenu));
+    // v0.1.43 : la COULEUR d'encre suit aussi (un texte rose reste rose
+    // après le déplacement) ; les marqueurs anciens, sans couleur,
+    // retombent sur le gris fidèle, comme avant.
+    const couleur = extraireCouleurCorrection(contenu);
     tableau.remove(i);
     try {
-      const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize, famille, gras });
+      const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize, famille, gras, couleur });
       return { ref: rep.ref, rect: rep.rect };
     } catch (e) {
       tableau.push(ref); // v0.1.33 : jamais perdre l'annotation d'origine

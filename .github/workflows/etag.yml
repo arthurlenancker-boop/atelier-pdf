@@ -5,6 +5,41 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.43 : le retour d'Arthur en pleine activite reelle,
+# cinq mots : « Et là le texte est passé de rose à gris ». L'outil
+# Modifier (v0.1.41/42, corrige et confirme sur captures) posait bien
+# la police, la taille et le gras du texte remplace, mais pas sa
+# COULEUR : la correction ecrivait toujours l'encre grise du moteur
+# (#14161c), le texte rose du document devenait gris a la pose.
+# Diagnostic : tout le pipeline ignorait la couleur (le cadre,
+# dessinerCorrection, addCorrection, le marqueur, le repose au
+# deplacement). Correctif complet, colonne COULEUR du marqueur de
+# correction « Correction OCR <taille> <serif|sans> [gras] [#RRGGBB] : » :
+# (1) renderer/app.js : couleurEncreDuRect echantillonne l'encre REELLE
+# de la ligne sur le calque de la page (pdf.js, vierge de nos peintures
+# depuis la v0.1.35) : pixels transparents et fond clair ignores, encre
+# quantifiee en seaux de 32 niveaux, seau dominant garde seulement s'il
+# domine l'encre (part > 0.34) et si la couleur est reellement TEINTEE
+# (saturation > 0.18) ; les textes noirs/gris retombent sur le gris
+# fidele d'avant, les textes teintes (rose, bleu, vert...) sont ecrits
+# DANS LEUR couleur. Le cadre d'edition affiche deja la couleur ;
+# a la reprise, la couleur relue du MARQUEUR (celle decidee a la
+# premiere pose), pas un nouvel echantillon. (2) engine/correction.js :
+# param couleur valide /^#[0-9a-fA-F]{6}$/, l'encre des operateurs
+# texte ET des formules MathJax suit, la couleur voyage dans le
+# marqueur ; les corrections d'avant restent relues et repostees comme
+# avant (couleur absente = gris fidele). (3) engine/bouger.js : le
+# repose au deplacement/redimensionnement porte la couleur lue du
+# marqueur. (4) renderer/app.js dessinerCorrection : le texte ET les
+# formules tracent dans la couleur du marqueur. (5) engine/texte.js :
+# MARQUEUR_CORRECTION groupe 4 optionnel #RRGGBB,
+# extraireCouleurCorrection, exporte des deux branches.
+# Docs : README.md et docs/utilisation.md (la couleur rejoint police,
+# taille et gras dans la fidelite au document, v0.1.38/41).
+# Tests : test/texte.js (pur, relu localement : nouvelle colonne du
+# marqueur, marqueurs anciens intacts, source « #hex : » protegee) ;
+# test/correction.test.js CI (couleur ecrite dans les operateurs,
+# couleur mal formee refusee). Tag pose = porte de tests verte.
 # Declencheur de la v0.1.42 : le retour d'usage reel de l'outil Modifier
 # (v0.1.41) sur un vrai cours, par TROIS CAPTURES D'ECRAN sans mot (la
 # convention convenue : « en cas d'anomalie, une capture suffit »).

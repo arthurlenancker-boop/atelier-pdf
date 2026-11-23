@@ -168,7 +168,9 @@ et taille réelles.
   côté) pour poser ; Échap abandonne et rend l'original intact ;
   Maj+Entrée (ou Ctrl+Échap) passe à la ligne ; un texte vidé
   abandonne aussi la correction (v0.1.41 : l'étiquette clavier des
-  corrections est celle de l'outil Modifier).
+  corrections est celle de l'outil Modifier). Depuis la v0.1.43, le
+  texte corrigé reprend AUSSI la couleur d'encre du texte remplacé
+  quand il vit sous le rectangle (page à texte réel).
 - Un bloc de formule s'ouvre pareil, prérempli de son LaTeX entre
   dollars ($...$) : la formule corrigée est composée par le moteur
   d'équations, comme une équation posée.
@@ -199,8 +201,12 @@ préalablement reconnue, il travaille là où vous cliquez.
   disparaît sous un masque blanc le temps de l'édition : la ligne se
   lit une seule fois, la vôtre.
 - Tapez, supprimez, remplacez librement : la police (Times ou
-  Helvetica), la taille mesurée sur place et le gras de la ligne sont
-  repris à l'identique, le texte ajouté se fond dans le document.
+  Helvetica), la taille mesurée sur place, le gras et la COULEUR de
+  l'encre de la ligne sont repris à l'identique, le texte ajouté se
+  fond dans le document. Un texte rose reste rose, un titre bleu reste
+  bleu (v0.1.43) ; les textes noirs ou gris sont écrits dans le gris
+  fidèle de l'atelier. Une correction reprise ou déplacée garde aussi
+  sa couleur.
 - Sur une page scannée, le clic ouvre le bloc reconnu qui contient le
   point (même chemin que le bouton Reco) ; une page scannée non
   reconnue vous invite à armer d'abord l'outil Texte.

@@ -11,7 +11,7 @@ const { addCorrection } = require('../engine/correction.js');
 const { createSession } = require('../engine/session.js');
 const {
   PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
-  extraireFamilleCorrection, extraireGrasCorrection,
+  extraireFamilleCorrection, extraireGrasCorrection, extraireCouleurCorrection,
 } = require('../engine/texte.js');
 const { listAnnots } = require('../engine/reread.js');
 
@@ -203,4 +203,50 @@ test('addCorrection : les caractères exotiques (Ω, émoji) ne bloquent plus la
   const a = listAnnots(doc)[0];
   assert.strictEqual(extraireSourceCorrection(a.contents), source,
     'la source exotique est relue EXACTEMENT (l\'écran affiche « ? », la source reste intacte)');
+});
+
+/* v0.1.43 : la correction garde la COULEUR d'encre du texte remplacé
+ * (retour d'Arthur : « le texte est passé de rose à gris »). La couleur
+ * voyage dans le marqueur ET dans les opérateurs du fichier ; une couleur
+ * absente ou mal formée retombe sur le gris fidèle d'avant. */
+test('addCorrection : la couleur d\'encre est écrite dans le fichier et le marqueur (v0.1.43)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const rep = await addCorrection(doc, page, {
+    rect: [80, 700, 420, 722],
+    source: 'Un mot rose dans la page',
+    fontSize: 12,
+    couleur: '#E13A6E',
+  });
+  assert.ok(rep.ref, 'la correction colorée est posée');
+  const a = listAnnots(doc)[0];
+  assert.ok((a.contents || '').startsWith(`${PREFIXE_CORRECTION} 12 sans #E13A6E : `),
+    'la couleur voyage dans le marqueur, après la famille');
+  assert.strictEqual(extraireCouleurCorrection(a.contents), '#E13A6E');
+  assert.strictEqual(extraireSourceCorrection(a.contents), 'Un mot rose dans la page',
+    'la source reste lue derrière la couleur');
+  const octets = Buffer.from(await doc.save()).toString('latin1');
+  assert.ok(octets.includes('0.88 0.23 0.43 rg'),
+    'l\'encre ROSE du texte remplace l\'encre grise dans les opérateurs');
+  assert.ok(!octets.includes('0.08 0.09 0.1 rg'),
+    'l\'encre grise d\'avant n\'est plus écrite quand une couleur valable est donnée');
+});
+
+test('addCorrection : couleur absente ou MAL FORMÉE, l\'encre grise fidèle reste (v0.1.43)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  await addCorrection(doc, page, {
+    rect: [80, 700, 420, 722], source: 'Texte noir de la page', fontSize: 12,
+  });
+  await addCorrection(doc, page, {
+    rect: [80, 660, 420, 682], source: 'Couleur bâtarde refusée', fontSize: 12,
+    couleur: 'rose',
+  });
+  const annots = listAnnots(doc);
+  assert.ok(!(annots[0].contents || '').includes('#'), 'sans couleur, le marqueur reste comme avant');
+  assert.strictEqual(extraireCouleurCorrection(annots[0].contents), null);
+  assert.ok(!(annots[1].contents || '').includes('rose #'), 'une couleur mal formée n\'entre pas dans le marqueur');
+  const octets = Buffer.from(await doc.save()).toString('latin1');
+  assert.ok(octets.includes('0.08 0.09 0.1 rg'),
+    'l\'encre grise fidèle est écrite pour les deux corrections');
 });

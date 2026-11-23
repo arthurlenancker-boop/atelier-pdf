@@ -70,9 +70,13 @@ function extraireTailleFiche(contenu) {
  * v0.1.38 : le marqueur porte AUSSI la famille (serif|sans, retours
  * d'Arthur : le texte corrigé changeait de police) et le gras au besoin —
  * tous facultatifs : les corrections posées avant la v0.1.38 restent
- * relues telles quelles (famille « sans » au repose). */
+ * relues telles quelles (famille « sans » au repose).
+ * v0.1.43 : le marqueur porte AUSSI la couleur d'encre du texte remplacé
+ * (retour d'Arthur : « le texte est passé de rose à gris »), format
+ * #RRGGBB, facultative comme le reste — les marqueurs anciens restent
+ * relus telle quelle (null : l'écran retombe sur son gris fidèle). */
 const PREFIXE_CORRECTION = 'Correction OCR';
-const MARQUEUR_CORRECTION = /^Correction OCR(?: ([0-9]+(?:[.,][0-9]+)?)?)?(?: (serif|sans))?( gras)?\s*:\s*/;
+const MARQUEUR_CORRECTION = /^Correction OCR(?: ([0-9]+(?:[.,][0-9]+)?)?)?(?: (serif|sans))?( gras)?( #[0-9a-fA-F]{6})?\s*:\s*/;
 
 /** Relit la source d'une correction posée sur un bloc reconnu. */
 function extraireSourceCorrection(contenu) {
@@ -106,6 +110,16 @@ function extraireGrasCorrection(contenu) {
   if (typeof contenu !== 'string') return false;
   const m = contenu.match(MARQUEUR_CORRECTION);
   return !!(m && m[3]);
+}
+
+/** v0.1.43 : couleur d'encre embarquée dans le marqueur (« #RRGGBB »),
+ * null si le marqueur est l'ancien format (v0.1.29-42 : l'écran retombe
+ * sur son gris fidèle #14161c). Le groupe 4 vit après le gras, avant les
+ * deux-points : les marqueurs anciens, sans couleur, restent relus. */
+function extraireCouleurCorrection(contenu) {
+  if (typeof contenu !== 'string') return null;
+  const m = contenu.match(MARQUEUR_CORRECTION);
+  return (m && m[4]) ? m[4].trim() : null;
 }
 
 /* v0.1.31 : la note riche suit la même convention — la mise en forme
@@ -282,7 +296,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
     PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
-    extraireFamilleCorrection, extraireGrasCorrection,
+    extraireFamilleCorrection, extraireGrasCorrection, extraireCouleurCorrection,
     PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche,
   };
 } else {
@@ -290,7 +304,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
     PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
-    extraireFamilleCorrection, extraireGrasCorrection,
+    extraireFamilleCorrection, extraireGrasCorrection, extraireCouleurCorrection,
     PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche,
   };
 }
