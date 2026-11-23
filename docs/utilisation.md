@@ -173,7 +173,8 @@ et taille réelles.
   dollars ($...$) : la formule corrigée est composée par le moteur
   d'équations, comme une équation posée.
 - À l'enregistrement, la correction fait deux choses dans le
-  fichier : un rectangle blanc opaque COUVRE le scan du bloc, puis
+  fichier : un rectangle blanc opaque COUVRE l'original du bloc (le
+  scan, ou la ligne d'origine d'une page à texte réel), puis
   le texte corrigé est écrit en texte vectoriel standard. Dans tous
   les lecteurs, le texte devient sélectionnable et imprimable ; les
   blocs intacts restent l'image du scan, sans perte.
@@ -194,7 +195,9 @@ préalablement reconnue, il travaille là où vous cliquez.
 
 - Cliquez dans une phrase du document : la LIGNE cliquée s'ouvre à sa
   place, marquée d'une légère teinte de fond et d'un liseré discret,
-  le curseur au caractère le plus proche du clic.
+  le curseur au caractère le plus proche du clic. L'original
+  disparaît sous un masque blanc le temps de l'édition : la ligne se
+  lit une seule fois, la vôtre.
 - Tapez, supprimez, remplacez librement : la police (Times ou
   Helvetica), la taille mesurée sur place et le gras de la ligne sont
   repris à l'identique, le texte ajouté se fond dans le document.

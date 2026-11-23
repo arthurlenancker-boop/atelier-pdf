@@ -5,6 +5,28 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.42 : le retour d'usage reel de l'outil Modifier
+# (v0.1.41) sur un vrai cours, par TROIS CAPTURES D'ECRAN sans mot (la
+# convention convenue : « en cas d'anomalie, une capture suffit »).
+# Diagnostic : la ligne d'origine se lisait EN DOUBLE pendant l'edition,
+# « l'occupation française l'occupation française ». Cause : le cadre
+# de correction translucide de la v0.1.41 (teinte rgba(0,103,192,.07))
+# laissait transparaire l'encre d'origine du document SOUS la frappe ;
+# en reprise de correction, le masque blanc de l'annotation masquee
+# (etat.annotationMasquee) disparaissait aussi, l'original revenait
+# sous la frappe. Correctif (renderer/app.js, dessinerAnnots) : pendant
+# l'edition d'une correction (etat.saisieAttente kind correction), un
+# MASQUE BLANC OPAQUE couvre le rectangle exact de la zone en cours,
+# celui-la meme que la pose applique deja (dessinerCorrection
+# fillStyle #ffffff) : l'ecran ne montre plus que la frappe sur fond
+# blanc, la teinte legere du cadre reste le seul marqueur, la ligne se
+# lit une seule fois. Libelle du toast corrige au passage : « Texte
+# modifie : a l'enregistrement, l'original est remplace par le texte »
+# (l'ancien « le scan est remplace » n'avait pas de sens sur une page
+# a texte reel). Docs : docs/utilisation.md (masque blanc pendant
+# l'edition, rectangle blanc opaque generalise a l'original). Aucun
+# test moteur touche : catalogue des tests inchanges, la porte de tests
+# (npm test avant construction) reste la preuve.
 # Declencheur de la v0.1.41 : l'outil Modifier, croquis VALIDE par
 # Arthur (« c'est carré ça »). Demande : « pose moi des questions pour
 # savoir ce qu'il faut faire concernant la modification du texte

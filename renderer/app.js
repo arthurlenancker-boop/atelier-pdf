@@ -1723,6 +1723,20 @@ async function dessinerAnnots() {
   const ctx = els.calqueAnnots.getContext('2d');
   ctx.clearRect(0, 0, els.calqueAnnots.width, els.calqueAnnots.height);
   if (!etat.resume) return;
+  // v0.1.42 : pendant l'édition d'une correction, l'ORIGINAL disparaît
+  // sous un masque blanc au rectangle exact de la zone en cours. La
+  // translucidité du cadre (v0.1.41) laissait paraître l'encre d'origine
+  // SOUS la frappe : sur un vrai cours, la ligne se lisait en double
+  // (captures d'Arthur). Le masque est celui que la pose applique déjà
+  // (dessinerCorrection) : l'écran montre la même chose.
+  if (etat.saisieAttente && etat.saisieAttente.kind === 'correction'
+    && Array.isArray(etat.saisieAttente.rect)) {
+    const m0 = pdfVersEcran({ x: etat.saisieAttente.rect[0], y: etat.saisieAttente.rect[1] });
+    const m1 = pdfVersEcran({ x: etat.saisieAttente.rect[2], y: etat.saisieAttente.rect[3] });
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(Math.min(m0.x, m1.x), Math.min(m0.y, m1.y),
+      Math.abs(m1.x - m0.x), Math.abs(m1.y - m0.y));
+  }
   // v0.1.18 : l'annotation rééditée sur place disparaît du calque le temps
   // de l'écriture : le cadre d'édition EST le futur.
   const annots = etat.resume.annots.filter((a) => a.page === etat.page - 1
@@ -3913,8 +3927,11 @@ async function validerEditeur() {
   majResume(rep.resume);
   if (attente.kind === 'correction') {
     // v0.1.29 : le geste attendu depuis la maquette validée.
-    message(attente.ref ? 'Correction reprise : le scan du bloc est remplacé par le texte.'
-      : 'Bloc corrigé : à l\'enregistrement, le scan est remplacé par le texte.', 'reussite');
+    // v0.1.42 : le libellé dit L'ORIGINAL, pas « le scan » : la
+    // correction s'applique aussi aux lignes à texte réel (v0.1.41),
+    // où le mot scan n'a pas de sens (retour des captures d'Arthur).
+    message(attente.ref ? 'Correction reprise : à l\'enregistrement, l\'original est remplacé par le texte.'
+      : 'Texte modifié : à l\'enregistrement, l\'original est remplacé par le texte.', 'reussite');
     return;
   }
   message(attente.ref ? 'Texte modifié.'
