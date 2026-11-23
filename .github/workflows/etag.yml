@@ -5,6 +5,22 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.37 : retour d'Arthur — « je ne peux
+# plus cocher la case scan » (bouton Reco de la barre d'outils,
+# grisé). Cause etablie dans la source : l'etat des options OCR
+# du rendeur naissait au mode « mistral » par defaut et n'etait
+# relu NI au demarrage, NI a la validation de la carte (seule
+# l'ouverture de Fichier → Options OCR LaTeX… le rafraichissait) :
+# la reconnaissance du document a l'ouverture (v0.1.28) repartait
+# aussitot, aucune page n'avait de blocs reconnus, et le bouton
+# Reco restait grise en silence apres chaque lancement. Correctif
+# SANS changer le fichier PDF : (1) les options memorisees sont
+# relues au DEMARRAGE du rendeur (init) ; (2) la validation de la
+# carte actualise l'etat aussitot (validerOptionsOcr) ; (3) un
+# bouton grisé EXPLIQUE sa cause au survol (serveur non configure
+# ou page pas encore reconnue, majRecoVue) ; la garde demenagee en
+# fonction pure testable engine/ocr.js reconnaissanceServeurActif
+# (test/ocr.test.js, 2 tests). 272 tests.
 # Declencheur de la v0.1.36 : retour d'Arthur — « quand j'appuie
 # pour modifier une note, c'est possible de modifier avec la mise
 # en forme reconnue et pas avec cet amas de caracteres ? ». Cause

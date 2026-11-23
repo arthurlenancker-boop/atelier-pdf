@@ -2442,6 +2442,14 @@ async function validerOptionsOcr() {
     erreur.hidden = false;
     return;
   }
+  // v0.1.37 : l'état des options suit AUSSITÔT la validation, sans
+  // attendre une nouvelle ouverture de la carte — sinon le réglage
+  // fraîchement enregistré n'agissait sur l'ouverture qu'après un
+  // passage par la carte (même cause que le bouton Reco grisé).
+  try {
+    const apres = await window.atelier.optionsOcr();
+    if (apres) optionsOcrEtat = apres;
+  } catch { /* l'état lisible suivra à la prochaine ouverture de carte */ }
   fermerOptionsOcr();
   message($('#opt-serveur').checked
     ? `Serveur OCR enregistré : ${options.url}. Le bouton ƒ LaTeX lit désormais chez vous.${options.jeton ? ' Jeton enregistré.' : ''}`
@@ -2537,7 +2545,11 @@ async function reconnaitreDocument() {
   if (!etat.pdfjs || !etat.resume) return;
   // Rien en mode OCR Mistral : le bouton ƒ garde son rôle, l'ouverture
   // n'envoie le document à personne sans serveur personnel déclaré.
-  if (optionsOcrEtat.mode !== 'serveur' || !optionsOcrEtat.serveurUrl) return;
+  // v0.1.37 : la garde vit DANS le moteur (reconnaissanceServeurActif,
+  // testée) ; l'état des options est tenu à jour au démarrage et à la
+  // validation de la carte (init et validerOptionsOcr), sinon l'ouverture
+  // croyait au mode « mistral » tant que la carte n'était pas ouverte.
+  if (!AtelierOcr.reconnaissanceServeurActif(optionsOcrEtat)) return;
   const gen = ++recoDocument.generation;
   recoDocument.arretDemande = false;
   const total = etat.resume.pageCount;
@@ -2697,6 +2709,16 @@ function majRecoVue() {
   const page = blocsReconnus();
   const montrer = !!page && recoVue.visible && etat.outil === 'aucun' && !etat.saisieAttente;
   bouton.disabled = !page;
+  // v0.1.37 : un bouton grisé EN DIT LA RAISON au survol, au lieu de
+  // demeurer muet (retour d'Arthur : « je ne peux plus cocher la case
+  // scan » — la reconnaissance ne partait pas, le bouton ne l'expliquait pas).
+  if (!page) {
+    bouton.title = AtelierOcr.reconnaissanceServeurActif(optionsOcrEtat)
+      ? "Reconnaissance absente sur cette page : elle n'a pas (encore) été reconnue. Le bouton s'active dès qu'une page revient (ouverture du document, ou « Tester la reconnaissance » dans Fichier → Options OCR LaTeX…)."
+      : "Reconnaissance inactive : aucun serveur OCR personnel n'est configuré (Fichier → Options OCR LaTeX…). Sans lui, l'ouverture n'envoie le document à personne.";
+  } else {
+    bouton.title = "Reconnaissance : montrer ou cacher les blocs reconnus de la page affichée (un clic sur un bloc ouvre sa correction en place, formules comprises)";
+  }
   bouton.classList.toggle('actif', !!page && recoVue.visible);
   if (!montrer) {
     calque.hidden = true;
@@ -5161,6 +5183,17 @@ globalThis.__atelierDiagnostics = () => [
 ].join('\n');
 
 (async function init() {
+  // v0.1.37 : les options OCR MÉMORISÉES sont relues AU DÉMARRAGE, en
+  // PREMIER. Sans cela, optionsOcrEtat restait au mode « mistral » de sa
+  // déclaration tant que la carte des options n'était pas ouverte : la
+  // reconnaissance du document ne partait jamais à l'ouverture et le
+  // bouton Reco demeurait grisé même avec un serveur personnel
+  // correctement réglé (retour d'Arthur — « je ne peux plus cocher la
+  // case scan »).
+  try {
+    const etatOptions = await window.atelier.optionsOcr();
+    if (etatOptions) optionsOcrEtat = etatOptions;
+  } catch { /* sans état lisible, le mode mistral par défaut tient lieu */ }
   try {
     await chargerPdfjs();
   } catch (err) {

@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur, enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage } = require('../engine/ocr.js');
+const { borner, nettoyerCle, motsDepuisBlocs, extractionLatex, nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur, enteteJeton, messageErreurOcr, pageUrlDepuis, resumePage, reconnaissanceServeurActif } = require('../engine/ocr.js');
 
 // ————— borner —————
 test('borner borne un nombre dans l’intervalle', () => {
@@ -267,4 +267,26 @@ test('resumePage dit « aucun bloc » sur une page vide ou tordue', () => {
   assert.strictEqual(resumePage({ largeur: 10, hauteur: 10, blocs: [] }), 'Page reconnue : aucun bloc.');
   assert.strictEqual(resumePage(null), 'Page reconnue : aucun bloc.');
   assert.strictEqual(resumePage({ blocs: 'pas une liste' }), 'Page reconnue : aucun bloc.');
+});
+
+// ————— reconnaissanceServeurActif (v0.1.37) —————
+test('reconnaissanceServeurActif accepte le mode serveur avec adresse non vide', () => {
+  assert.strictEqual(
+    reconnaissanceServeurActif({ mode: 'serveur', serveurUrl: 'http://127.0.0.1:8642/ocr' }),
+    true
+  );
+  assert.strictEqual(
+    reconnaissanceServeurActif({ mode: 'serveur', serveurUrl: '  http://100.x.y.z:8642/ocr  ' }),
+    true
+  );
+});
+
+test('reconnaissanceServeurActif rejette le mode mistral, l’adresse vide, l’état absent', () => {
+  assert.strictEqual(reconnaissanceServeurActif({ mode: 'mistral', serveurUrl: '', clePresente: true }), false);
+  assert.strictEqual(reconnaissanceServeurActif({ mode: 'serveur', serveurUrl: '' }), false);
+  assert.strictEqual(reconnaissanceServeurActif({ mode: 'serveur', serveurUrl: '   ' }), false);
+  assert.strictEqual(reconnaissanceServeurActif({ mode: 'serveur' }), false);
+  assert.strictEqual(reconnaissanceServeurActif(null), false);
+  assert.strictEqual(reconnaissanceServeurActif(undefined), false);
+  assert.strictEqual(reconnaissanceServeurActif({ mode: 'serveur', serveurUrl: 42 }), false);
 });

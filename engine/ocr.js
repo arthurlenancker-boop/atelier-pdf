@@ -229,6 +229,22 @@ function pageUrlDepuis(url) {
 }
 
 /**
+ * v0.1.37 : la reconnaissance du document à l'ouverture (POST /page,
+ * une page après l'autre) ne part que si le serveur OCR personnel est
+ * réellement déclaré : mode « serveur » avec adresse non vide. Pure et
+ * tolérante (objet absent, adresse manquante, tout autre mode : faux) —
+ * le rendeur avait gardé son état « mistral » de démarrage tant que la
+ * carte des options n'était pas ouverte, et la reconnaissance ne
+ * partait jamais : bouton Reco grisé (retour d'Arthur).
+ * @param {*} etat contrat {mode, serveurUrl} des options OCR
+ * @returns {boolean}
+ */
+function reconnaissanceServeurActif(etat) {
+  return !!(etat && etat.mode === 'serveur'
+    && typeof etat.serveurUrl === 'string' && etat.serveurUrl.trim() !== '');
+}
+
+/**
  * v0.1.26 : résumé lisible d'une page reconnue (POST /page du serveur),
  * affiché dans la carte des options OCR. Les lignes de texte se comptent
  * en LIGNES (pas en blocs) ; les types absents sont omis ; une page vide
@@ -275,13 +291,13 @@ if (typeof module !== 'undefined' && module.exports) {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
     nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur,
     enteteJeton, messageErreurOcr,
-    pageUrlDepuis, resumePage,
+    pageUrlDepuis, resumePage, reconnaissanceServeurActif,
   };
 } else {
   globalThis.AtelierOcr = {
     borner, nettoyerCle, motsDepuisBlocs, extractionLatex,
     nettoyerUrlServeur, estHttpsLocal, latexDepuisReponseServeur,
     enteteJeton, messageErreurOcr,
-    pageUrlDepuis, resumePage,
+    pageUrlDepuis, resumePage, reconnaissanceServeurActif,
   };
 }
