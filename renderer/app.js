@@ -300,7 +300,7 @@ const etat = {
   options: {
     surligner: { forme: 'plein', couleur: '#FFDF3A' },
     encadrer: { forme: 'rect', trait: 'continu', ep: 'moyen', teinte: false, couleur: '#0067C0' },
-    ecrire: { taille: 11 },
+    ecrire: { taille: 11, couleur: null, styles: {} }, // v0.1.40 : styles et couleur armés
   },
 };
 
@@ -3709,6 +3709,22 @@ function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
       sel.removeAllRanges();
       sel.addRange(r);
     }
+    // v0.1.40 : sur une note NEUVE, les styles et la couleur ARMÉS au
+    // panneau Écrire (cliqué sans note ouverte) s'appliquent au départ
+    // de la saisie, comme dans la maquette validée. La reprise d'une
+    // note posée garde sa mise en forme propre : rien n'y est réarmé.
+    if (attente.kind === 'freeText' && !attente.ref) {
+      try {
+        riche.focus();
+        document.execCommand('styleWithCSS', false, true);
+        Object.keys(etat.options.ecrire.styles).forEach((cle) => {
+          if (CMDS_RICHE[cle]) document.execCommand(CMDS_RICHE[cle], false, null);
+        });
+        if (etat.options.ecrire.couleur) {
+          document.execCommand('foreColor', false, etat.options.ecrire.couleur);
+        }
+      } catch (e) { /* navigateur sans execCommand : la pose reste texte */ }
+    }
   } else {
     zone.focus();
     zone.setSelectionRange(zone.value.length, zone.value.length);
@@ -5040,8 +5056,18 @@ document.querySelectorAll('#pan-opt-ecrire [data-style]').forEach((b) => {
   b.addEventListener('click', () => {
     const riche = $('#editeur-riche');
     if (riche.hidden) {
-      b.classList.toggle('actif');
-      return; // arme le style de la prochaine saisie (départ de ligne)
+      // v0.1.40 : l'armement est VRAI — l'état est relu à l'ouverture de
+      // la prochaine note (comme dans la maquette validée, où cliquer
+      // Gras puis écrire produit du gras).
+      const cle = b.dataset.style;
+      if (etat.options.ecrire.styles[cle]) {
+        delete etat.options.ecrire.styles[cle];
+        b.classList.remove('actif');
+      } else {
+        etat.options.ecrire.styles[cle] = true;
+        b.classList.add('actif');
+      }
+      return;
     }
     riche.focus();
     try {
@@ -5085,6 +5111,23 @@ peuplerSw('sw-fond', COULEURS_SURLIGNER, null, (c) => {
     document.execCommand('hiliteColor', false,
       `rgba(${Math.round(v[0] * 255)}, ${Math.round(v[1] * 255)}, ${Math.round(v[2] * 255)}, 0.6)`);
   } catch (e) { /* idem */ }
+});
+/* v0.1.40 : la palette « Couleur du texte » est ENFIN branchée — la
+   maquette validée la prévoyait, la v0.1.31 l'a livrée vide : la
+   section existait dans le panneau mais aucune pastille n'y était
+   jamais ajoutée et aucun geste ne colorait le texte. La couleur
+   s'applique à la sélection de l'éditeur ouvert (foreColor en span de
+   style, le sérialiseur et le moteur le posent tel quel dans le
+   fichier) ; sans éditeur ouvert, elle s'ARME pour la prochaine note. */
+peuplerSw('sw-ecrire', COULEURS_ENCADER, etat.options.ecrire.couleur, (c) => {
+  etat.options.ecrire.couleur = c;
+  const riche = $('#editeur-riche');
+  if (riche.hidden) return; // armée : appliquée au départ de la prochaine note
+  riche.focus();
+  try {
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand('foreColor', false, c);
+  } catch (e) { /* navigateur sans execCommand : la pose reste texte */ }
 });
 majTailleVal();
 

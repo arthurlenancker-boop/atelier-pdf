@@ -5,6 +5,34 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.40 : retour d'Arthur — « essaie de revoir le
+# code pour les modifications pour qu'il soit comme je le pense ».
+# Revue du code des annotations riches contre la maquette VALIDEE
+# (demo-couleurs-formes-texte) : tout est conforme (formes de
+# surlignage et de cadre, traits, epaisseurs, teinte, cercle
+# chromatique, machine a ecrire riche, reprise, redimensionnement)
+# SAUF deux manques livres depuis la v0.1.31 : (1) la palette
+# « Couleur du texte » du panneau Ecrire existait VIDE — la section
+# etait dans index.html mais aucune pastille n'y etait jamais ajoutee
+# et aucun geste ne colorait le texte, alors que la maquette validée
+# offrait sept couleurs, la pastille personnalisee et le cercle
+# chromatique, et que le moteur compose deja les spans colorés
+# (riche.test.js #D13438) ; (2) les boutons de mise en forme cliques
+# SANS note ouverte s'illuminaient en annoncant « armer le style de
+# la prochaine saisie » mais l'armement n'etait relu nulle part :
+# cliquer Gras puis ecrire ne produisait PAS de gras, contrairement a
+# la maquette. Correctif SANS toucher au moteur ni au format des
+# fichiers, rendu et UI seulement (renderer/app.js) : la palette
+# sw-ecrire est peuplee comme les autres (sept couleurs + pastille
+# personnalisee + cercle chromatique partage), la couleur s'applique
+# a la selection de l'editeur ouvert par foreColor en span de style
+# (le serialiseur et le moteur le posent tel quel), ou s'ARME pour
+# la prochaine note ; l'armement des styles est desormais un VRAI
+# etat (etat.options.ecrire.styles) et l'ouverture d'une note NEUVE
+# rejoue les styles et la couleur armes au depart de la saisie — la
+# reprise d'une note posee garde sa mise en forme propre, rien n'y
+# est rearme. Aucun changement du moteur : les 288 tests restent
+# inchanges (seul le rendu bouge ; syntaxe verifiee node --check).
 # Declencheur de la v0.1.39 : retour d'Arthur — « c'est ça aussi qui me
 # gene une boite s'ouvre et ce n'est pas utile pour modifier » avec
 # captures : sur une page a texte reel, l'editeur de correction
