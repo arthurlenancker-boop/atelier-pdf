@@ -5,6 +5,30 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.38 : retour d'Arthur — « quand je modifie le
+# texte ca forme un amas de texte et apres les modifications ne
+# s'appliquent pas et le texte reste tel qu'il etait » puis « le test
+# modifie la police ». Cause etablie dans la source : la correction en
+# place (v0.1.29) fut concue pour les SCANS ; appliquee a une page a
+# TEXTE REEL (nee sous Word, LibreOffice, PowerPoint), elle estime la
+# taille de l'image de reconnaissance et reecrit tout en Helvetica
+# uniforme : police changee, style perdu, et une formule que MathJax
+# ne peut pas rendre faisait ECHOUER la pose entiere (« les
+# modifications ne s'appliquent pas », annot retire puis jamais
+# reposee). Correctif SANS changer le format des fichiers : (1) nouveau
+# moteur pur engine/textereel.js : le vrai texte de la page est lu par
+# pdf.js (fragments + styles), la correction repart de la source
+# reelle, de la TAILLE reelle mesuree sur place, de la FAMILLE reelle
+# (serif -> police Times, sinon Helvetica) et du gras au besoin ;
+# (2) la famille et le gras voyagent dans le marqueur /Contents
+# (« Correction OCR <taille> <serif|sans> [gras] : », anciens marqueurs
+# relus), donc la reprise, le deplacement et le redimensionnement
+# reposent la correction dans SA police (engine/bouger.js) ; (3) une
+# formule non rendable s'ecrit en texte translittere : la pose
+# reussit TOUJOURS (engine/correction.js) ; (4) le fichier de
+# reconnaissance reste maitre sur les pages scanned muettes.
+# Tests : test/textereel.test.js (7), test/correction.test.js etendu
+# (2 nouveaux + marqueur famille/gras). 284 tests.
 # Declencheur de la v0.1.37 : retour d'Arthur — « je ne peux
 # plus cocher la case scan » (bouton Reco de la barre d'outils,
 # grisé). Cause etablie dans la source : l'etat des options OCR

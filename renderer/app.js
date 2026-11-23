@@ -13,6 +13,7 @@ import '../engine/unicodemath.js'; // expose globalThis.AtelierUniMath (v0.1.24)
 import '../engine/couleurs.js'; // expose globalThis.AtelierCouleurs (v0.1.31)
 import '../engine/markup.js'; // expose globalThis.AtelierMarkup (v0.1.31)
 import '../engine/surlignage.js'; // expose globalThis.AtelierSurlignage (v0.1.35)
+import '../engine/textereel.js'; // expose globalThis.AtelierTexteReel (v0.1.38)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
 const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur, estHttpsLocal } = globalThis.AtelierOcr;
@@ -499,6 +500,7 @@ async function afficherDocument(rep, vueMemorisee) {
   etat.remplacement = null;
   etat.opsEquation.clear(); // v0.1.10
   etat.opsFiche.clear();    // v0.1.30 : les ops de l'onglet précédé ne servent plus
+  cacheItemsTexte.clear();  // v0.1.38 : le vrai texte appartient au document ouvert
   motsOcrPages.clear();     // v0.1.22 : une autre reconnaissance tout autre document
   couperReconnaissanceDocument(); // v0.1.28 : idem reconnaissance serveur du document
   pageMuette = false;
@@ -587,6 +589,7 @@ async function fermerOnglet(id) {
     etat.remplacement = null;
     etat.opsEquation.clear();
     etat.opsFiche.clear();
+    cacheItemsTexte.clear();
     motsOcrPages.clear();
     couperReconnaissanceDocument();
     if (etat.pdfjs) { await etat.pdfjs.destroy(); etat.pdfjs = null; }
@@ -1038,6 +1041,17 @@ function dessinerFicheMixte(ctx, a, x, y, w, h) {
 function dessinerCorrection(ctx, a, x, y, w, h) {
   const fs = extraireTailleCorrection(a.contents) || FS_FICHE;
   const k = fs / FS_FICHE; // les mesures d'Helvétique sont linéaires en corps
+  // v0.1.38 : la famille du MARQUEUR gouverne le tracé écran — le fichier
+  // et l'aperçu recomposent dans la même (Times pour une correction d'une
+  // page à empattements). Les marqueurs anciens, sans famille, étaient
+  // posés en Helvetica : le repli « sans » est fidèle.
+  const serif = extraireFamilleCorrection(a.contents) === 'serif';
+  const gras = Boolean(extraireGrasCorrection(a.contents));
+  const policeEcran = `${gras ? 'bold ' : ''}${serif ? '"Times New Roman", Times, serif' : 'sans-serif'}`;
+  const mesurer = (t) => {
+    mesureCtx.font = `${gras ? 'bold ' : ''}${FS_FICHE}px ${serif ? '"Times New Roman", Times, serif' : 'sans-serif'}`;
+    return mesureCtx.measureText(String(t)).width;
+  };
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(x, y, w, h);
   const source = extraireSourceCorrection(a.contents);
@@ -1049,7 +1063,7 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
   if (!pret) {
     // Ops pas encore chargées (ou formule illisible) : la source reste
     // lisible en attendant, et le calcul se fait au fond.
-    ctx.font = `${fs * etat.zoom}px sans-serif`;
+    ctx.font = `${fs * etat.zoom}px ${policeEcran}`;
     ctx.fillStyle = '#14161c';
     ctx.textBaseline = 'alphabetic';
     const ligne = source.replace(/\n/g, ' ');
@@ -1063,13 +1077,13 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
       : { widthPt: 0, heightPt: 0, depthPt: 0 };
   };
   const layout = composerLignes(segments, {
-    mesurerTexte: (t) => mesurerFicheTexte(t) * k,
+    mesurerTexte: (t) => mesurer(t) * k,
     dimsFormule: dims,
     largeurMax: (a.rect[2] - a.rect[0]) - 2 * MARGE_FICHE,
     fontSize: fs,
   });
   const interbase = INTERBASE_FICHE * fs;
-  ctx.font = `${fs * etat.zoom}px sans-serif`;
+  ctx.font = `${fs * etat.zoom}px ${policeEcran}`;
   ctx.fillStyle = '#14161c';
   ctx.textBaseline = 'alphabetic';
   let curseur = a.rect[3] - MARGE_V_FICHE * k; // haut du rectangle, points PDF
@@ -1235,6 +1249,12 @@ function dessinerApercuFiche(source) {
   const c = canvas.getContext('2d');
   const FS = 12;                      // taille d'affichage de l'aperçu
   const k = FS / FS_FICHE;            // échelle des formules
+  // v0.1.38 : l'aperçu d'une CORRECTION se compose dans la famille et
+  // l'épaisseur du texte remplacé (le fichier suivra la même).
+  const att = etat.saisieAttente;
+  const serif = !!(att && att.kind === 'correction' && att.famille === 'serif');
+  const gras = !!(att && att.kind === 'correction' && att.gras);
+  const policeEcran = `${gras ? 'bold ' : ''}${serif ? '"Times New Roman", Times, serif' : 'sans-serif'}`;
   const segments = decouperMelange(source);
   const apercuDe = (latex) => etat.apercuEditeur.get(latex);
   const dims = (latex) => {
@@ -1243,7 +1263,7 @@ function dessinerApercuFiche(source) {
       : { widthPt: mesurerFicheTexte(`$${latex}$`), heightPt: FS_FICHE * 0.75, depthPt: 0 };
   };
   const mesurer = (t) => {
-    c.font = `${FS}px sans-serif`;
+    c.font = `${FS}px ${policeEcran}`;
     return c.measureText(String(t)).width / k;
   };
   const layout = composerLignes(segments, {
@@ -1261,7 +1281,7 @@ function dessinerApercuFiche(source) {
   canvas.height = Math.max(24, Math.round(hauteur));
   canvas.hidden = false;
   c.clearRect(0, 0, canvas.width, canvas.height);
-  c.font = `${FS}px sans-serif`;
+  c.font = `${FS}px ${policeEcran}`;
   c.textBaseline = 'alphabetic';
   let basePx = 9 + layout.lignes[0].hDessus * k;
   for (const ligne of layout.lignes) {
@@ -2682,6 +2702,45 @@ function tailleEstimeeDeBloc(b) {
   return Math.min(28, Math.max(6, Math.round(fs * 2) / 2));
 }
 
+/* v0.1.38 : le VRAI texte de la page ouverte. Un getTextContent par
+   page, PROMIS en cache le temps du document : la correction en place
+   lit la source, la taille, la famille et le gras réels du texte qu'elle
+   remplace (retour d'Arthur : le texte modifié changeait de police et
+   formait un amas — la page était à texte réel, la reconnaissance n'y
+   était pour rien). Null si la page n'a pas de couche de texte : un scan
+   garde le chemin de la reconnaissance. */
+const cacheItemsTexte = new Map(); // n° de page -> Promise<{items, styles} | null>
+
+function itemsTexteDePage(numPage) {
+  if (!etat.pdfjs || !Number.isInteger(numPage) || numPage < 1) return Promise.resolve(null);
+  if (!cacheItemsTexte.has(numPage)) {
+    cacheItemsTexte.set(numPage, (async () => {
+      try {
+        const page = await etat.pdfjs.getPage(numPage);
+        const contenu = await page.getTextContent();
+        return (contenu && Array.isArray(contenu.items) && contenu.items.length)
+          ? { items: contenu.items, styles: contenu.styles || {} } : null;
+      } catch (e) {
+        return null; // page détruite entre-temps : la correction repliera
+      }
+    })());
+  }
+  return cacheItemsTexte.get(numPage);
+}
+
+/** Texte réel tombant dans un rectangle [x0, yBas, x1, yHaut] de la page
+ *  affichée : {source, taille, famille, gras, rect} ou null. */
+async function texteReelDeRect(rect) {
+  if (!Array.isArray(rect) || rect.length < 4 || !etat.page) return null;
+  const contenu = await itemsTexteDePage(etat.page);
+  if (!contenu) return null;
+  try {
+    return AtelierTexteReel.analyserItemsTexte(contenu.items, contenu.styles, rect);
+  } catch (e) {
+    return null; // jamais bloquer la correction sur une lecture de texte
+  }
+}
+
 /** Correction posée qui recouvre le mieux le rectangle : le clic sur un
  * bloc corrigé REPREND la correction (au lieu d'en empiler une seconde). */
 function correctionSurRect(rect) {
@@ -2770,8 +2829,13 @@ function majRecoVue() {
 
 /* Un clic sur un bloc reconnu ouvre sa correction en place, préremplie
  * du texte reconnu ; sur un bloc déjà corrigé, la correction existante
- * est REPRISE (et reposée à la validation). */
-els.calqueReco.addEventListener('click', (ev) => {
+ * est REPRISE (et reposée à la validation).
+ * v0.1.38 : FIDÉLITÉ AU DOCUMENT — si un VRAI texte vit sous le rectangle
+ * (page née sous Word, LibreOffice, PowerPoint…), la correction part de
+ * LUI : source réelle, taille réelle mesurée sur place, famille (Times
+ * ou Helvetica), gras au besoin. Une page scannée garde la source de la
+ * reconnaissance et sa taille estimée, comme toujours. */
+els.calqueReco.addEventListener('click', async (ev) => {
   const div = ev.target.closest('.reco-bloc');
   if (!div || div.classList.contains('reco-tranquille')) return;
   const page = blocsReconnus();
@@ -2781,10 +2845,28 @@ els.calqueReco.addEventListener('click', (ev) => {
   const rect = rectPdfDeBloc(b, page);
   const existante = correctionSurRect(rect);
   if (existante) {
-    ouvrirEditeur('correction', null, existante);
+    const famille = extraireFamilleCorrection(existante.contents) === 'serif' ? 'serif' : 'sans';
+    const gras = Boolean(extraireGrasCorrection(existante.contents));
+    ouvrirEditeur('correction', null, existante, { famille, gras });
     return;
   }
-  ouvrirEditeur('correction', { rect, source: sourceDeBloc(b), fontSize: tailleEstimeeDeBloc(b) });
+  let donnees = { rect, source: sourceDeBloc(b), fontSize: tailleEstimeeDeBloc(b) };
+  const reel = await texteReelDeRect(donnees.rect);
+  if (reel && reel.source.trim()) {
+    // Le rectangle COUVE le vrai texte (union) : l'encre réelle dépasse
+    // parfois la boîte mesurée sur l'image de reconnaissance.
+    donnees = {
+      rect: [
+        Math.min(rect[0], reel.rect[0]), Math.min(rect[1], reel.rect[1]),
+        Math.max(rect[2], reel.rect[2]), Math.max(rect[3], reel.rect[3]),
+      ],
+      source: reel.source,
+      fontSize: reel.taille,
+      famille: reel.famille,
+      gras: reel.gras,
+    };
+  }
+  ouvrirEditeur('correction', donnees);
 });
 
 /* Le bouton Reconnaissance masque ou remet l'aperçu : masqué, les
@@ -2906,7 +2988,10 @@ function ecouterSouris() {
     } else if (cible.subtype === 'Square' && (cible.contents || '').startsWith(PREFIXE_CORRECTION)) {
       // v0.1.29 : reprise d'une correction posée (l'aperçu de la
       // reconnaissance est masqué : la Sélection voit l'annotation).
-      ouvrirEditeur('correction', null, cible);
+      // v0.1.38 : la famille et le gras du marqueur suivent la reprise.
+      const famille = extraireFamilleCorrection(cible.contents) === 'serif' ? 'serif' : 'sans';
+      const gras = Boolean(extraireGrasCorrection(cible.contents));
+      ouvrirEditeur('correction', null, cible, { famille, gras });
     }
   });
 
@@ -3459,7 +3544,7 @@ async function habillerFormulesEditeur() {
   }
 }
 
-function ouvrirEditeur(genre, pointOuRect, cible) {
+function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
   if (!etat.resume) return;
   let attente;
   const mixte = !!(cible && cible.subtype === 'Square'
@@ -3467,9 +3552,16 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   if (genre === 'correction') {
     // v0.1.29 : reprise d'une correction posée (cible = annotation) ou
     // correction neuve d'un bloc reconnu (pointOuRect = le bloc).
+    // v0.1.38 : la FAMILLE et le GRAS voyagent avec la correction (lus
+    // du vrai texte de la page à la pose, du marqueur à la reprise).
     const reprise = !!(cible && cible.ref && (cible.contents || '').startsWith(PREFIXE_CORRECTION));
     const bloc = reprise ? cible : pointOuRect;
     if (!bloc || !bloc.rect) return;
+    const famille = (supplement && supplement.famille) === 'serif'
+      || (!reprise && bloc.famille === 'serif') ? 'serif' : 'sans';
+    const gras = reprise
+      ? Boolean((supplement && supplement.gras) || extraireGrasCorrection(cible.contents))
+      : Boolean((supplement && supplement.gras) || bloc.gras);
     attente = {
       kind: 'correction',
       sujet: 'Correction',
@@ -3479,6 +3571,8 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
       fontSize: reprise
         ? (extraireTailleCorrection(cible.contents) || 11)
         : (Number.isFinite(bloc.fontSize) && bloc.fontSize > 0 ? bloc.fontSize : 11),
+      famille,
+      gras,
       ref: reprise ? cible.ref : null,
     };
   } else if (cible && cible.subtype === 'FreeText'
@@ -3568,6 +3662,13 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
   }
   zone.style.fontSize = `${fsCadre * etat.zoom}px`;
   zone.style.lineHeight = `${Math.round(fsCadre * 1.3 * etat.zoom)}px`;
+  // v0.1.38 : la correction écrit dans la FAMILLE du texte remplacé — le
+  // cadre montre déjà ce que la validation posera (Times pour une page à
+  // empattements, sinon la sans empattement d'origine).
+  zone.style.fontFamily = attente.kind === 'correction' && attente.famille === 'serif'
+    ? '"Times New Roman", Times, serif' : '';
+  if (attente.kind === 'correction' && attente.gras) zone.style.fontWeight = '600';
+  else zone.style.fontWeight = '';
   zone.style.padding = `${Math.round((estNoteNue ? 1 : 2) * etat.zoom)}px ${Math.round(3 * etat.zoom)}px ${Math.round(etat.zoom)}px`;
   zone.style.height = 'auto';
   zone.value = estRiche ? '' : attente.contenu;
@@ -3672,9 +3773,13 @@ async function validerEditeur() {
     // v0.1.29 : le bloc corrigé est REPOSA tel quel — le moteur (engine/
     // correction.js) masque le scan du bloc par un rectangle blanc
     // opaque et écrit le texte vectoriel, les $formules$ composées.
+    // v0.1.38 : la famille (Times ou Helvetica) et le gras suivent, lus
+    // du vrai texte de la page à la première pose, du marqueur ensuite.
     kind = 'correction';
     args.source = texte;
     args.fontSize = attente.fontSize;
+    args.famille = attente.famille === 'serif' ? 'serif' : 'sans';
+    args.gras = Boolean(attente.gras);
   } else if (estRiche) {
     // v0.1.31 : notes et fiches se posent en NOTE RICHE — texte mis en
     // forme (gras, couleurs, listes, alignements) et formules $...$,
@@ -4226,6 +4331,7 @@ const { PREFIXE_EQUATION, extraireLatexEquation } = globalThis.AtelierLatex;
 const { PREFIXE_FICHE_MIXTE, extraireSourceFiche, translitterMathWinAnsi,
   decouperMelange, contientFormule, exPourCorps, composerLignes,
   PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+  extraireFamilleCorrection, extraireGrasCorrection,
   PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche } = globalThis.AtelierTexte;
 const { poigneesRect, poigneeSousPoint, rectDepuisPoignee } = globalThis.AtelierGeom;
 const { GUIDES, composerSysteme, composerMatrice } = globalThis.AtelierGuides;

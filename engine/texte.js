@@ -66,9 +66,13 @@ function extraireTailleFiche(contenu) {
 /* v0.1.29 : la correction d'un bloc reconnu suit la même convention que la
  * fiche mixte — la source brute (avec les $formules$ et l'Unicode) voyage
  * dans /Contents derrière le marqueur « Correction OCR [taille] : », la
- * taille du corps embarquée pour recomposer à l'identique. */
+ * taille du corps embarquée pour recomposer à l'identique.
+ * v0.1.38 : le marqueur porte AUSSI la famille (serif|sans, retours
+ * d'Arthur : le texte corrigé changeait de police) et le gras au besoin —
+ * tous facultatifs : les corrections posées avant la v0.1.38 restent
+ * relues telles quelles (famille « sans » au repose). */
 const PREFIXE_CORRECTION = 'Correction OCR';
-const MARQUEUR_CORRECTION = /^Correction OCR(?: ([0-9]+(?:[.,][0-9]+)?)?)?\s*:\s*/;
+const MARQUEUR_CORRECTION = /^Correction OCR(?: ([0-9]+(?:[.,][0-9]+)?)?)?(?: (serif|sans))?( gras)?\s*:\s*/;
 
 /** Relit la source d'une correction posée sur un bloc reconnu. */
 function extraireSourceCorrection(contenu) {
@@ -85,6 +89,23 @@ function extraireTailleCorrection(contenu) {
   if (!m || m[1] === undefined) return null;
   const t = Number(String(m[1]).replace(',', '.'));
   return Number.isFinite(t) && t > 0 ? t : null;
+}
+
+/** v0.1.38 : famille embarquée dans le marqueur (« serif » ou « sans »),
+ * null si le marqueur est l'ancien format (v0.1.29-37 : toujours « sans »). */
+function extraireFamilleCorrection(contenu) {
+  if (typeof contenu !== 'string') return null;
+  const m = contenu.match(MARQUEUR_CORRECTION);
+  if (!m || !m[2]) return null;
+  return m[2];
+}
+
+/** v0.1.38 : gras embarqué dans le marqueur (le texte corrigé avait été
+ * repéré en gras sur la page), faux sinon. */
+function extraireGrasCorrection(contenu) {
+  if (typeof contenu !== 'string') return false;
+  const m = contenu.match(MARQUEUR_CORRECTION);
+  return !!(m && m[3]);
 }
 
 /* v0.1.31 : la note riche suit la même convention — la mise en forme
@@ -249,6 +270,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
     PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+    extraireFamilleCorrection, extraireGrasCorrection,
     PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche,
   };
 } else {
@@ -256,6 +278,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PREFIXE_FICHE_MIXTE, extraireSourceFiche, extraireTailleFiche, translitterMathWinAnsi,
     decouperMelange, contientFormule, exPourCorps, composerLignes,
     PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+    extraireFamilleCorrection, extraireGrasCorrection,
     PREFIXE_NOTE_RICHE, extraireSourceNoteRiche, extraireTailleNoteRiche,
   };
 }

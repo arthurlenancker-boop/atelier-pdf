@@ -11,6 +11,7 @@ const { addCorrection } = require('../engine/correction.js');
 const { createSession } = require('../engine/session.js');
 const {
   PREFIXE_CORRECTION, extraireSourceCorrection, extraireTailleCorrection,
+  extraireFamilleCorrection, extraireGrasCorrection,
 } = require('../engine/texte.js');
 const { listAnnots } = require('../engine/reread.js');
 
@@ -33,7 +34,7 @@ test('addCorrection : pose une correction de texte SANS formule (le cas ordinair
   const a = annots[0];
   assert.strictEqual(a.subtype, 'Square');
   assert.strictEqual(a.subject, 'Correction', 'le /Subject distingue la correction à l\'écran');
-  assert.ok((a.contents || '').startsWith(`${PREFIXE_CORRECTION} 12 : `), 'le marqueur (avec taille) voyage dans /Contents');
+  assert.ok((a.contents || '').startsWith(`${PREFIXE_CORRECTION} 12 sans : `), 'le marqueur (taille + famille par défaut) voyage dans /Contents');
   assert.strictEqual(extraireSourceCorrection(a.contents), SOURCE_TEXTE, 'la source relue est EXACTEMENT la source saisie');
   assert.strictEqual(extraireTailleCorrection(a.contents), 12, 'la taille du corps voyage dans le marqueur');
 
@@ -93,4 +94,87 @@ test('relecture du marqueur : taille décimale et l\'ancien format sans taille',
   assert.strictEqual(extraireSourceCorrection('Correction OCR 12,5 : a $b$ c'), 'a $b$ c');
   assert.strictEqual(extraireSourceCorrection('Fiche mixte 11 : pas une correction'),
     '', 'le marqueur de fiche n\'est pas confondu avec celui de correction');
+});
+
+test('relecture du marqueur : famille et gras (v0.1.38), anciens formats relus', () => {
+  assert.strictEqual(extraireFamilleCorrection('Correction OCR 12 serif gras : Un titre'), 'serif');
+  assert.strictEqual(extraireGrasCorrection('Correction OCR 12 serif gras : Un titre'), true);
+  assert.strictEqual(extraireFamilleCorrection('Correction OCR 12 sans : du texte courant'), 'sans');
+  assert.strictEqual(extraireGrasCorrection('Correction OCR 12 sans : du texte courant'), false);
+  // Anciens marqueurs (v0.1.29 à v0.1.37) : sans famille ni gras.
+  assert.strictEqual(extraireFamilleCorrection('Correction OCR 11 : ancien'), null,
+    'l\'ancien marqueur ne porte pas de famille (le rendu repliera sur sans)');
+  assert.strictEqual(extraireGrasCorrection('Correction OCR 11 : ancien'), false);
+  assert.strictEqual(extraireSourceCorrection('Correction OCR 12 serif gras : a $b$ c'), 'a $b$ c',
+    'la source reste lue derrière les nouveaux termes du marqueur');
+});
+
+test('addCorrection : la correction SERIF prend la police Times du document (v0.1.38)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const rep = await addCorrection(doc, page, {
+    rect: [80, 700, 420, 722],
+    source: 'Un titre en empattements',
+    fontSize: 14,
+    famille: 'serif',
+    gras: true,
+  });
+  assert.ok(rep.ref, 'la correction serif est posée');
+  const a = listAnnots(doc)[0];
+  assert.ok((a.contents || '').startsWith(`${PREFIXE_CORRECTION} 14 serif gras : `),
+    'la famille et le gras voyagent dans le marqueur');
+  assert.strictEqual(extraireFamilleCorrection(a.contents), 'serif');
+  assert.strictEqual(extraireGrasCorrection(a.contents), true);
+  const octets = Buffer.from(await doc.save()).toString('latin1');
+  assert.ok(octets.includes('/F1 14 Tf'), 'l\'apparence écrit à la taille du texte remplacé');
+  // La police de la ressource est la RÉFÉRENCE de la police embarquée (elle
+  // n\'entre au contexte qu\'à l\'enregistrement) : résolue, c\'est bien
+  // /Times-Bold — le fichier porte Times, pas Helvetica.
+  const { PDFName: PN } = require('pdf-lib');
+  const ctx = doc.context;
+  const annot = ctx.lookup(rep.ref);
+  const ap = ctx.lookup(annot.get(PN.of('AP')));
+  const forme = ctx.lookup(ap.get(PN.of('N')));
+  const res = ctx.lookup(forme.dict.get(PN.of('Resources')));
+  const fRef = res.get(PN.of('Font')).get(PN.of('F1'));
+  const fDict = ctx.lookup(fRef);
+  assert.strictEqual(String(ctx.lookup(fDict.get(PN.of('BaseFont')))), '/Times-Bold',
+    'la ressource /F1 désigne la police Times grasse');
+});
+
+test('addCorrection : sans famille passée, le marqueur dit « sans » (Helvetica)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  await addCorrection(doc, page, { rect: [80, 700, 420, 722], source: 'Texte sans empattements', fontSize: 11 });
+  const a = listAnnots(doc)[0];
+  assert.ok((a.contents || '').startsWith(`${PREFIXE_CORRECTION} 11 sans : `),
+    'sans famille passée, le marqueur dit « sans » (Helvetica)');
+});
+
+test('addCorrection : une formule NON rendable ne fait plus échouer la pose (v0.1.38)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const source = 'Résous $\\MacroInconnuePourPersonne{x}{y}$ puis conclus.';
+  const rep = await addCorrection(doc, page, { rect: [80, 600, 420, 640], source, fontSize: 11 });
+  assert.ok(rep.ref, 'la correction est posée malgré la formule non rendable');
+  const a = listAnnots(doc)[0];
+  assert.strictEqual(extraireSourceCorrection(a.contents), source,
+    'la source (formule blessée comprise) est relue exactement');
+  const octets = Buffer.from(await doc.save()).toString('latin1');
+  assert.ok(octets.includes('1 1 1 rg'), 'le masque blanc est écrit');
+  assert.ok(/\/F1 11 Tf/.test(octets), 'le texte de repli s\'écrit avec la police du bloc');
+});
+
+test('addCorrection : le redimensionnement REPOSE la correction dans sa famille (v0.1.38)', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const { redimensionnerAnnot } = require('../engine/bouger.js');
+  const rep = await addCorrection(doc, page, {
+    rect: [80, 700, 420, 722], source: 'Titre serif', fontSize: 14, famille: 'serif', gras: true,
+  });
+  const repose = await redimensionnerAnnot(doc, page, { ref: rep.ref, rect: [80, 700, 460, 722] });
+  const a = listAnnots(doc)[0];
+  assert.ok((a.contents || '').startsWith(`${PREFIXE_CORRECTION} 14 serif gras : `),
+    'la correction reposée garde SA famille et SON gras');
+  assert.strictEqual(Math.round(repose.rect[2]), 460, 'le rectangle visé est tenu');
 });

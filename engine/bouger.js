@@ -287,6 +287,7 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
   if (correction) {
     const {
       extraireSourceCorrection, extraireTailleCorrection,
+      extraireFamilleCorrection, extraireGrasCorrection,
     } = require('./texte.js');
     const { addCorrection } = require('./correction.js');
     const source = extraireSourceCorrection(contenu);
@@ -294,9 +295,15 @@ async function redimensionnerAnnot(doc, page, { ref: refBrut, rect }) {
       throw new Error('Correction illisible : la source embarquée manque, le redimensionnement est refusé.');
     }
     const fontSize = extraireTailleCorrection(contenu) || 11;
+    // v0.1.38 : la famille et le gras lus du marqueur suivent la correction
+    // reposée (une correction Times reste Times après le déplacement). Les
+    // marqueurs anciens, sans famille, étaient posés en Helvetica : le
+    // repli « sans » est donc fidèle à ce qu'ils étaient.
+    const famille = extraireFamilleCorrection(contenu) === 'serif' ? 'serif' : 'sans';
+    const gras = Boolean(extraireGrasCorrection(contenu));
     tableau.remove(i);
     try {
-      const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize });
+      const rep = await addCorrection(doc, page, { rect: nouveau, source, fontSize, famille, gras });
       return { ref: rep.ref, rect: rep.rect };
     } catch (e) {
       tableau.push(ref); // v0.1.33 : jamais perdre l'annotation d'origine
