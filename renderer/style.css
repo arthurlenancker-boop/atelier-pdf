@@ -955,5 +955,16 @@ math-field.eq-mathfield:focus-within {
 .editeur-riche ul,
 .editeur-riche ol { margin: 2px 0 2px 18px; padding: 0; }
 .editeur-riche li { margin: 0; }
+
+/* v0.1.36 : formule composée dans le cadre d'édition (à la reprise et à
+   l'insertion) : image inline alignée sur la ligne de base par le style
+   inline (vertical-align) ; double-clic : correction de la formule. */
+.editeur-riche img.eq-editeur {
+  display: inline-block;
+  margin: 0 1px;
+  cursor: pointer;
+  -webkit-user-drag: none;
+  background: transparent;
+}
 .editeur-page.commentaire .editeur-riche,
 .editeur-page.correction .editeur-riche { display: none; }

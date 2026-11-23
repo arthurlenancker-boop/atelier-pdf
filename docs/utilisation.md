@@ -72,6 +72,16 @@ de saisie. Le texte se compose dans un éditeur WYSIWYG posé sur la page :
 - formules LaTeX entre dollars dans le texte (`$E = mc^2$`), composées
   par le moteur d'équations, aperçu en direct sous la saisie.
 
+Depuis la v0.1.36, les formules se composent AUSSI dans le cadre
+d'édition : à la reprise d'une note comme à l'insertion depuis le
+panneau Équation, la formule s'affiche composée (fraction, racine…)
+à sa place dans le texte, sur la ligne de base, comme la page la
+posera. Le code LaTeX n'apparaît plus : un double-clic sur une
+formule composée l'ouvre dans le panneau Équation pour correction
+(bouton « Remplacer la formule »). Si la composition échoue, le
+code entre dollars reste visible et modifiable comme avant. Le
+fichier enregistré ne change pas d'un caractère.
+
 Une annotation posée se sélectionne à l'outil Sélection : la poignée
 bas-droite l'élargit (le texte se recompose), le glissement la déplace,
 Suppr la retire. Le bouton Équation ouvre aussi une note riche cliquée

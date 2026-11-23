@@ -5,6 +5,28 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.36 : retour d'Arthur — « quand j'appuie
+# pour modifier une note, c'est possible de modifier avec la mise
+# en forme reconnue et pas avec cet amas de caracteres ? ». Cause
+# etablie : la note riche stocke sa mise en forme dans une source
+# canonique (sous-ensemble HTML + $formules$), composee a la pose
+# par le moteur ; mais le cadre d'edition y rejettait la source SANS
+# composer les formules : la reprise d'une note de maths montrait
+# le code LaTeX brut entre dollars, « un amas de caracteres ».
+# Correctif SANS CHANGER LE FICHIER : (1) chaque formule se compose
+# en image (ops de l'apercu, tracerOpsPlacé, dataURL) alignee sur
+# la ligne de base par vertical-align negatif de la profondeur,
+# geometrie pure engine/markup.js cadrerImageFormule ; (2) a la
+# reprise, habillerFormulesEditeur remplace chaque $...$ par son
+# image composee, parcours asyncrone prudent (cadre referme, onglet
+# change ou texte modifie = arret net, echec = code visible en
+# repli) ; (3) l'insertion depuis le panneau Equation pose l'image
+# au curseur, double-clic sur une formule = correction puis
+# « Remplacer la formule » en place ; (4) le SEerialiseur restitue
+# chaque image en $...$ brut : source canonique, journal
+# d'annulation, autres lecteurs et tests d'aller-retour INTACTS ;
+# une note reduite a ses formules reste posable (garde de vide sur
+# la source, contientFormule). 270 tests.
 # Declencheur de la v0.1.35 : retour d'Arthur — « ca ne retire
 # pas vraiment, et regarde les dingueries que fait l'ocr ».
 # Cause etablie (banc node, pdfjs-dist 4.10.38, PDF forge par

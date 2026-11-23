@@ -166,3 +166,35 @@ test('composerLignesRiche : alignements portés par les lignes', () => {
   assert.strictEqual(c.lignes[0].align, 'centre');
   assert.strictEqual(c.lignes[0].type, 'p');
 });
+
+const { PAD_IMAGE_FORMULE, cadrerImageFormule } = require('../engine/markup.js');
+
+test('v0.1.36 : cadrerImageFormule réduit l\'aperçu au corps réel, base comprise', () => {
+  // Fraction composée pour un corps de 11 pt : 40 pt de large, 20 pt de
+  // haut dont 5 pt de profondeur (sous la ligne de base).
+  const g = cadrerImageFormule({ widthPt: 40, heightPt: 20, depthPt: 5 }, 2);
+  assert.strictEqual(g.largeurPx, 40 * 2 + 2 * PAD_IMAGE_FORMULE);
+  assert.strictEqual(g.basePx, Math.ceil((20 - 5) * 2) + PAD_IMAGE_FORMULE);
+  assert.strictEqual(g.dessousPx, Math.ceil(5 * 2) + PAD_IMAGE_FORMULE);
+  assert.strictEqual(g.hauteurPx, g.basePx + g.dessousPx);
+  assert.strictEqual(g.alignementCss, -g.dessousPx,
+    'le bas descend SOUS la ligne de base : la profondeur');
+});
+
+test('v0.1.36 : cadrerImageFormule garde la géométrie entière même sans profondeur', () => {
+  const g = cadrerImageFormule({ widthPt: 30, heightPt: 12, depthPt: 0 }, 1);
+  assert.strictEqual(g.dessousPx, PAD_IMAGE_FORMULE);
+  assert.strictEqual(g.alignementCss, -PAD_IMAGE_FORMULE);
+  assert.ok(g.hauteurPx > g.basePx, 'la marge du bas subsiste');
+});
+
+test('v0.1.36 : cadrerImageFormule tolère un aperçu absent ou déraisonnable', () => {
+  const vide = cadrerImageFormule(null, 1);
+  assert.ok(vide.largeurPx > 0 && vide.hauteurPx > 0,
+    'une image repli d\'au moins un pixel : jamais un canevas nul');
+  const neg = cadrerImageFormule({ widthPt: -5, heightPt: -2, depthPt: -9 }, 1);
+  assert.ok(neg.largeurPx > 0 && neg.hauteurPx > 0, 'dimensions négatives bornées');
+  const kMalin = cadrerImageFormule({ widthPt: 20, heightPt: 10, depthPt: 2 }, NaN);
+  assert.strictEqual(kMalin.largeurPx, 20 + 2 * PAD_IMAGE_FORMULE,
+    'échelle absente : corps de composition (×1)');
+});

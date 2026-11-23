@@ -375,14 +375,51 @@ function composerLignesRiche(blocs, { mesurer, dimsFormule, largeurMax, fontSize
   };
 }
 
+/* ————— v0.1.36 : géométrie de l'image d'une formule dans l'éditeur ————— */
+
+/* Marge, en pixels, autour de l'encre : la formule composée ne touche
+ * jamais le bord de son image (ni celui du contenteditable). */
+const PAD_IMAGE_FORMULE = 2;
+
+/** Réduit l'aperçu d'une formule (largeur, hauteur et profondeur en
+ * points, composée pour un corps de 11 pt) au corps réel de la note :
+ * dimensions en pixels de l'image, hauteur de la ligne de base dans
+ * l'image et décalage CSS vertical-align qui pose la profondeur SOUS
+ * la ligne de base. Moteur pur : l'éditeur riche, l'aperçu et les
+ * tests partagent la même géométrie.
+ * @param {object} dim {widthPt, heightPt, depthPt} (aperçu MathJax)
+ * @param {number} k  échelle (corps réel px / corps de composition)
+ * @returns {{largeurPx: number, hauteurPx: number, basePx: number,
+ *            dessousPx: number, alignementCss: number}}
+ */
+function cadrerImageFormule(dim, k) {
+  const kk = (Number(k) > 0) ? Number(k) : 1;
+  const w = Number(dim && dim.widthPt) || 0;
+  const h = Number(dim && dim.heightPt) || 0;
+  const d = Math.max(0, Math.min(h, Number(dim && dim.depthPt) || 0));
+  const largeurPx = Math.max(1, Math.ceil(w * kk)) + 2 * PAD_IMAGE_FORMULE;
+  const dessusPx = Math.max(1, Math.ceil((h - d) * kk)) + PAD_IMAGE_FORMULE;
+  const dessousPx = Math.max(0, Math.ceil(d * kk)) + PAD_IMAGE_FORMULE;
+  return {
+    largeurPx,
+    hauteurPx: dessusPx + dessousPx,
+    basePx: dessusPx,
+    dessousPx,
+    /* Le bas d'une image inline se pose SUR la ligne de base par
+       défaut : descendre de la profondeur pose la base interne de la
+       formule sur la ligne de base du texte. */
+    alignementCss: -dessousPx,
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     echapperTexte, decoderEntites, analyserSource, composerLignesRiche,
-    FACTEUR_EXPOSANT,
+    FACTEUR_EXPOSANT, PAD_IMAGE_FORMULE, cadrerImageFormule,
   };
 } else {
   globalThis.AtelierMarkup = {
     echapperTexte, decoderEntites, analyserSource, composerLignesRiche,
-    FACTEUR_EXPOSANT,
+    FACTEUR_EXPOSANT, PAD_IMAGE_FORMULE, cadrerImageFormule,
   };
 }

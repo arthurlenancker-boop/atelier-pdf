@@ -284,6 +284,7 @@ const etat = {
   opsEquation: new Map(), // v0.1.10 : ops de tracé par équation « page:objet »
   opsFiche: new Map(),      // v0.1.11 : ops des formules par fiche mixte « page:objet »
   apercuEditeur: new Map(), // v0.1.11 : aperçus des formules de la fiche en cours d'édition
+  formuleCible: null, // v0.1.36 : image de formule double-cliquée pour remplacement
   formuleFiche: false,      // v0.1.11 : le panneau Équation insère dans la fiche ouverte
   eqPoint: null,  // dernier clic Équation : { pageIndex, point }
   eqExPt: 4.5,
@@ -1614,6 +1615,7 @@ function rgbaHex(hex, alpha) {
 const { analyserSource, composerLignesRiche, FACTEUR_EXPOSANT,
   echapperTexte } = globalThis.AtelierMarkup;
 const { decoderEntites } = globalThis.AtelierMarkup;
+const { cadrerImageFormule, PAD_IMAGE_FORMULE } = globalThis.AtelierMarkup; // v0.1.36
 
 /** v0.1.31 : aperçu du texte riche en cours de saisie — mêmes analyse
  * et compositeur que la pose (styles simplifiés : gras, italique,
@@ -3216,6 +3218,14 @@ function cssVersHex(coul) {
 
 /** Sérialise le contenu EN LIGNE d'un noeud en canonique. */
 function serialiserInlineRiche(node) {
+  // v0.1.36 : une formule composée de l'éditeur (image) se restitue en
+  // $...$ brut, identique à la formule frappée à la main : la source
+  // canonique, le fichier et les autres lecteurs ne voient AUCUNE
+  // différence avec un texte écrit au clavier.
+  if (node.nodeType === 1 && (node.tagName || '').toLowerCase() === 'img') {
+    const latex = node.getAttribute && node.getAttribute('data-latex');
+    return latex ? `$${latex}$` : '';
+  }
   let out = '';
   node.childNodes.forEach((enfant) => {
     if (enfant.nodeType === 3) { out += echapperTexte(enfant.data); return; }
@@ -3350,6 +3360,83 @@ function sourceVersHtml(source) {
   return t;
 }
 
+/* v0.1.36 : composer une formule EN IMAGE pour le cadre d'édition.
+ * « Modifier la note avec la mise en forme reconnue, pas avec cet amas
+ * de caractères » : à la reprise comme à l'insertion, chaque $...$ se
+ * compose exactement comme la page le posera (mêmes ops MathJax, même
+ * corps, ligne de base et profondeur alignées). La SÉRIALISATION
+ * restitue l'image en $...$ brut : le format du fichier ne change
+ * pas d'un caractère. Retour null si la composition échoue : l'appelant
+ * garde alors le code $...$ visible (repli intégral d'avant v0.1.36). */
+async function composerImageFormule(latex, fsCorpsPx, apPresse) {
+  let ap = apPresse || null;
+  if (!ap) {
+    if (etat.apercuEditeur.has(latex)) {
+      ap = etat.apercuEditeur.get(latex);
+    } else {
+      etat.apercuEditeur.set(latex, null); // en vol (même convention que l'aperçu)
+      try {
+        const rep = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
+        ap = (rep && !rep.erreur && rep.apercu) ? rep.apercu : null;
+      } catch (e) { ap = null; }
+      etat.apercuEditeur.set(latex, ap);
+    }
+  }
+  if (!ap || !ap.ops) return null;
+  const k = Math.max(0.05, (Number(fsCorpsPx) || FS_FICHE) / FS_FICHE);
+  const geom = cadrerImageFormule(ap, k);
+  const cv = document.createElement('canvas');
+  cv.width = geom.largeurPx;
+  cv.height = geom.hauteurPx;
+  tracerOpsPlacé(cv.getContext('2d'), ap, PAD_IMAGE_FORMULE, geom.basePx, k);
+  const img = document.createElement('img');
+  img.className = 'eq-editeur';
+  img.src = cv.toDataURL();
+  img.alt = `$${latex}$`;
+  img.setAttribute('data-latex', latex); // brut : identique à la frappe manuelle
+  img.title = 'Double-clic : modifier la formule';
+  img.style.width = `${geom.largeurPx}px`;
+  img.style.height = `${geom.hauteurPx}px`;
+  img.style.verticalAlign = `${geom.alignementCss}px`;
+  return img;
+}
+
+/* Habille la note reprise : chaque segment $...$ du texte devient une
+ * formule composée, à sa place, dans la mise en forme existante. Le
+ * parcours est ASYNCHRONE (composition MathJax une à une) mais PRUDENT :
+ * si l'utilisateur a déjà refermé le cadre, changé d'onglet ou modifié
+ * le texte sous la composition, l'habillage s'arrête net — jamais une
+ * image ne remplace un texte qui a bougé. */
+async function habillerFormulesEditeur() {
+  const riche = $('#editeur-riche');
+  const attente = etat.saisieAttente;
+  if (riche.hidden || !attente) return;
+  if (attente.kind !== 'freeText' && attente.kind !== 'ficheMelangee'
+    && attente.kind !== 'noteRiche') return;
+  const fsCorps = (attente.fontSize || etat.options.ecrire.taille || 11) * etat.zoom;
+  const marcheur = document.createTreeWalker(riche, NodeFilter.SHOW_TEXT);
+  const noeuds = [];
+  for (let n = marcheur.nextNode(); n; n = marcheur.nextNode()) noeuds.push(n);
+  for (const noeud of noeuds) {
+    let cur = noeud;
+    for (;;) {
+      if (!cur || !cur.isConnected || etat.saisieAttente !== attente) return;
+      const prem = decouperMelange(cur.data).find((s) => s.type === 'formule');
+      if (!prem) break;
+      const img = await composerImageFormule(prem.valeur, fsCorps);
+      if (!img) break; // composition impossible : le code $...$ reste visible
+      if (!cur.isConnected || etat.saisieAttente !== attente) return;
+      const brut = `$${prem.valeur}$`;
+      const pos = cur.data.indexOf(brut);
+      if (pos === -1) break; // le texte a changé pendant la composition
+      const apres = cur.splitText(pos);
+      apres.deleteData(0, brut.length);
+      cur.parentNode.insertBefore(img, apres);
+      cur = apres; // le fragment restant peut porter d'autres formules
+    }
+  }
+}
+
 function ouvrirEditeur(genre, pointOuRect, cible) {
   if (!etat.resume) return;
   let attente;
@@ -3474,6 +3561,9 @@ function ouvrirEditeur(genre, pointOuRect, cible) {
     riche.innerHTML = sourceVersHtml(
       attente.kind === 'noteRiche' || attente.kind === 'ficheMelangee'
         ? String(attente.contenu || '') : texteNuveVersSource(String(attente.contenu || '')));
+    // v0.1.36 : les formules $...$ se composent en place — l'édition
+    // montre la note telle que la page la pose, plus le code brut.
+    habillerFormulesEditeur();
   }
   carte.hidden = false;
   // v0.1.18 : l'original réédité s'efface du calque : le cadre montre le
@@ -3517,6 +3607,7 @@ function fermerEditeur() {
   $('#editeur-apercu').hidden = true;
   etat.saisieAttente = null;
   etat.apercuEditeur.clear();
+  etat.formuleCible = null; // v0.1.36 : la formule double-cliquée suit le cadre
   // L'original masqué pendant l'édition réapparaît tel quel (abandon,
   // ou pose d'un texte neuf : l'annotation remplacée est retirée par
   // le fil d'édition lui-même).
@@ -3542,7 +3633,10 @@ async function validerEditeur() {
   fermerEditeur();
   // v0.1.18 : un texte vide NE DÉTRUIT PLUS l'annotation rééditée et ne
   // toaste pas : abandon silencieux du brouillon vide.
-  if (!texte.trim()) {
+  // v0.1.36 : une note réduite à des formules n'a plus de innerText
+  // (les formules composées sont des images) : la SOURCE fait foi,
+  // elle porte les $...$ restitués par le sérialiseur.
+  if (!texte.trim() && !contientFormule(source)) {
     return;
   }
   const edits = [];
@@ -3657,6 +3751,34 @@ $('#editeur-riche').addEventListener('keydown', (ev) => {
 });
 $('#editeur-page').addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') toucheEchapEditeur(ev);
+});
+
+/* v0.1.36 : double-clic sur une formule composée du texte riche : elle
+ * s'ouvre dans le panneau Équation pour correction (source posée au
+ * champ), le bouton devient « Remplacer la formule » ; la correction
+ * remplace l'image EN PLACE, la frappe continue dans la note. */
+$('#editeur-riche').addEventListener('dblclick', (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  const img = t.closest('img.eq-editeur');
+  if (!img || !img.isConnected) return;
+  ev.preventDefault();
+  const latex = String(img.getAttribute('data-latex') || '');
+  const attente = etat.saisieAttente;
+  if (!attente) return;
+  etat.formuleCible = img;
+  etat.formuleFiche = true;
+  $('#panneau-equation').hidden = false;
+  const b = $('#eq-inserer');
+  b.textContent = 'Remplacer la formule';
+  b.disabled = false;
+  const note = $('#eq-note');
+  note.textContent = 'Correction de la formule de la note : ajustez, puis « Remplacer la formule ».';
+  note.classList.add('ok');
+  if (etat.eqMode !== 'pro') $('#eq-pro').click();
+  poserChampEquation(latex);
+  focusChampEquation();
+  rafraichirApercu();
 });
 window.addEventListener('keydown', (ev) => {
   // v0.1.21 : le focus peut être dans le panneau Équation pendant la
@@ -3864,9 +3986,48 @@ async function insererEquation() {
     }
     const riche = $('#editeur-riche');
     if (!riche.hidden && attente.kind !== 'correction') {
-      // v0.1.31 : l'insertion se fait au CURSEUR du texte riche, entre
-      // $...$ ; la formule se composera à la pose (engine/riche.js).
+      // v0.1.36 : la formule validée se compose EN DIRECT dans le texte
+      // riche (image alignée sur la ligne de base, comme la page la
+      // posera) ; le code $...$ n'apparaît plus à l'écran. L'aperçu
+      // précalculé (repF) sert tel quel, sans recomposition.
+      const fsCorps = (attente.fontSize || etat.options.ecrire.taille || 11) * etat.zoom;
+      const img = await composerImageFormule(latex, fsCorps, repF.apercu);
       riche.focus();
+      if (img) {
+        if (etat.formuleCible && etat.formuleCible.isConnected) {
+          // Double-clic sur une formule composée : remplacer sur place.
+          const cible = etat.formuleCible;
+          etat.formuleCible = null;
+          cible.replaceWith(img);
+          const b = $('#eq-inserer');
+          b.textContent = attente.sujet === 'Note' ? 'Insérer dans la note' : 'Insérer dans la fiche';
+          const noteEq = $('#eq-note');
+          noteEq.textContent = attente.sujet === 'Note'
+            ? 'La formule s\u2019insérera à la position du curseur dans la note.'
+            : 'La formule s\u2019insérera à la position du curseur dans la fiche.';
+          noteEq.classList.remove('ok');
+          rafraichirApercuFiche();
+          message('Formule remplacée dans le texte.', 'reussite');
+          return;
+        }
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && riche.contains(sel.anchorNode)) {
+          const r = sel.getRangeAt(0);
+          r.deleteContents();
+          r.insertNode(img);
+          r.setStartAfter(img);
+          r.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(r);
+        } else {
+          riche.appendChild(img);
+        }
+        rafraichirApercuFiche();
+        message('Formule insérée dans le texte.', 'reussite');
+        return;
+      }
+      // Repli intégral (composition impossible) : le code $...$ nu,
+      // comportement d'avant la v0.1.36.
       const insere = document.execCommand('insertText', false, `$${latex}$`);
       if (!insere) {
         const sel = window.getSelection();
@@ -3879,7 +4040,7 @@ async function insererEquation() {
         }
       }
       rafraichirApercuFiche();
-      message('Formule insérée dans le texte.', 'reussite');
+      message('Formule insérée dans le texte (code visible : composition impossible).', 'reussite');
       return;
     }
     const zone = $('#editeur-texte');
