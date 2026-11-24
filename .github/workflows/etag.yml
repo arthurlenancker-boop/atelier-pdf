@@ -5,6 +5,26 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.45 : le retour d'Arthur apres la v0.1.44 : « toutes
+# les formules que j'ecris sont endommagees » — décrites GRASSES, BASSE
+# DEFINITION — posées par la note Ecrire comme par le panneau d'insertion,
+# visibles a l'ecran et a la relecture. Arbitrage en trois questions :
+# l'ecran d'Arthur est a 150 pour cent de mise a l'echelle ; sa capture
+# dans PDF-XChange montre le MEME document avec des formules LISSES :
+# le fichier est sain (vecteurs MathJax purs, verifie dans le code), le
+# defaut est entierement dans l'affichage. Cause : les canvas de l'ecran
+# (calques annots et tampon, images de formules de l'editeur, apercus
+# fiche et equation, calque page) etaient composes a la resolution CSS ;
+# Windows agrandissait ensuite les bitmaps d'un facteur 1.5 et un trait
+# de formule de quelques dixiemes de pixel se dissolvait en lisere gris.
+# Concret : (1) helpers densiteEcran()/baseCss() : chaque calque vit en
+# unites CSS (pointeurs, geometrie et moteur inchanges) mais son bitmap
+# recoit densite pixels par unite avec transformation de base ; (2)
+# rendPage : calque page peint par pdf.js en viewport x densite,
+# annots/tampon en bitmap x densite ; (3) couleurEncreDuRect echantillonne
+# le calque page en pixels appareil ; (4) composerImageFormule,
+# dessinerApercuFiche, dessinerApercuRiche, dessinerOpsCanvas : pleine
+# densite. A densite 1, rien ne change ; le PDF et les tests non touches.
 # Declencheur de la v0.1.44 : le « Validé » d'Arthur sur la maquette
 # « Équations à la frappe, principe OneNote » (canvas
 # demo-equation-a-la-frappe, préparée après les v0.1.41/42 et enfin

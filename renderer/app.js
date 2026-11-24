@@ -769,9 +769,23 @@ async function rendPage() {
   if (ma !== generationRendu) return; // un rendu plus récent a été demandé
   const viewport = page.getViewport({ scale: etat.zoom });
   const { width, height, rotation } = viewport;
+  // v0.1.45 : le calque PAGE est peint par pdf.js en pixels appareil
+  // (viewport × densité) pour un rendu plein densité ; la géométrie
+  // applicative (etat.viewport, pointeurs, décodage des annots) reste
+  // en unités CSS : elle ne voit jamais cette échelle.
+  const dens = densiteEcran();
+  const vpDens = page.getViewport({ scale: etat.zoom * dens });
+  els.calquePdf.width = Math.max(1, Math.round(vpDens.width));
+  els.calquePdf.height = Math.max(1, Math.round(vpDens.height));
+  // v0.1.45 : les calques ANNOTS et TAMPON sont dessinés par l'atelier
+  // en unités CSS : bitmap × densité + transformation de base, tout le
+  // code de dessin existant (fillText, Path2D, tracerOpsPlacé) reste tel quel.
+  for (const c of [els.calqueAnnots, els.calqueTampon]) {
+    c.width = Math.max(1, Math.round(width * dens));
+    c.height = Math.max(1, Math.round(height * dens));
+    baseCss(c.getContext('2d'), dens);
+  }
   for (const c of [els.calquePdf, els.calqueAnnots, els.calqueTampon]) {
-    c.width = Math.max(1, Math.round(width));
-    c.height = Math.max(1, Math.round(height));
     c.style.width = `${Math.round(width)}px`;
     c.style.height = `${Math.round(height)}px`;
   }
@@ -796,7 +810,7 @@ async function rendPage() {
     const modeAnnot = (pdfjsLib && pdfjsLib.AnnotationMode
       && Number.isInteger(pdfjsLib.AnnotationMode.DISABLE))
       ? pdfjsLib.AnnotationMode.DISABLE : 0;
-    tacheRendu = page.render({ canvasContext: els.calquePdf.getContext('2d'), viewport, annotationMode: modeAnnot });
+    tacheRendu = page.render({ canvasContext: els.calquePdf.getContext('2d'), viewport: vpDens, annotationMode: modeAnnot });
     await tacheRendu.promise;
     tacheRendu = null;
     erreurRendu = null;
@@ -905,6 +919,23 @@ const MARGE_V_FICHE = 3;        // marge verticale haut/bas
 const INTERBASE_FICHE = 0.45;   // × FS entre deux lignes
 
 const mesureCtx = document.createElement('canvas').getContext('2d');
+
+/* v0.1.45 : NETTETÉ PLEINE DENSITÉ. Retour d'Arthur : « toutes les
+ * formules que j'écris sont endommagées » — grasses, basse définition,
+ * écran en mise à l'échelle 150 %. Cause : les canvas étaient composés
+ * à la résolution CSS ; Windows agrandissait ensuite les bitmaps, et un
+ * trait de formule de quelques dixièmes de pixel se dissolvait en
+ * liseré gris. Le correctif : chaque calque vit en UNITÉS CSS (la
+ * géométrie, les pointeurs et le moteur ne changent pas d'un pouce),
+ * mais son bitmap reçoit `densiteEcran()` pixels par unité, avec une
+ * transformation de base qui remet le dessin en espace CSS. À densité
+ * 1, rien ne change ; à densité 1.5, chaque trait est tracé avec 2.25
+ * fois plus de pixels. */
+const densiteEcran = () => Math.max(1, Number(window.devicePixelRatio) || 1);
+/** Largeur d'affichage CSS des canvas d'aperçu (attribut d'origine). */
+const LARG_CSS_APERCU = 320;
+/** Transformation de base d'un contexte : espace de dessin en CSS. */
+function baseCss(ctx, d) { ctx.setTransform(d, 0, 0, d, 0, 0); }
 /** Largeur approximative d'un texte de fiche, en points (≈ px à la taille du corps). */
 function mesurerFicheTexte(t) {
   mesureCtx.font = `${FS_FICHE}px sans-serif`;
@@ -1387,7 +1418,7 @@ function dessinerApercuFiche(source) {
   const layout = composerLignes(segments, {
     mesurerTexte: mesurer,
     dimsFormule: dims,
-    largeurMax: (canvas.width - 12) / k,
+    largeurMax: (LARG_CSS_APERCU - 12) / k,
     fontSize: FS_FICHE,
   });
   const interbase = INTERBASE_FICHE * FS_FICHE;
@@ -1396,9 +1427,17 @@ function dessinerApercuFiche(source) {
     hauteur += (layout.lignes[li].hDessus + layout.lignes[li].hDes
       + (li ? interbase : 0)) * k;
   }
-  canvas.height = Math.max(24, Math.round(hauteur));
+  // v0.1.45 : l'aperçu vit à la densité de l'écran — hauteur CSS,
+  // bitmap × densité, dessin en espace CSS comme avant.
+  const haute = Math.max(24, Math.round(hauteur));
+  const dens = densiteEcran();
+  canvas.style.width = `${LARG_CSS_APERCU}px`;
+  canvas.style.height = `${haute}px`;
+  canvas.width = Math.max(1, Math.round(LARG_CSS_APERCU * dens));
+  canvas.height = Math.max(1, Math.round(haute * dens));
   canvas.hidden = false;
-  c.clearRect(0, 0, canvas.width, canvas.height);
+  baseCss(c, dens);
+  c.clearRect(0, 0, LARG_CSS_APERCU, haute);
   c.font = `${FS}px ${policeEcran}`;
   c.textBaseline = 'alphabetic';
   let basePx = 9 + layout.lignes[0].hDessus * k;
@@ -1808,7 +1847,7 @@ function dessinerApercuRiche(source) {
   const layout = composerLignesRiche(blocs, {
     mesurer,
     dimsFormule: dims,
-    largeurMax: (canvas.width - 12) / k,
+    largeurMax: (LARG_CSS_APERCU - 12) / k,
     fontSize: fsCorps,
   });
   const interbase = 0.45 * fsCorps;
@@ -1817,9 +1856,17 @@ function dessinerApercuRiche(source) {
     hauteur += (layout.lignes[li].hDessus + layout.lignes[li].hDes
       + (li ? interbase : 0)) * k;
   }
-  canvas.height = Math.max(24, Math.round(hauteur));
+  // v0.1.45 : l'aperçu vit à la densité de l'écran — hauteur CSS,
+  // bitmap × densité, dessin en espace CSS comme avant.
+  const haute = Math.max(24, Math.round(hauteur));
+  const dens = densiteEcran();
+  canvas.style.width = `${LARG_CSS_APERCU}px`;
+  canvas.style.height = `${haute}px`;
+  canvas.width = Math.max(1, Math.round(LARG_CSS_APERCU * dens));
+  canvas.height = Math.max(1, Math.round(haute * dens));
   canvas.hidden = false;
-  c.clearRect(0, 0, canvas.width, canvas.height);
+  baseCss(c, dens);
+  c.clearRect(0, 0, LARG_CSS_APERCU, haute);
   c.textBaseline = 'alphabetic';
   let basePx = 12 + layout.lignes[0].hDessus * k;
   for (const ligne of layout.lignes) {
@@ -3013,10 +3060,16 @@ function couleurEncreDuRect(rectPdf) {
     const cv = els.calquePdf;
     const a = pdfVersEcran({ x: rectPdf[0], y: rectPdf[1] });
     const c = pdfVersEcran({ x: rectPdf[2], y: rectPdf[3] });
-    const x0 = Math.max(0, Math.floor(Math.min(a.x, c.x)));
-    const y0 = Math.max(0, Math.floor(Math.min(a.y, c.y)));
-    const x1 = Math.min(cv.width, Math.ceil(Math.max(a.x, c.x)));
-    const y1 = Math.min(cv.height, Math.ceil(Math.max(a.y, c.y)));
+    // v0.1.45 : le calque page vit maintenant en pixels appareil
+    // (CSS × densité, v0.1.45) : l'échantillon se prend à LA MÊME
+    // échelle, pixel appareil pour pixel appareil — la couleur
+    // dominante reste celle du document, pas une extrapolation.
+    const dens = cv.width > 0 ? cv.width / Math.max(1, cv.clientWidth || 0) : 1;
+    const kEch = (dens > 0 && Number.isFinite(dens)) ? dens : 1;
+    const x0 = Math.max(0, Math.floor(Math.min(a.x, c.x) * kEch));
+    const y0 = Math.max(0, Math.floor(Math.min(a.y, c.y) * kEch));
+    const x1 = Math.min(cv.width, Math.ceil(Math.max(a.x, c.x) * kEch));
+    const y1 = Math.min(cv.height, Math.ceil(Math.max(a.y, c.y) * kEch));
     if (x1 - x0 < 1 || y1 - y0 < 1) return null;
     const img = cv.getContext('2d').getImageData(x0, y0, x1 - x0, y1 - y0);
     const seaux = new Map(); // « r5,g5,b5 » -> { n, sr, sg, sb }
@@ -3822,9 +3875,16 @@ async function composerImageFormule(latex, fsCorpsPx, apPresse, couleur) {
   const k = Math.max(0.05, (Number(fsCorpsPx) || FS_FICHE) / FS_FICHE);
   const geom = cadrerImageFormule(ap, k);
   const cv = document.createElement('canvas');
-  cv.width = geom.largeurPx;
-  cv.height = geom.hauteurPx;
-  tracerOpsPlacé(cv.getContext('2d'), ap, PAD_IMAGE_FORMULE, geom.basePx, k, couleurValable(couleur));
+  // v0.1.45 : l'image de la formule vit à LA DENSITÉ de l'écran : chez
+  // Arthur (150 %), un bitmap CSS se retrouve agrandi d'un facteur 1.5
+  // par l'affichage — l'origine du « gras, basse définition ». Le
+  // bitmap reçoit densité pixels par unité, l'<img> garde sa taille CSS.
+  const dens = densiteEcran();
+  cv.width = Math.max(1, Math.round(geom.largeurPx * dens));
+  cv.height = Math.max(1, Math.round(geom.hauteurPx * dens));
+  const ctxF = cv.getContext('2d');
+  baseCss(ctxF, dens);
+  tracerOpsPlacé(ctxF, ap, PAD_IMAGE_FORMULE, geom.basePx, k, couleurValable(couleur));
   const img = document.createElement('img');
   img.className = 'eq-editeur';
   img.src = cv.toDataURL();
@@ -4609,6 +4669,16 @@ async function rafraichirApercu() {
 
 /** Trace des opérateurs PDF (m/l/c/re + f) sur un canvas HTML. */
 function dessinerOpsCanvas(canvas, apercu) {
+  // v0.1.45 : l'aperçu d'équation du panneau vit à la densité de
+  // l'écran ; toute la géométrie interne découle de canvas.width/height
+  // (device) : elle s'adapte seule, le tracé reste identique.
+  const densEq = densiteEcran();
+  if (canvas.width !== Math.round(320 * densEq)) {
+    canvas.style.width = '320px';
+    canvas.style.height = '90px';
+    canvas.width = Math.max(1, Math.round(320 * densEq));
+    canvas.height = Math.max(1, Math.round(90 * densEq));
+  }
   const ctx = canvas.getContext('2d');
   const { ops, widthPt, heightPt } = apercu;
   ctx.clearRect(0, 0, canvas.width, canvas.height);

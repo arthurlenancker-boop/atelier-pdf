@@ -129,6 +129,20 @@ sans quitter le texte, comme dans OneNote :
   Les mathématiques restent composées dans la fonte TeX de MathJax
   (Cambria Math n'est pas embarquable), au corps du texte environnant.
 
+### Netteté pleine densité à l'écran (v0.1.45)
+
+- L'affichage vit à la densité réelle de l'écran : sur un écran en
+  mise à l'échelle Windows (125 ou 150 pour cent, le réglage par défaut
+  des ordinateurs portables récents), les formules, les annotations et
+  l'aperçu de la page sont composés avec autant de pixels que l'écran
+  en montre réellement. Avant le v0.1.45, une formule posée paraissait
+  grasse et floue : le bitmap était dessiné à la résolution CSS puis
+  agrandi par le système.
+- Le fichier n'est pas concerné : les équations y sont des vecteurs
+  purs, nets dans tout lecteur (PDF-XChange, Adobe, navigateurs), à
+  toute échelle. Le correctif ne touche que l'écran.
+- À 100 pour cent de mise à l'échelle, rien ne change.
+
 ## 5. Enregistrer
 
 - Enregistrer (Ctrl+S) : réécrit le fichier ouvert avec toutes les
