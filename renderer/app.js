@@ -4353,7 +4353,8 @@ $('#editeur-page').addEventListener('keydown', (ev) => {
 
 /* ============================================================
    v0.1.44 : les ÉQUATIONS À LA FRAPPE (maquette validée « Équations à
-   la frappe, principe OneNote »). Alt puis S, 0, 0, Q ouvre une zone
+   la frappe, principe OneNote »). alt+s+0+0+q (minuscules)
+   ouvre une zone
    d'équation AU CURSEUR du cadre d'écriture (note riche) ou de la
    ligne modifiée (correction), teinte légère ; la barre d'espace MONTE
    la formule (transcodage UnicodeMath du v0.1.24) à chaque pression ;

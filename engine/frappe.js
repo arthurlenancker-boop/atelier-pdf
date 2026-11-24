@@ -1,5 +1,5 @@
 // engine/frappe.js — v0.1.44 : l'équation À LA FRAPPE, maquette validée.
-// Alt puis S, 0, 0, Q ouvre une zone d'équation AU CURSEUR (croquis
+// alt+s+0+0+q (minuscules) ouvre une zone d'équation AU CURSEUR (croquis
 // « Équations à la frappe, principe OneNote », validé par Arthur) dans
 // le cadre d'écriture (note riche) et dans la ligne modifiée (correction).
 // La barre d'espace MONTE la formule (transcodage UnicodeMath du
@@ -10,7 +10,8 @@
 // curseurs et la teinte restent dans renderer/app.js.
 'use strict';
 
-/** La séquence d'armement : Alt, puis S, 0, 0, Q. AZERTY oblige, les
+/** La séquence d'armement : alt+s+0+0+q (minuscules, préférence
+ * d'Arthur). AZERTY oblige, les
  * chiffres exigent Maj : le tamis compare la VALEUR de la touche ('0'),
  * jamais sa position physique. Maj et Ctrl sont donc ignorés. */
 const SÉQUENCE_FRAPPE = ['alt', 's', '0', '0', 'q'];

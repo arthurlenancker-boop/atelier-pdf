@@ -21,7 +21,7 @@ const {
 const majuscules = (l) => l.toUpperCase();
 const vraiTranscoder = (l) => transcoder(l);
 
-test('la séquence est Alt puis S, 0, 0, Q (valeur de touche, jamais position)', () => {
+test('la séquence est alt+s+0+0+q (valeur de touche, jamais position)', () => {
   assert.deepStrictEqual(SÉQUENCE_FRAPPE, ['alt', 's', '0', '0', 'q']);
 });
 

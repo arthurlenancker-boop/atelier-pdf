@@ -5,6 +5,14 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.46 : préférence d'Arthur pour la NOTATION de la
+# séquence d'armement des équations à la frappe : la présenter en
+# minuscules, alt+s+0+0+q, partout (README, guide, commentaires, test).
+# Le geste est inchangé : le tamis compare la VALEUR des touches et la
+# casse n'importe pas depuis la v0.1.44 ; aucun comportement ne bouge,
+# seulement l'écriture. La v0.1.45 a été vérifiée au préalable par le
+# harnais de coutures (23 tests applicatifs verts sur le code publié,
+# preuve rouge sur v0.1.44, suite pure 146 verts).
 # Declencheur de la v0.1.45 : le retour d'Arthur apres la v0.1.44 : « toutes
 # les formules que j'ecris sont endommagees » — décrites GRASSES, BASSE
 # DEFINITION — posées par la note Ecrire comme par le panneau d'insertion,
