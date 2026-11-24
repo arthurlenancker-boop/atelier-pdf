@@ -5,6 +5,18 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.47 : VERSION DIAGNOSTIQUE, retour d'Arthur en
+# enquete sur la nettete de v0.1.45 : (1) « le alt+s+0+0+q ne marche
+# pas » : la sequence ne s'arme QUE dans un cadre d'ecriture (note,
+# ligne modifiee) et se taisait hors cadre, silence lu comme une panne ;
+# elle signale desormais ou elle s'emploie. (2) « le Ctrl+Shift+I ne
+# marche pas » : le menu personnalise n'a jamais embarque les outils de
+# developpement ; les Diagnostics (Aide) affichent maintenant la DENSITE
+# d'affichage annoncee a l'application (devicePixelRatio), les tailles
+# bitmap des calques face a leur taille CSS et l'etat du tampon de
+# sequence : les trois donnees qui manquaient pour trancher si les
+# formules restent grasses par densite mal annoncee ou par ailleurs.
+# Aucun comportement ne change : diagnostics purs.
 # Declencheur de la v0.1.46 : préférence d'Arthur pour la NOTATION de la
 # séquence d'armement des équations à la frappe : la présenter en
 # minuscules, alt+s+0+0+q, partout (README, guide, commentaires, test).

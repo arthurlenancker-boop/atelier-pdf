@@ -117,6 +117,12 @@ sans quitter le texte, comme dans OneNote :
   (les chiffres à la Maj Azerty ; la casse des lettres est libre, q ou Q
   arment pareil) : la zone d'équation
   s'ouvre à l'endroit du curseur, marquée d'une légère teinte.
+  La séquence ne se déclenche que le curseur placé dans une note ou
+  une ligne modifiée : tapée sur la page sans zone d'écriture, elle
+  affiche un message qui le rappelle (v0.1.47).
+  Le menu Aide, Diagnostics de l'application, montre la densité
+  d'affichage annoncée à l'application et les tailles bitmap des
+  calques (v0.1.47).
 - Tapez la formule en linéaire (le même langage que le mode Linéaire :
   a/b, x^2, \sqrt(5&a^2)…) ; la barre d'espace MONTE la formule à
   chaque pression, sur place.

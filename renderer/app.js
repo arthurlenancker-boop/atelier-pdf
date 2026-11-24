@@ -4494,7 +4494,17 @@ document.addEventListener('keydown', (ev) => {
   if (Date.now() - instantFrappe > 3500) { tamponFrappe = []; return; }
   const k = ev.key || '';
   if (k === 'Shift' || k === 'Control') return; // AZERTY : Maj des chiffres
-  if (!cadrePourFrappe()) return; // la séquence n'arme QUE les cadres
+  if (!cadrePourFrappe()) {
+    // v0.1.47 : la séquence complète HORS cadre d'écriture se SIGNALE
+    // au lieu de se taire (retour d'Arthur : « le alt+s+0+0+q ne marche
+    // pas », tapé sur la page sans note ouverte : le silence de
+    // l'application se lisait comme une panne).
+    if (séquenceArmée(tamisFrappe(tamponFrappe, k))) {
+      tamponFrappe = [];
+      message('L\u2019équation à la frappe alt+s+0+0+q s\u2019écrit dans une note (outil Texte) ou une ligne modifiée (outil Modifier) : placez d\u2019abord le curseur dans le texte, puis retapez la séquence.');
+    }
+    return; // la séquence n'arme QUE les cadres
+  }
   const intercepte = cranFrappe(tamponFrappe, k);
   tamponFrappe = tamisFrappe(tamponFrappe, k);
   instantFrappe = Date.now();
@@ -5952,6 +5962,16 @@ globalThis.__atelierDiagnostics = () => [
   `Onglets ouverts : ${ongletsOuverts.size || 'aucun'}${etat.idOnglet != null ? ` (actif : ${nomCourt(etat.chemin)})` : ''}`,
   `Page affichée : ${etat.resume ? `${etat.page} / ${etat.resume.pageCount}` : '–'}`,
   `Zoom : ${Math.round(etat.zoom * 100)} % (rendu en cours : ${gesteZoomActif() ? 'transformation CSS en attendant le rendu net' : 'posé'})`,
+  // v0.1.47 : les trois lignes qui manquaient au diagnostic de la
+  // netteté (v0.1.45) : la densité QUE L'APPLICATION CROIT être la
+  // sienne (si Electron annonce 1 pour un écran à 150 %, tout le
+  // correctif de densité se compose à la mauvaise taille), les
+  // bitmaps réels des calques face à leur taille CSS, et l'état du
+  // tampon de séquence (si les touches n'arrivent jamais, il reste
+  // court : c'est qu'un menu ou une inversion de clavier les mange).
+  `Densité d'affichage : ${window.devicePixelRatio} (annoncée à l'application)`,
+  `Calques écran : page ${els.calquePdf ? `${els.calquePdf.width}×${els.calquePdf.height} bitmap pour ${els.calquePdf.clientWidth || 0}×${els.calquePdf.clientHeight || 0} CSS` : 'indisponible'} ; annots ${els.calqueAnnots ? `${els.calqueAnnots.width}×${els.calqueAnnots.height} bitmap pour ${els.calqueAnnots.clientWidth || 0}×${els.calqueAnnots.clientHeight || 0} CSS` : 'indisponible'}`,
+  `Séquence d'équation à la frappe : reçu [${tamponFrappe.join(', ')}]${tamponFrappe.length ? ` (armée depuis ${Math.round((Date.now() - instantFrappe) / 100) / 10} s)` : ''}`,
   `Zone d\u2019équation : ${mathlive ? 'structurée (MathLive chargé)' : `champ LaTeX${erreurMathlive ? ` (MathLive manquant : ${erreurMathlive})` : ''}`}`,
   `Dernier échec d'affichage : ${erreurRendu || 'aucun'}`,
   `Annotations connues : ${etat.resume ? etat.resume.annots.length : 0}`,
