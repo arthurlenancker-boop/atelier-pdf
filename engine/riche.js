@@ -7,6 +7,10 @@
 // marqueur « Note riche [taille] : » (engine/texte.js) : la relecture au
 // double-clic est fidèle, comme celle des fiches mixtes. Exige pdf-lib +
 // mathjax-full (tests en CI uniquement).
+// v0.1.44 : la COULEUR des formules suit leur run — la formule composée
+// dans un span coloré est rendue DANS cette couleur (données nécessaires
+// aux équations à la frappe, maquette validée) ; sans couleur de run,
+// l'encre du corps reste, comme avant.
 'use strict';
 
 const { PDFName, StandardFonts } = require('pdf-lib');
@@ -81,13 +85,24 @@ async function addNoteRiche(doc, page, { rect, source, fontSize = 11, couleur = 
     if (besoins.has(p.cle)) polices.set(p.cle, await doc.embedFont(p.nom));
   }
 
-  // Formules MathJax une fois par formule distincte, au corps du texte.
+  // Formules MathJax une fois par (formule, couleur) distincte, au corps
+  // du texte. v0.1.44 : la formule suit la COULEUR de SON run (« les
+  // données nécessaires pour les couleurs ») — une même formule posée
+  // en deux couleurs compose deux apparences.
   const rendus = new Map();
-  const dimsFormule = (latex) => {
-    if (!rendus.has(latex)) {
-      rendus.set(latex, mjRender(latex, exPourCorps(fs), { rgb: encre }));
+  const renduPour = (latex, coulHex) => {
+    const cle = coulHex ? `${latex}|${coulHex}` : latex;
+    if (!rendus.has(cle)) {
+      const encreFormule = coulHex ? (hexVersRgb01(coulHex) || encre) : encre;
+      rendus.set(cle, mjRender(latex, exPourCorps(fs), { rgb: encreFormule }));
     }
-    const r = rendus.get(latex);
+    return rendus.get(cle);
+  };
+  const dimsFormule = (latex) => {
+    // la métrique est identique quelle que soit l'encre : la première
+    // variante rendue suffit (rendu neutre si la formule n'est pas
+    // encore composée pour sa couleur).
+    const r = rendus.get(latex) || renduPour(latex, null);
     return { widthPt: r.widthPt, heightPt: r.heightPt, depthPt: r.depthPt };
   };
 
@@ -163,8 +178,12 @@ async function addNoteRiche(doc, page, { rect, source, fontSize = 11, couleur = 
     let penX = debutX;
     for (const m of ligne.morceaux) {
       if (m.type === 'formule') {
-        const r = rendus.get(m.valeur);
-        let f = formes.get(m.valeur);
+        // v0.1.44 : la formule compose dans l'encre de SON run — la
+        // clé du rendu et du XObject porte la couleur.
+        const coulFormule = (m.styles && m.styles.couleur) ? m.styles.couleur : null;
+        const cleFormule = coulFormule ? `${m.valeur}|${coulFormule}` : m.valeur;
+        const r = renduPour(m.valeur, coulFormule);
+        let f = formes.get(cleFormule);
         if (!f) {
           iForm += 1;
           f = {
@@ -175,7 +194,7 @@ async function addNoteRiche(doc, page, { rect, source, fontSize = 11, couleur = 
               content: r.ops,
             })),
           };
-          formes.set(m.valeur, f);
+          formes.set(cleFormule, f);
         }
         ops.push('q',
           `1 0 0 1 ${fmt(penX)} ${fmt(baselines[li] - r.depthPt)} cm`,

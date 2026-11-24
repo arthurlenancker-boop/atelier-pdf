@@ -5,6 +5,47 @@
 # posees par GITHUB_TOKEN ne declenchent pas d'autre flux (regle GitHub),
 # d'ou un flux unique autonome qui enchaine tout.
 # Attention : ce flux se declenche a CHAQUE modification de ce fichier.
+# Declencheur de la v0.1.44 : le « Validé » d'Arthur sur la maquette
+# « Équations à la frappe, principe OneNote » (canvas
+# demo-equation-a-la-frappe, préparée après les v0.1.41/42 et enfin
+# arbitrée), suivi de sa demande : « essaie d'ajouter les données
+# nécessaires alors pour les couleurs et la police ». Le contrat de
+# la maquette : séquence Alt puis S, 0, 0, Q ouvre une equation AU
+# CURSEUR dans l'ecriture (note riche) comme dans la modification
+# (correction), teinte legere ; la barre d'espace MONTE la formule a
+# chaque pression (UnicodeMath du v0.1.24 réutilisé tel quel) ; Echap ou
+# Entree POSE l'equation et efface la teinte ; aucune pose/panel.
+# Concret : (1) engine/frappe.js, MOTEUR PUR nouveau (sequence du
+# tampis clavier avec Maj/Ctrl ignores — AZERTY oblige — et
+# transformations de la zone texte/riche), preuve test/frappe.test.js
+# (8 tests executes localement : armet, derive cassee, crocs
+# preventDefault cibles seulement, montée remplaçant le linéaire par
+# le LaTeX, pose avec le $ fermant, zone vide disparaît). (2)
+# renderer/app.js : tampon en CAPTURE avant tous les cadres ; zone
+# ouverte : Espace monte, Echap/Entree posent (la PREMIERE pression
+# d'Echap pose l'equation, la seconde garde son arrêt d'origine —
+# abandon de la correction v0.1.41) ; la teinte (style.css
+# .frappe-math) vit dans un span remplace par le $...$ pose. (3) LES
+# DONNEES NECESSAIRES, couleurs et police : la formule suit la
+# COULEUR de son contexte — correction : l'encre du marqueur
+# (v0.1.43) ; note riche : la couleur du RUN (engine/riche.js rend
+# maintenant chaque (formule, couleur) avec son propre XObject,
+# cle formule|hex ; avant, TOUTES les equations d'une note
+# tombaient dans l'encre du corps) ; l'ECRAN suit : les aperçus
+# MathJax (mjx:preview accepte rgb depuis l'origine) sont demandes
+# avec la couleur (cleApercu formule|hex partout : apercu du bas,
+# cache des corrections/notes posees, images de l'editeur, insertion
+# du panneau), et tracerOpsPlace lit l'en-tete « r g b rg » des
+# operateurs (le noir standard reste le gris d'apparat, rien ne
+# change aux formules d'avant). La POLICE des equations reste la
+# fonte TeX de MathJax (Cambria Math non embarquable, consigne
+# v0.1.27) au corps du texte environnant ; taille et famille suivent
+# deja le contexte (v0.1.38/43). (4) Docs : README.md (rangee
+# « Equation au fil du texte ») et docs/utilisation.md (section 4,
+# sous-section frappe avec couleurs). CI : test/riche.test.js +1
+# (le XObject de la formule d'un run #E13A6E porte « 0.88 0.23 0.43
+# rg », le texte ordinaire garde le gris). Tag pose = porte de tests
+# verte.
 # Declencheur de la v0.1.43 : le retour d'Arthur en pleine activite reelle,
 # cinq mots : « Et là le texte est passé de rose à gris ». L'outil
 # Modifier (v0.1.41/42, corrige et confirme sur captures) posait bien

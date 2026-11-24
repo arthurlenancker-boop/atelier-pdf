@@ -108,6 +108,27 @@ il n'est pas couvert par le panneau d'options.
 Une équation insérée se sélectionne à l'outil Sélection (clic) et se
 supprime avec la touche Suppr, comme toute annotation.
 
+### Équation au fil du texte, à la frappe (v0.1.44)
+
+Le panneau reste utile, mais la formule peut aussi s'écrire AU CURSEUR,
+sans quitter le texte, comme dans OneNote :
+
+- Dans une note ou une ligne modifiée, tapez la séquence Alt puis
+  S, 0, 0, Q (les chiffres à la Maj Azerty) : la zone d'équation
+  s'ouvre à l'endroit du curseur, marquée d'une légère teinte.
+- Tapez la formule en linéaire (le même langage que le mode Linéaire :
+  a/b, x^2, \sqrt(5&a^2)…) ; la barre d'espace MONTE la formule à
+  chaque pression, sur place.
+- Échap ou Entrée pose l'équation et efface la teinte ; le texte
+  redevient du texte. Une zone vide ne pose rien. Dans une correction,
+  la première pression d'Échap pose l'équation, la seconde abandonne
+  la ligne, comme toujours.
+- La formule prend la COULEUR du texte qui l'entoure : l'encre de la
+  correction (échantillonnée depuis la v0.1.43) ou la couleur du run
+  dans une note (le fichier et l'écran composent dans la même).
+  Les mathématiques restent composées dans la fonte TeX de MathJax
+  (Cambria Math n'est pas embarquable), au corps du texte environnant.
+
 ## 5. Enregistrer
 
 - Enregistrer (Ctrl+S) : réécrit le fichier ouvert avec toutes les

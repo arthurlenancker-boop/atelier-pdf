@@ -115,3 +115,27 @@ test('redimensionnerAnnot : note riche reposée avec sa source et sa couleur', a
   }
   assert.strictEqual(vues, 1, 'l’ancienne note a été retirée de la page');
 });
+
+/* v0.1.44 : les « données nécessaires » des équations à la frappe — la
+ * COULEUR. La formule composée dans un run coloré est rendue DANS cette
+ * couleur (l'XObject porte l'en-tête « r g b rg » du span) ; la fonte
+ * des mathématiques reste TeX/MathJax (Cambria Math non embarquable,
+ * consigné v0.1.27). Ici le run ne contient QUE la formule : l'opérateur
+ * coloré ne peut venir que de l'équation. */
+test("v0.1.44 : la formule d'un run coloré est écrite dans SA couleur", async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const pose = await addNoteRiche(doc, page, {
+    rect: [100, 700, 400, 760],
+    source: '<div>Le périmètre vaut <span style="color:#E13A6E">$2\\\\pi r$</span> et voilà.</div>',
+    fontSize: 11,
+    sujet: 'Note',
+  });
+  assert.ok(pose.ref, 'la note à formule colorée est posée');
+  const octets = Buffer.from(await doc.save()).toString('latin1');
+  assert.ok(octets.includes('0.88 0.23 0.43 rg'),
+    'l\u2019XObject de la formule porte l\u2019encre du run (#E13A6E)');
+  // Le texte hors run coloré reste l'encre grise du corps.
+  assert.ok(octets.includes('0.08 0.09 0.1 rg'),
+    'le texte ordinaire garde l\u2019encre grise');
+});

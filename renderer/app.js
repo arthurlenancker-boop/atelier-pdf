@@ -14,6 +14,7 @@ import '../engine/couleurs.js'; // expose globalThis.AtelierCouleurs (v0.1.31)
 import '../engine/markup.js'; // expose globalThis.AtelierMarkup (v0.1.31)
 import '../engine/surlignage.js'; // expose globalThis.AtelierSurlignage (v0.1.35)
 import '../engine/textereel.js'; // expose globalThis.AtelierTexteReel (v0.1.38)
+import '../engine/frappe.js'; // expose globalThis.AtelierFrappe (v0.1.44)
 
 const { deviceToPdf, quadPointsForRange, quadsPourLignes } = globalThis.AtelierCoords;
 const { motsDepuisBlocs, nettoyerCle, nettoyerUrlServeur, estHttpsLocal } = globalThis.AtelierOcr;
@@ -264,6 +265,59 @@ function transcoderLineaire(saisie) {
   let hors = '';
   for (const car of base) hors += LINEAIRE.get(car) ?? car;
   return hors;
+}
+
+/* v0.1.44 : l'équation À LA FRAPPE (maquette validée « Équations à la
+ * frappe, principe OneNote »). Le moteur pur de la séquence et des
+ * transformations vit dans engine/frappe.js (test/frappe.test.js) ; le
+ * rendu (curseur, teinte, toasts) est ici. */
+const {
+  SÉQUENCE_FRAPPE: SÉQUENCE_FRAPPE_EQUATION, tamisFrappe, séquenceArmée,
+  cranSuivant: cranFrappe, monterTexte: monterZoneTexte,
+  poserTexte: poserZoneTexte, monterRiche: monterZoneRiche,
+  poserRiche: poserZoneRiche,
+} = globalThis.AtelierFrappe;
+
+/* v0.1.44 : COULEUR d'une formule — les « données nécessaires » que
+ * l'équation à la frappe doit porter (retour d'Arthur : couleurs et
+ * police du contexte). Police : le corps et la famille suivent déjà le
+ * contexte (taille du texte, correction serif/sans) ; la fonte des
+ *_mathématiques_ reste TeX/MathJax (Cambria Math n'est pas embarquable,
+ * consigné v0.1.27). Couleur : l'aperçu MathJax est calculé DANS la
+ * couleur du texte qui l'entoure (run du texte riche, encre de la
+ * correction) et tracé tel quel. */
+function couleurValable(c) {
+  return /^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? String(c) : null;
+}
+function hexVers01(c) {
+  const h = couleurValable(c);
+  if (!h) return null;
+  return [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255,
+    parseInt(h.slice(5, 7), 16) / 255];
+}
+/** Clé de cache d'aperçu : le LaTeX, suffixé de SA couleur quand la
+ * formule suit une encre teintée (une même formule peut être posée en
+ * deux endroits de deux couleurs). Sans couleur, la clé reste le LaTeX
+ * nu, comme avant la v0.1.44. */
+function cleApercu(latex, couleur) {
+  const h = couleurValable(couleur);
+  return h ? `${latex}|${h}` : String(latex);
+}
+/** Couleur des opérateurs d'un aperçu MathJax : l'en-tête « r g b rg »
+ * posé par le moteur (engine/mjrender.js). Le noir [0,0,0] — la valeur
+ * par défaut des aperçus — reste le gris d'appât pour ne rien changer
+ * aux formules posées d'avant. */
+function couleurCssDesOps(ops) {
+  const t = String(ops || '').trim().split(/\s+/);
+  if (t.length >= 4 && t[3] === 'rg') {
+    const v = [Number(t[0]), Number(t[1]), Number(t[2])];
+    if (v.every(Number.isFinite)) {
+      const noire = v.every((x) => x === 0);
+      const p = (x) => Math.round(x * 255);
+      return noire ? '#14161c' : `rgb(${p(v[0])}, ${p(v[1])}, ${p(v[2])})`;
+    }
+  }
+  return null;
 }
 
 /* ============================================================
@@ -940,7 +994,13 @@ function tracerOpsPlacé(ctx, apercu, xPx, basePx, k, couleur) {
   if (!apercu || !apercu.ops) return;
   const px = (v) => xPx + v * k;
   const py = (v) => basePx + (apercu.heightPt - v) * k - apercu.depthPt * k;
-  const encre = couleur || '#111319'; // v0.1.43 : l'encre de la correction, sinon le gris
+  // v0.1.43 : le param couleur suit la correction ; v0.1.44 : l'APERCU
+  // porte sa couleur DANS ses opérateurs (« r g b rg » posé par le
+  // moteur) — les formules dessinées suivent l'encre de leur contexte
+  // (run du texte riche, correction colorée) même quand l'apparence a
+  // été calculée par un autre chemin. Le noir des aperçus standards
+  // reste le gris d'appât : rien ne change aux formules d'avant.
+  const encre = couleur || couleurCssDesOps(apercu.ops) || '#111319';
   ctx.save();
   ctx.fillStyle = encre;
   ctx.strokeStyle = encre;
@@ -1065,7 +1125,11 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
   const segments = decouperMelange(source);
   const formules = segments.filter((sg) => sg.type === 'formule');
   const carte = etat.opsFiche.get(cleEquation(a));
-  const pret = !!(carte && formules.every((sg) => carte.has(sg.valeur)));
+  // v0.1.44 : les formules suivent l'ENCRE de la correction — l'aperçu
+  // est demandé dans la couleur du marqueur (chargerOpsFiches), la clé
+  // du cache porte la couleur. Sans couleur : clé nue, comme avant.
+  const apDe = (latex) => carte.get(cleApercu(latex, couleurEncre));
+  const pret = !!(carte && formules.every((sg) => carte.has(cleApercu(sg.valeur, couleurEncre))));
   if (!pret) {
     // Ops pas encore chargées (ou formule illisible) : la source reste
     // lisible en attendant, et le calcul se fait au fond.
@@ -1078,7 +1142,7 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
     return;
   }
   const dims = (latex) => {
-    const ap = carte.get(latex);
+    const ap = apDe(latex);
     return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
       : { widthPt: 0, heightPt: 0, depthPt: 0 };
   };
@@ -1105,7 +1169,7 @@ function dessinerCorrection(ctx, a, x, y, w, h) {
         // Ops chargées au CORPS de CETTE correction (chargerOpsFiches)
         // comme les fiches le sont au leur : le tracé suit, zoomé.
         // v0.1.43 : les formules suivent l'encre de la correction.
-        const ap = carte.get(m.valeur);
+        const ap = apDe(m.valeur);
         if (ap) tracerOpsPlacé(ctx, ap, ecran.x, ecran.y, etat.zoom, couleurEncre);
       }
       penX += m.largeur;
@@ -1144,17 +1208,43 @@ async function chargerOpsFiches() {
       : estRiche
         ? exPourCorps(extraireTailleNoteRiche(x.contents) || FS_FICHE)
         : exPourCorps(FS_FICHE);
-    for (const seg of decouperMelange(source)) {
-      if (seg.type !== 'formule' || carte.has(seg.valeur)) continue;
-      const cleVol = `${cle}|${seg.valeur}`;
+    // v0.1.44 : les besoins sont des PAIRS (formule, couleur) — la
+    // correction compose dans la couleur de son marqueur, la note
+    // riche dans la couleur DE CHAQUE RUN (une même formule posée en
+    // deux couleurs compose deux apparences), la fiche mixte sans
+    // couleur (clé nue, comme avant).
+    let besoins = [];
+    if (estCorrection) {
+      const couleur = extraireCouleurCorrection(x.contents);
+      besoins = decouperMelange(source)
+        .filter((sg) => sg.type === 'formule')
+        .map((sg) => ({ latex: sg.valeur, couleur }));
+    } else if (estRiche) {
+      besoins = [];
+      for (const b of analyserSource(source)) {
+        for (const r of b.runs) {
+          if (r.type === 'formule') {
+            besoins.push({ latex: r.valeur, couleur: (r.styles && r.styles.couleur) || null });
+          }
+        }
+      }
+    } else {
+      besoins = decouperMelange(source)
+        .filter((sg) => sg.type === 'formule')
+        .map((sg) => ({ latex: sg.valeur, couleur: null }));
+    }
+    for (const besoin of besoins) {
+      const cleStock = cleApercu(besoin.latex, besoin.couleur);
+      if (carte.has(cleStock)) continue;
+      const cleVol = `${cle}|${cleStock}`;
       if (opsFicheEnVol.has(cleVol)) continue;
       opsFicheEnVol.add(cleVol);
       try {
-        const rep = await window.atelier.previewEquation(seg.valeur, exCible);
-        carte.set(seg.valeur, rep.erreur ? null : rep.apercu);
+        const rep = await window.atelier.previewEquation(besoin.latex, exCible, hexVers01(besoin.couleur) || undefined);
+        carte.set(cleStock, rep.erreur ? null : rep.apercu);
         change = true;
       } catch (e) {
-        carte.set(seg.valeur, null); // échec nettoyé : la fiche reste lisible
+        carte.set(cleStock, null); // échec nettoyé : la fiche reste lisible
         change = true;
       }
       opsFicheEnVol.delete(cleVol);
@@ -1229,18 +1319,36 @@ function rafraichirApercuFiche() {
       $('#editeur-apercu').hidden = true;
       return;
     }
-    const manquantes = [];
-    for (const sg of decouperMelange(estEditeurRiche ? source : zone.value)) {
-      if (sg.type === 'formule' && !etat.apercuEditeur.has(sg.valeur)) manquantes.push(sg.valeur);
-    }
-    if (manquantes.length) {
-      for (const latex of manquantes) {
-        etat.apercuEditeur.set(latex, null);
-        try {
-          const rep = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
-          etat.apercuEditeur.set(latex, rep.erreur ? null : rep.apercu);
-        } catch (e) { /* reste null */ }
+    // v0.1.44 : les besoins portent la COULEUR (apercu clé formule|hex)
+    // — la correction dans l'encre de son marqueur, le texte riche dans
+    // la couleur de chaque run (la formule suit le texte qu'on écrit).
+    let besoins = [];
+    if (estEditeurRiche) {
+      for (const b of analyserSource(source)) {
+        for (const r of b.runs) {
+          if (r.type === 'formule') {
+            besoins.push({ latex: r.valeur, couleur: (r.styles && r.styles.couleur) || null });
+          }
+        }
       }
+    } else {
+      const couleur = (attente && attente.kind === 'correction') ? (attente.couleur || null) : null;
+      besoins = decouperMelange(zone.value)
+        .filter((sg) => sg.type === 'formule')
+        .map((sg) => ({ latex: sg.valeur, couleur }));
+    }
+    const nouveaux = [];
+    for (const b of besoins) {
+      const cle = cleApercu(b.latex, b.couleur);
+      if (etat.apercuEditeur.has(cle)) continue;
+      etat.apercuEditeur.set(cle, null);
+      nouveaux.push(b);
+    }
+    for (const b of nouveaux) {
+      try {
+        const rep = await window.atelier.previewEquation(b.latex, exPourCorps(FS_FICHE), hexVers01(b.couleur) || undefined);
+        etat.apercuEditeur.set(cleApercu(b.latex, b.couleur), rep.erreur ? null : rep.apercu);
+      } catch (e) { /* reste null */ }
     }
     if (estEditeurRiche) {
       dessinerApercuRiche(source);
@@ -1258,12 +1366,15 @@ function dessinerApercuFiche(source) {
   const k = FS / FS_FICHE;            // échelle des formules
   // v0.1.38 : l'aperçu d'une CORRECTION se compose dans la famille et
   // l'épaisseur du texte remplacé (le fichier suivra la même).
+  // v0.1.44 : il se compose AUSSI dans la COULEUR d'encre de la
+  // correction (celle échantillonnée sur la page, v0.1.43).
   const att = etat.saisieAttente;
   const serif = !!(att && att.kind === 'correction' && att.famille === 'serif');
   const gras = !!(att && att.kind === 'correction' && att.gras);
+  const couleurApercu = (att && att.kind === 'correction') ? (att.couleur || null) : null;
   const policeEcran = `${gras ? 'bold ' : ''}${serif ? '"Times New Roman", Times, serif' : 'sans-serif'}`;
   const segments = decouperMelange(source);
-  const apercuDe = (latex) => etat.apercuEditeur.get(latex);
+  const apercuDe = (latex) => etat.apercuEditeur.get(cleApercu(latex, couleurApercu));
   const dims = (latex) => {
     const ap = apercuDe(latex);
     return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
@@ -1296,12 +1407,13 @@ function dessinerApercuFiche(source) {
     let penX = 6;
     for (const m of ligne.morceaux) {
       if (m.type === 'texte') {
-        c.fillStyle = '#14161c';
+        // v0.1.44 : l'aperçu d'une correction écrit dans SON encre.
+        c.fillStyle = couleurApercu || '#14161c';
         c.fillText(translitterMathWinAnsi(m.valeur), penX, basePx);
       } else {
         const ap = apercuDe(m.valeur);
         if (ap) {
-          tracerOpsPlacé(c, ap, penX, basePx, k);
+          tracerOpsPlacé(c, ap, penX, basePx, k, couleurApercu);
         } else {
           c.fillStyle = '#b04a2e';
           c.fillText(translitterMathWinAnsi(`$${m.valeur}$`), penX, basePx);
@@ -1517,14 +1629,16 @@ function dessinerNoteRiche(ctx, a, x, y, w, h) {
   if (!source) return;
   const fs = extraireTailleNoteRiche(a.contents) || 11;
   const blocs = analyserSource(source);
-  const formules = new Set();
+  // v0.1.44 : le besoin porte la COULEUR du run — chaque formule suit
+  // l'encre du texte qui l'entoure (chargerOpsFiches compose la paire).
+  const besoins = [];
   for (const b of blocs) {
     for (const r of b.runs) {
-      if (r.type === 'formule') formules.add(r.valeur);
+      if (r.type === 'formule') besoins.push({ latex: r.valeur, couleur: (r.styles && r.styles.couleur) || null });
     }
   }
   const carte = etat.opsFiche.get(cleEquation(a));
-  const pret = [...formules].every((v) => carte && carte.has(v));
+  const pret = besoins.every((b) => carte && carte.has(cleApercu(b.latex, b.couleur)));
   if (!pret) {
     // Ops pas encore chargées (ou formule illisible) : la source reste
     // lisible en attendant, et le calcul se fait au fond.
@@ -1539,12 +1653,20 @@ function dessinerNoteRiche(ctx, a, x, y, w, h) {
     return;
   }
   const dims = (latex) => {
-    const ap = carte.get(latex);
+    // la clé porte la couleur du run ; la métrique est identique de
+    // toute façon (même formule, même corps), la PREMIÈRE variante
+    // éventuelle suffit.
+    let ap = null;
+    for (const b of besoins) {
+      if (b.latex !== latex) continue;
+      ap = carte.get(cleApercu(latex, b.couleur));
+      if (ap) break;
+    }
+    ap = ap || carte.get(latex);
     return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
       : { widthPt: 0, heightPt: 0, depthPt: 0 };
   };
-  const policeDe = (styles) => `${styles.gras ? 'bold ' : ''}${styles.italique ? 'italic ' : ''}`;
-  const tailleDe = (styles) => (styles && (styles.sup || styles.sub)
+  const policeDe = (styles) => `${styles.gras ? 'bold ' : ''}${styles.italique ? 'italic ' : ''}`;  const tailleDe = (styles) => (styles && (styles.sup || styles.sub)
     ? fs * FACTEUR_EXPOSANT : fs);
   const mesurer = (styles, texte) => {
     mesureCtx.font = `${policeDe(styles)}${tailleDe(styles)}px sans-serif`;
@@ -1583,10 +1705,13 @@ function dessinerNoteRiche(ctx, a, x, y, w, h) {
       for (const m of ligne.morceaux) {
         const base = curseur - ligne.hDessus;
         if (m.type === 'formule') {
-          const ap = carte.get(m.valeur);
+          // v0.1.44 : la formule suit la couleur de SON run.
+          const ap = carte.get(cleApercu(m.valeur, (m.styles && m.styles.couleur) || null))
+            || carte.get(m.valeur);
           if (ap) {
             const ecr = pdfVersEcran({ x: penX, y: base });
-            tracerOpsPlacé(ctx, ap, ecr.x, ecr.y, etat.zoom);
+            tracerOpsPlacé(ctx, ap, ecr.x, ecr.y, etat.zoom,
+              (m.styles && m.styles.couleur) || null);
           }
         } else {
           const taille = (m.styles.sup || m.styles.sub) ? fs * FACTEUR_EXPOSANT : fs;
@@ -1655,8 +1780,23 @@ function dessinerApercuRiche(source) {
     || etat.options.ecrire.taille || 11;
   const k = FS / fsCorps;             // échelle du corps réel -> aperçu
   const blocs = analyserSource(source);
+  // v0.1.44 : chaque formule suit la couleur de SON run dans l'aperçu.
+  const parLatex = new Map(); // latex -> [(couleur)]
+  for (const b of blocs) {
+    for (const r of b.runs) {
+      if (r.type !== 'formule') continue;
+      const coul = (r.styles && r.styles.couleur) || null;
+      if (!parLatex.has(r.valeur)) parLatex.set(r.valeur, []);
+      parLatex.get(r.valeur).push(coul);
+    }
+  }
+  const apercuDe = (latex, couleur) => etat.apercuEditeur.get(cleApercu(latex, couleur));
   const dims = (latex) => {
-    const ap = etat.apercuEditeur.get(latex);
+    let ap = null;
+    for (const coul of (parLatex.get(latex) || [null])) {
+      ap = apercuDe(latex, coul);
+      if (ap) break;
+    }
     return ap ? { widthPt: ap.widthPt, heightPt: ap.heightPt, depthPt: ap.depthPt }
       : { widthPt: 10, heightPt: fsCorps * 0.75, depthPt: 0 };
   };
@@ -1687,10 +1827,11 @@ function dessinerApercuRiche(source) {
       let penX = 6;
       for (const m of ligne.morceaux) {
         if (m.type === 'formule') {
-          const ap = etat.apercuEditeur.get(m.valeur);
+          const couleur = (m.styles && m.styles.couleur) || null;
+          const ap = apercuDe(m.valeur, couleur);
           c.font = `${FS}px sans-serif`;
           if (ap) {
-            tracerOpsPlacé(c, ap, penX, basePx, k);
+            tracerOpsPlacé(c, ap, penX, basePx, k, couleur);
           } else {
             c.fillStyle = '#b04a2e';
             c.font = `${FS}px sans-serif`;
@@ -3659,18 +3800,22 @@ function sourceVersHtml(source) {
  * restitue l'image en $...$ brut : le format du fichier ne change
  * pas d'un caractère. Retour null si la composition échoue : l'appelant
  * garde alors le code $...$ visible (repli intégral d'avant v0.1.36). */
-async function composerImageFormule(latex, fsCorpsPx, apPresse) {
+async function composerImageFormule(latex, fsCorpsPx, apPresse, couleur) {
+  // v0.1.44 : l'image de la formule se compose dans la couleur de SON
+  // contexte (run du texte riche, encre de la correction) ; sans
+  // couleur, la clé et l'aperçu restent le LaTeX nu, comme avant.
+  const cle = cleApercu(latex, couleur);
   let ap = apPresse || null;
   if (!ap) {
-    if (etat.apercuEditeur.has(latex)) {
-      ap = etat.apercuEditeur.get(latex);
+    if (etat.apercuEditeur.has(cle)) {
+      ap = etat.apercuEditeur.get(cle);
     } else {
-      etat.apercuEditeur.set(latex, null); // en vol (même convention que l'aperçu)
+      etat.apercuEditeur.set(cle, null); // en vol (même convention que l'aperçu)
       try {
-        const rep = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
+        const rep = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE), hexVers01(couleur) || undefined);
         ap = (rep && !rep.erreur && rep.apercu) ? rep.apercu : null;
       } catch (e) { ap = null; }
-      etat.apercuEditeur.set(latex, ap);
+      etat.apercuEditeur.set(cle, ap);
     }
   }
   if (!ap || !ap.ops) return null;
@@ -3679,7 +3824,7 @@ async function composerImageFormule(latex, fsCorpsPx, apPresse) {
   const cv = document.createElement('canvas');
   cv.width = geom.largeurPx;
   cv.height = geom.hauteurPx;
-  tracerOpsPlacé(cv.getContext('2d'), ap, PAD_IMAGE_FORMULE, geom.basePx, k);
+  tracerOpsPlacé(cv.getContext('2d'), ap, PAD_IMAGE_FORMULE, geom.basePx, k, couleurValable(couleur));
   const img = document.createElement('img');
   img.className = 'eq-editeur';
   img.src = cv.toDataURL();
@@ -3714,7 +3859,25 @@ async function habillerFormulesEditeur() {
       if (!cur || !cur.isConnected || etat.saisieAttente !== attente) return;
       const prem = decouperMelange(cur.data).find((s) => s.type === 'formule');
       if (!prem) break;
-      const img = await composerImageFormule(prem.valeur, fsCorps);
+      // v0.1.44 : la couleur de la formule est celle À l'ÉCRAN au
+      // noeud même : computed du parent (span colorisé), hexée ; le
+      // run sérialisé la portera, l'image la montre dès la composition.
+      let couleurNoeud = null;
+      try {
+        lectureCouleur: {
+          const el = cur.parentElement;
+          if (!el) break lectureCouleur;
+          const style = getComputedStyle(el);
+          const m = String(style.color || '').match(/rgb\?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (!m) break lectureCouleur;
+          const hex = (v) => Number(v).toString(16).padStart(2, '0');
+          const proposé = `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+          if (proposé.toLowerCase() !== '#14161c' && proposé.toLowerCase() !== '#111319') {
+            couleurNoeud = couleurValable(proposé);
+          }
+        }
+      } catch (e) { /* couleur illisible : le gris reste */ }
+      const img = await composerImageFormule(prem.valeur, fsCorps, null, couleurNoeud);
       if (!img) break; // composition impossible : le code $...$ reste visible
       if (!cur.isConnected || etat.saisieAttente !== attente) return;
       const brut = `$${prem.valeur}$`;
@@ -3941,6 +4104,8 @@ function ouvrirEditeur(genre, pointOuRect, cible, supplement) {
 function fermerEditeur() {
   document.removeEventListener('pointerdown', clicHorsEditeur, true);
   $('#editeur-page').hidden = true;
+  zoneFrappeEquation = null; // v0.1.44 : l'abandon mange la zone ouverte
+  tamponFrappe = [];
   const riche = $('#editeur-riche');
   riche.hidden = true; // v0.1.31 : l'écriture riche se range aussi
   riche.innerHTML = '';
@@ -3964,6 +4129,10 @@ function fermerEditeur() {
 async function validerEditeur() {
   const attente = etat.saisieAttente;
   if (!attente) return;
+  // v0.1.44 : une équation OUVERTE se pose la première (le clic de pose
+  // vaut « Échap » sur la zone, croquis validé) — le $ de fermeture
+  // voyage dans la source avant l'enregistrement.
+  if (zoneFrappeEquation) poserFrappeEquation();
   // v0.1.31 : l'écriture riche (notes, fiches, notes riches) se lit dans
   // le contenteditable et se SEREIALISE en source canonique ; le
   // textarea ne subsiste que pour le commentaire sur icône et la
@@ -4121,6 +4290,161 @@ $('#editeur-riche').addEventListener('keydown', (ev) => {
 $('#editeur-page').addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') toucheEchapEditeur(ev);
 });
+
+/* ============================================================
+   v0.1.44 : les ÉQUATIONS À LA FRAPPE (maquette validée « Équations à
+   la frappe, principe OneNote »). Alt puis S, 0, 0, Q ouvre une zone
+   d'équation AU CURSEUR du cadre d'écriture (note riche) ou de la
+   ligne modifiée (correction), teinte légère ; la barre d'espace MONTE
+   la formule (transcodage UnicodeMath du v0.1.24) à chaque pression ;
+   Échap ou Entrée POSE l'équation et efface la teinte. Aucun panneau,
+   aucun bouton. Le moteur pur vit dans engine/frappe.js, la teinte
+   dans style.css (.frappe-math), les preuves dans test/frappe.test.js.
+   ============================================================ */
+let zoneFrappeEquation = null;  // { champ: 'texte'|'riche', … }
+let tamponFrappe = [];          // ['alt', 's'…] — la séquence en cours
+let instantFrappe = 0;          // armé à, en ms (fenêtre de 3,5 s)
+
+/** Le cadre de saisie accepte-t-il la frappe d'une équation ? */
+function cadrePourFrappe() {
+  const attente = etat.saisieAttente;
+  if (!attente) return false;
+  if ($('#editeur-page').hidden) return false;
+  return attente.kind === 'correction' || attente.kind === 'freeText'
+    || attente.kind === 'ficheMelangee' || attente.kind === 'noteRiche';
+}
+
+function ouvrirFrappeEquation() {
+  const riche = $('#editeur-riche');
+  if (!riche.hidden) {
+    riche.focus();
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    r.deleteContents(); // une sélection est remplacée, comme la frappe
+    const span = document.createElement('span');
+    span.className = 'frappe-math'; // la teinte du croquis validé
+    span.textContent = '$';
+    r.insertNode(span);
+    caretDansTexteRiche(span);
+    zoneFrappeEquation = { champ: 'riche', span };
+  } else {
+    const zone = $('#editeur-texte');
+    zone.focus();
+    const d = zone.selectionStart ?? zone.value.length;
+    const f = zone.selectionEnd ?? d;
+    zone.setRangeText('$', d, f, 'end');
+    zoneFrappeEquation = { champ: 'texte', debut: d };
+    zone.style.height = 'auto';
+    zone.style.height = `${zone.scrollHeight}px`;
+  }
+  message('Équation ouverte au curseur : la barre d\u2019espace monte la formule, Échap ou Entrée la pose.');
+}
+
+/** Place le curseur à la FIN du (premier) noeud texte d'un span riche. */
+function caretDansTexteRiche(span) {
+  const sel = window.getSelection();
+  const noeud = span.firstChild;
+  if (!noeud || !sel) return;
+  const nr = document.createRange();
+  nr.setStart(noeud, noeud.textContent.length);
+  nr.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(nr);
+}
+
+function monterFrappeEquation() {
+  if (!zoneFrappeEquation) return;
+  if (zoneFrappeEquation.champ === 'texte') {
+    const zone = $('#editeur-texte');
+    const rep = monterZoneTexte(zone.value, zoneFrappeEquation.debut,
+      zone.selectionStart ?? zone.value.length, transcoderLineaire);
+    zone.value = rep.valeur;
+    zone.setSelectionRange(rep.curseur, rep.curseur);
+    zone.style.height = 'auto';
+    zone.style.height = `${zone.scrollHeight}px`;
+  } else {
+    const span = zoneFrappeEquation.span;
+    if (!span || !span.isConnected) { zoneFrappeEquation = null; return; }
+    const rep = monterZoneRiche(span.textContent.replace(/^\$/, ''), transcoderLineaire);
+    span.textContent = `$${rep.contenu}`;
+    caretDansTexteRiche(span);
+  }
+  rafraichirApercuFiche();
+}
+
+function poserFrappeEquation() {
+  const fr = zoneFrappeEquation;
+  if (!fr) return;
+  zoneFrappeEquation = null;
+  if (fr.champ === 'texte') {
+    const zone = $('#editeur-texte');
+    const rep = poserZoneTexte(zone.value, fr.debut,
+      zone.selectionStart ?? zone.value.length);
+    zone.value = rep.valeur;
+    zone.setSelectionRange(rep.curseur, rep.curseur);
+    zone.style.height = 'auto';
+    zone.style.height = `${zone.scrollHeight}px`;
+    message(rep.vide ? 'Équation vide : rien n\u2019est posé.' : 'Équation posée.');
+  } else {
+    const span = fr.span;
+    if (!span || !span.isConnected) return;
+    const rep = poserZoneRiche(span.textContent.replace(/^\$/, ''));
+    if (rep.vide) {
+      span.remove();
+      message('Équation vide : rien n\u2019est posé.');
+    } else {
+      span.replaceWith(document.createTextNode(rep.texte));
+      message('Équation posée.');
+    }
+  }
+  rafraichirApercuFiche();
+}
+
+/* Le TAMIS de séquence, en capture AVANT tous les cadres : la zone
+ * ouverte traite l'ESPACE (montée) puis ÉCHAP et ENTRÉE (pose) AVANT
+ * les écouteurs des cadres (Échap abandonne la correction v0.1.41 :
+ * c'est la PREMIÈRE pression qui pose l'équation, la seconde qui
+ * abandonne la ligne). Alt arme ; une touche parasite au milieu
+ * désarme ; seul le cran attendu est intercepté (preventDefault) :
+ * la frappe ordinaire — AltGr des claviers AZERTY comprise — n'est
+ * JAMAIS avalée. */
+document.addEventListener('keydown', (ev) => {
+  if (zoneFrappeEquation) {
+    if (ev.key === ' ') {
+      ev.preventDefault();
+      monterFrappeEquation();
+      return;
+    }
+    if (ev.key === 'Escape' || ev.key === 'Enter') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      poserFrappeEquation();
+      return;
+    }
+    return; // la frappe ordinaire nourrit la zone naturellement
+  }
+  if (ev.key === 'Alt') {
+    tamponFrappe = ['alt'];
+    instantFrappe = Date.now();
+    return;
+  }
+  if (!tamponFrappe.length || tamponFrappe[0] !== 'alt') return;
+  if (Date.now() - instantFrappe > 3500) { tamponFrappe = []; return; }
+  const k = ev.key || '';
+  if (k === 'Shift' || k === 'Control') return; // AZERTY : Maj des chiffres
+  if (!cadrePourFrappe()) return; // la séquence n'arme QUE les cadres
+  const intercepte = cranFrappe(tamponFrappe, k);
+  tamponFrappe = tamisFrappe(tamponFrappe, k);
+  instantFrappe = Date.now();
+  if (séquenceArmée(tamponFrappe)) {
+    tamponFrappe = [];
+    ev.preventDefault();
+    ouvrirFrappeEquation();
+    return;
+  }
+  if (intercepte) ev.preventDefault(); // le cran avance : la touche est à la séquence
+}, true);
 
 /* v0.1.36 : double-clic sur une formule composée du texte riche : elle
  * s'ouvre dans le panneau Équation pour correction (source posée au
@@ -4348,7 +4672,13 @@ async function insererEquation() {
       message('La saisie n\u2019est plus ouverte : la formule n\u2019a pas été insérée.');
       return;
     }
-    const repF = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE));
+    // v0.1.44 : la couleur ARMÉE au panneau Écrire suit la formule
+    // insérée (l'aperçu, l'image à l'écran et le run du fichier
+    // sont composés dans la même encre).
+    const couleurInseree = (attente.kind === 'correction')
+      ? (attente.couleur || null)
+      : (etat.options.ecrire.couleur || null);
+    const repF = await window.atelier.previewEquation(latex, exPourCorps(FS_FICHE), hexVers01(couleurInseree) || undefined);
     if (repF.erreur || !repF.apercu) {
       message(repF.erreur || 'La formule n\u2019a pas pu être calculée.');
       return;
@@ -4360,7 +4690,7 @@ async function insererEquation() {
       // posera) ; le code $...$ n'apparaît plus à l'écran. L'aperçu
       // précalculé (repF) sert tel quel, sans recomposition.
       const fsCorps = (attente.fontSize || etat.options.ecrire.taille || 11) * etat.zoom;
-      const img = await composerImageFormule(latex, fsCorps, repF.apercu);
+      const img = await composerImageFormule(latex, fsCorps, repF.apercu, couleurInseree);
       riche.focus();
       if (img) {
         if (etat.formuleCible && etat.formuleCible.isConnected) {
